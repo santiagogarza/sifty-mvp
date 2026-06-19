@@ -18,6 +18,9 @@ pnpm-debug.log*
 .DS_Store
 *.pem
 
+# local dev data store
+.data/
+
 # vercel
 .vercel
 
