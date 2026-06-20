@@ -33,6 +33,7 @@
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",
     "postcss": "^8.4.49",
+    "puppeteer-core": "^25.1.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.3"
   },
