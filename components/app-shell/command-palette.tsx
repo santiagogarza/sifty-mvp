@@ -131,7 +131,7 @@ export function CommandPalette({
       },
     ];
 
-    return [...nav, ...taskItems, ...taskMatches, ...sys];
+    return [...taskItems, ...taskMatches, ...nav, ...sys];
   }, [tasks, router, openDetail, onCapture, toggle]);
 
   const filtered = React.useMemo(() => {
