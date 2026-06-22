@@ -71,6 +71,7 @@ const views = [
   { name: "today", path: "/today" },
   { name: "focus", path: "/focus" },
   { name: "inbox", path: "/inbox" },
+  { name: "waiting", path: "/waiting" },
   { name: "someday", path: "/someday" },
   { name: "memory", path: "/memory" },
   { name: "settings", path: "/settings" },
@@ -108,18 +109,18 @@ await shoot("shot-dark-palette-open", DESKTOP, "dark", "/today", async (page) =>
 
 // Task detail sheet — open the first task on Focus
 await shoot("shot-dark-detail", DESKTOP, "dark", "/focus", async (page) => {
-  await page.waitForSelector('[role="listitem"]');
+  await page.waitForSelector('[role="option"]');
   await page.evaluate(() => {
-    const first = document.querySelector('[role="listitem"] [role="button"]');
+    const first = document.querySelector('[role="option"]');
     if (first) first.click();
   });
   await new Promise((r) => setTimeout(r, 700));
 });
 
 await shoot("shot-light-detail", DESKTOP, "light", "/focus", async (page) => {
-  await page.waitForSelector('[role="listitem"]');
+  await page.waitForSelector('[role="option"]');
   await page.evaluate(() => {
-    const first = document.querySelector('[role="listitem"] [role="button"]');
+    const first = document.querySelector('[role="option"]');
     if (first) first.click();
   });
   await new Promise((r) => setTimeout(r, 700));
@@ -138,6 +139,9 @@ async function recordCapture(name, theme) {
   await page.setViewport(DESKTOP);
   await page.evaluateOnNewDocument((t) => {
     try {
+      // Reset any state left over from earlier shots/recordings so each
+      // recording starts from a deterministic seeded inbox.
+      window.localStorage.clear();
       window.localStorage.setItem("sifty.theme", t);
     } catch (_) {
       void 0;
@@ -198,7 +202,7 @@ async function recordCapture(name, theme) {
 
   // Open the freshly created task — it sits at the top of the list
   await page.evaluate(() => {
-    const first = document.querySelector('[role="listitem"] [role="button"]');
+    const first = document.querySelector('[role="option"]');
     if (first) first.click();
   });
   await new Promise((r) => setTimeout(r, 1500));
