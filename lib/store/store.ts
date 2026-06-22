@@ -135,17 +135,13 @@ export const useStore = create<SiftyState>()(
               updatedAt: new Date().toISOString(),
             };
             if (
-              "urgency" in patch ||
-              "importance" in patch ||
-              opts?.editedFields?.includes("urgency") ||
-              opts?.editedFields?.includes("importance")
+              ("urgency" in patch ||
+                "importance" in patch ||
+                opts?.editedFields?.includes("urgency") ||
+                opts?.editedFields?.includes("importance")) &&
+              !opts?.editedFields?.includes("priorityBucket")
             ) {
-              if (
-                next.priorityBucket !== "unset" &&
-                !opts?.editedFields?.includes("priorityBucket")
-              ) {
-                next.priorityBucket = bucketFromScalars(next.urgency, next.importance);
-              }
+              next.priorityBucket = bucketFromScalars(next.urgency, next.importance);
             }
             if (patch.lifecycle === "done" && !t.completedAt) {
               next.completedAt = next.updatedAt;
