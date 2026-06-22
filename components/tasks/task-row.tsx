@@ -20,17 +20,16 @@ import { PriorityGlyph } from "./priority-glyph";
  *  - Labels collapse to a single line and truncate gracefully.
  *  - The complete-button is a real <button> with a 32px hit target.
  */
-export function TaskRow({
-  task,
-  onOpen,
-  active,
-  labels,
-}: {
-  task: Task;
-  onOpen: (id: string) => void;
-  active?: boolean;
-  labels: Label[];
-}) {
+export const TaskRow = React.forwardRef<
+  HTMLDivElement,
+  {
+    task: Task;
+    onOpen: (id: string) => void;
+    active?: boolean;
+    labels: Label[];
+    tabIndex?: number;
+  }
+>(function TaskRow({ task, onOpen, active, labels, tabIndex = -1 }, ref) {
   const updateTask = useStore((s) => s.updateTask);
 
   const labelMap = React.useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels]);
@@ -56,8 +55,10 @@ export function TaskRow({
 
   return (
     <div
-      role="button"
-      tabIndex={0}
+      ref={ref}
+      role="option"
+      aria-selected={active}
+      tabIndex={tabIndex}
       onClick={() => onOpen(task.id)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -131,4 +132,4 @@ export function TaskRow({
       </div>
     </div>
   );
-}
+});
