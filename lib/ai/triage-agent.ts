@@ -140,15 +140,16 @@ function detectDate(text: string, now: Date): { iso: string | null; daysFromNow:
 
   // "by friday", "on monday", "next thursday"
   const wdMatch = lower.match(
-    /\b(?:by|on|next|this)\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/,
+    /\b(by|on|next|this)\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/,
   );
   if (wdMatch) {
-    const target = WEEKDAYS.indexOf(wdMatch[1]!);
+    const prefix = wdMatch[1]!;
+    const target = WEEKDAYS.indexOf(wdMatch[2]!);
     const current = today.getDay();
     let delta = target - current;
-    if (lower.includes("next")) {
-      delta = delta <= 0 ? delta + 7 : delta;
-      if (delta < 7) delta += 7;
+    if (prefix === "next") {
+      // "next Thursday" on Monday → this week's Thursday (3 days), not +7 more.
+      if (delta <= 0) delta += 7;
     } else if (delta <= 0) {
       delta += 7;
     }
