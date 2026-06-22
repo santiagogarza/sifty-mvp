@@ -1,0 +1,183 @@
+/**
+ * Domain model.
+ *
+ * Design notes:
+ *
+ * - Tasks are durable and editable. Every AI-derived field is editable by the
+ *   user, and we never overwrite a user-edited field on re-triage. The
+ *   `editedFields` set on a task is the source of truth for that protection.
+ *
+ * - Status is split into two axes: `lifecycle` (where it sits in the GTD
+ *   pipeline — inbox / active / waiting / someday / done / dropped) and
+ *   `aiStatus` (the enrichment pipeline — pending / running / ready / failed).
+ *   Conflating them makes views muddy.
+ *
+ * - Priority is encoded with two scalars (urgency, importance) plus a derived
+ *   bucket. We store both so views can sort by either, and the user can edit
+ *   the bucket directly without losing the underlying scalars.
+ *
+ * - Effort is an enum, not minutes. People can't accurately estimate minutes
+ *   but can pick "quick" vs "deep" reliably.
+ *
+ * - `delegationCandidate` is a recommendation, not a routing decision. The
+ *   MVP never auto-launches an external agent.
+ *
+ * - `confidence` is the AI's self-assessed confidence in the triage output,
+ *   used to surface clarifying questions when low.
+ */
+
+export type ID = string;
+export type ISODate = string;
+
+export const LIFECYCLE = ["inbox", "active", "waiting", "someday", "done", "dropped"] as const;
+export type Lifecycle = (typeof LIFECYCLE)[number];
+
+export const AI_STATUS = ["idle", "pending", "running", "ready", "failed"] as const;
+export type AiStatus = (typeof AI_STATUS)[number];
+
+export const EFFORT = ["quick", "small", "medium", "deep"] as const;
+export type Effort = (typeof EFFORT)[number];
+
+/** Eisenhower-derived bucket: urgent×important quadrants, plus calm/none. */
+export const PRIORITY_BUCKET = [
+  "do_now", // urgent + important
+  "schedule", // important, not urgent
+  "delegate", // urgent, not important
+  "drop", // neither
+  "unset",
+] as const;
+export type PriorityBucket = (typeof PRIORITY_BUCKET)[number];
+
+export const DELEGATION_CANDIDATE = ["self", "ai", "person", "unsure"] as const;
+export type DelegationCandidate = (typeof DELEGATION_CANDIDATE)[number];
+
+export interface Subtask {
+  id: ID;
+  title: string;
+  done: boolean;
+  order: number;
+}
+
+export interface Label {
+  id: ID;
+  name: string;
+  /** A token from a curated palette, not a raw hex. Keeps colors harmonious. */
+  tone: LabelTone;
+}
+
+export const LABEL_TONES = ["neutral", "ember", "mist", "sage", "rose", "violet", "sand"] as const;
+export type LabelTone = (typeof LABEL_TONES)[number];
+
+export interface Task {
+  id: ID;
+
+  /** The raw text the user typed. Always preserved for traceability. */
+  sourceText: string;
+  /** Optional context the user added during capture. */
+  sourceContext: string | null;
+
+  /** AI-derived but user-editable. */
+  title: string;
+  description: string | null;
+  nextAction: string | null;
+
+  /** GTD lifecycle. */
+  lifecycle: Lifecycle;
+  /** AI enrichment pipeline state, independent of lifecycle. */
+  aiStatus: AiStatus;
+  aiError: string | null;
+  /** Number of triage attempts so far. Surface this when retrying. */
+  aiAttempts: number;
+
+  /** Eisenhower scalars, 0..1, plus derived bucket. */
+  urgency: number;
+  importance: number;
+  priorityBucket: PriorityBucket;
+
+  effort: Effort;
+
+  /** ISO date or null. Day-precision; Sifty doesn't track times in MVP. */
+  due: ISODate | null;
+
+  delegationCandidate: DelegationCandidate;
+
+  /** AI's self-reported confidence in this triage, 0..1. */
+  confidence: number;
+  /** Optional clarifying question shown if confidence is low. */
+  clarifyingQuestion: string | null;
+
+  /** Free-form rationale the AI emits, shown in detail sheet only. */
+  rationale: string | null;
+
+  labelIds: ID[];
+  subtasks: Subtask[];
+
+  /**
+   * Field names the user has manually edited. Re-triage will respect these
+   * and not overwrite them.
+   */
+  editedFields: TaskEditableField[];
+
+  createdAt: ISODate;
+  updatedAt: ISODate;
+  /** When the task moved to `done`. Used by Today/Focus views. */
+  completedAt: ISODate | null;
+}
+
+/** Subset of fields that can be edited (and thus protected from AI overwrite). */
+export const TASK_EDITABLE_FIELDS = [
+  "title",
+  "description",
+  "nextAction",
+  "urgency",
+  "importance",
+  "priorityBucket",
+  "effort",
+  "due",
+  "delegationCandidate",
+  "labelIds",
+  "subtasks",
+] as const;
+export type TaskEditableField = (typeof TASK_EDITABLE_FIELDS)[number];
+
+export interface AiRun {
+  id: ID;
+  taskId: ID;
+  promptVersion: string;
+  model: string;
+  status: "running" | "succeeded" | "failed";
+  startedAt: ISODate;
+  finishedAt: ISODate | null;
+  durationMs: number | null;
+  /** Best-effort token usage for budget visibility. */
+  inputTokens: number | null;
+  outputTokens: number | null;
+  costCents: number | null;
+  error: string | null;
+}
+
+export interface Memory {
+  id: ID;
+  /** Free-form note; AI may retrieve a small bounded set of these. */
+  text: string;
+  /** "preference", "fact", "context" — kept loose on purpose. */
+  kind: "preference" | "fact" | "context";
+  pinned: boolean;
+  createdAt: ISODate;
+}
+
+export interface Entitlement {
+  /** Permanent unlimited for the creator account; else trial/active/expired. */
+  tier: "creator" | "trialing" | "active" | "expired";
+  trialEndsAt: ISODate | null;
+  aiRunsToday: number;
+  aiRunsLimitDay: number;
+}
+
+export interface UserProfile {
+  id: ID;
+  email: string;
+  displayName: string;
+  isCreator: boolean;
+  createdAt: ISODate;
+}

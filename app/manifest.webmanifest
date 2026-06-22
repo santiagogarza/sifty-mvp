@@ -1,0 +1,10 @@
+{
+  "name": "Sifty",
+  "short_name": "Sifty",
+  "description": "Calm AI productivity. Capture instantly. Sifty organizes the rest.",
+  "start_url": "/today",
+  "display": "standalone",
+  "background_color": "#0d0c08",
+  "theme_color": "#0d0c08",
+  "icons": []
+}
