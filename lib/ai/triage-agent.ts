@@ -171,6 +171,7 @@ function detectDate(text: string, now: Date): { iso: string | null; daysFromNow:
 
 function heuristicTriage(input: TriageInput): TriageOutput {
   const text = `${input.sourceText}\n${input.sourceContext ?? ""}`.trim();
+  const preferences = input.preferences ?? [];
   const now = new Date();
   const s = detectSignals(text, now);
 
@@ -201,7 +202,7 @@ function heuristicTriage(input: TriageInput): TriageOutput {
       ? "ai"
       : "self";
 
-  const suggestedLabels = inferLabels(text, input.recentLabels ?? []);
+  const suggestedLabels = inferLabels(text, input.recentLabels ?? [], preferences);
 
   const subtasks =
     effort === "deep" || effort === "medium" ? splitToSubtasks(input.sourceText) : [];
@@ -214,6 +215,7 @@ function heuristicTriage(input: TriageInput): TriageOutput {
     s.quickEffortHint ? "matched a quick-task phrase" : null,
     s.delegatablePhrase ? "matched a delegation phrase" : null,
     s.aiSuitablePhrase ? "task pattern is AI-suitable" : null,
+    ...collectPreferenceHits(text, s, preferences),
   ].filter(Boolean);
 
   const rationale = ruleHits.length
@@ -300,7 +302,33 @@ function splitToSubtasks(text: string): string[] {
   return parts.slice(0, 5).map(capitalize);
 }
 
-function inferLabels(text: string, recent: string[]): string[] {
+function collectPreferenceHits(text: string, s: Signals, preferences: string[]): string[] {
+  if (!preferences.length) return [];
+
+  const hits: string[] = [];
+  const lower = text.toLowerCase();
+
+  for (const pref of preferences) {
+    const prefLower = pref.toLowerCase();
+
+    if (
+      /\b(avoid|no)\b.*\bdeep\s+work\b|\bdeep\s+work\s+after\b/.test(prefLower) &&
+      s.bigEffortHint
+    ) {
+      hits.push("pinned preference: avoid late deep-work scheduling");
+    }
+
+    for (const name of ["cursor", "work", "personal", "writing", "admin", "errand"]) {
+      if (prefLower.includes(name) && lower.includes(name)) {
+        hits.push(`pinned preference aligns with ${name}`);
+      }
+    }
+  }
+
+  return hits;
+}
+
+function inferLabels(text: string, recent: string[], preferences: string[] = []): string[] {
   const out: string[] = [];
   const lower = text.toLowerCase();
 
@@ -316,6 +344,15 @@ function inferLabels(text: string, recent: string[]): string[] {
 
   for (const c of candidates) {
     if (c.re.test(lower)) out.push(c.name);
+  }
+  for (const pref of preferences) {
+    const prefLower = pref.toLowerCase();
+    for (const c of candidates) {
+      if (out.length >= 3) break;
+      if (prefLower.includes(c.name.toLowerCase()) && c.re.test(lower) && !out.includes(c.name)) {
+        out.push(c.name);
+      }
+    }
   }
   for (const r of recent) {
     if (out.length >= 3) break;

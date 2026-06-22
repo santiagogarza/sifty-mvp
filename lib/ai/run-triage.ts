@@ -20,7 +20,7 @@ export async function runTriage(taskId: string): Promise<void> {
 
   try {
     const recentLabels = store.labels.slice(0, 6).map((l) => l.name);
-    const preferences = store.memories.filter((m) => m.kind === "preference").map((m) => m.text);
+    const preferences = store.memories.filter((m) => m.pinned).map((m) => m.text);
 
     const res = await fetch("/api/triage", {
       method: "POST",
