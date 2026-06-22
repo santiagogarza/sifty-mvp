@@ -16,6 +16,7 @@ import {
   Sun,
   Target,
 } from "lucide-react";
+import { useOpenDetail } from "@/components/app-shell/app-frame";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
@@ -38,6 +39,7 @@ export function CommandPalette({
   onCapture: () => void;
 }) {
   const router = useRouter();
+  const openDetail = useOpenDetail();
   const { toggle } = useTheme();
   const tasks = useStore((s) => s.tasks);
 
@@ -116,7 +118,7 @@ export function CommandPalette({
         group: "task" as const,
         label: t.title,
         icon: <ArrowRight size={14} className="text-[var(--fg-subtle)]" />,
-        run: () => router.push(`/task/${t.id}`),
+        run: () => openDetail(t.id),
       }));
 
     const sys: CommandItem[] = [
@@ -130,7 +132,7 @@ export function CommandPalette({
     ];
 
     return [...nav, ...taskItems, ...taskMatches, ...sys];
-  }, [tasks, router, onCapture, toggle]);
+  }, [tasks, router, openDetail, onCapture, toggle]);
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
