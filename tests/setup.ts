@@ -2,7 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { afterAll, afterEach, beforeAll, vi } from "vitest";
 
 // Default test env. Individual tests may override per-suite via vi.stubEnv().
-process.env.NODE_ENV = "test";
+(process.env as Record<string, string | undefined>).NODE_ENV = "test";
 process.env.AUTH_SECRET ??= "test-auth-secret-do-not-use-in-production-please";
 process.env.CREATOR_EMAIL ??= "s.gonzalez.garza@gmail.com";
 

@@ -1,20 +1,25 @@
+import { generateObject } from "ai";
+import { DEFAULT_MODEL_ID, type ModelOption, estimateCostCents, getModel } from "./models";
 import { TRIAGE_SYSTEM_PROMPT, buildTriageUserPrompt } from "./prompts";
+import { MissingAiKeyError, resolveProvider } from "./provider";
 import { TRIAGE_PROMPT_VERSION, TriageOutput } from "./triage-schema";
 
 /**
- * `triageTask` is the only AI entry point in MVP.
+ * `triageTask` — single AI entry point.
  *
- * The function deliberately has two modes:
+ * Two modes:
  *
- * 1. Online: when an API key is present, it would call the real model and
- *    parse the structured output. We keep this branch as an interface
- *    contract — wiring a real provider later (AI Gateway, OpenAI, etc.)
- *    only requires implementing `callModel`.
+ *  1. **Online (default).** Calls the configured language model through the
+ *     AI Gateway (or direct provider) and validates the response against the
+ *     `TriageOutput` Zod schema. The schema is the contract the UI relies
+ *     on — anything that doesn't parse is treated as a model error and
+ *     surfaced to the user as a retryable failure.
  *
- * 2. Offline: a deterministic heuristic that produces sensible enrichment
- *    from the input. This is what makes the design feel real without keys.
- *    It is intentionally readable so the rationale shown in the UI stays
- *    accurate.
+ *  2. **Offline (debug).** A deterministic regex heuristic. Only used when
+ *     `offline: true` is passed explicitly (the API route enables this via
+ *     `?offline=1`). Never a silent fallback when keys are missing — that
+ *     hid misconfigurations. If no key is available and offline isn't
+ *     requested, we throw `MissingAiKeyError` and the route returns 503.
  */
 
 export interface TriageInput {
@@ -22,70 +27,106 @@ export interface TriageInput {
   sourceContext: string | null;
   recentLabels?: string[];
   preferences?: string[];
+  /** Sifty model id (see `lib/ai/models.ts`). Defaults to `DEFAULT_MODEL_ID`. */
+  modelId?: string | null;
+  /** Force the deterministic heuristic. Off by default. */
+  offline?: boolean;
+}
+
+export interface TriageMeta {
+  promptVersion: string;
+  model: string;
+  transport: string;
+  durationMs: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  costCents: number | null;
+  offline: boolean;
 }
 
 export interface TriageResult {
   output: TriageOutput;
-  meta: {
-    promptVersion: string;
-    model: string;
-    durationMs: number;
-    inputTokens: number | null;
-    outputTokens: number | null;
-    costCents: number | null;
-    offline: boolean;
-  };
+  meta: TriageMeta;
 }
+
+const HEURISTIC_MODEL = "sifty.local.heuristic";
 
 export async function triageTask(input: TriageInput): Promise<TriageResult> {
   const start = Date.now();
-  const apiKey = process.env.AI_GATEWAY_API_KEY ?? process.env.OPENAI_API_KEY;
 
-  if (apiKey) {
-    // Reserved for real provider wiring. We still validate the response
-    // through the same Zod schema so the UI never sees malformed data.
-    return runOnline(input, start);
+  if (input.offline) {
+    const output = heuristicTriage(input);
+    return {
+      output,
+      meta: {
+        promptVersion: TRIAGE_PROMPT_VERSION,
+        model: HEURISTIC_MODEL,
+        transport: "offline",
+        durationMs: Date.now() - start,
+        inputTokens: null,
+        outputTokens: null,
+        costCents: null,
+        offline: true,
+      },
+    };
   }
 
-  const output = heuristicTriage(input);
+  const resolved = resolveProvider(input.modelId ?? DEFAULT_MODEL_ID);
+  return runOnline(input, resolved.option, resolved.model, resolved.transport, start);
+}
+
+async function runOnline(
+  input: TriageInput,
+  option: ModelOption,
+  model: Awaited<ReturnType<typeof resolveProvider>>["model"],
+  transport: string,
+  start: number,
+): Promise<TriageResult> {
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const userPrompt = buildTriageUserPrompt({
+    sourceText: input.sourceText,
+    sourceContext: input.sourceContext,
+    todayIso,
+    recentLabels: input.recentLabels ?? [],
+    preferences: input.preferences ?? [],
+  });
+
+  const result = await generateObject({
+    model,
+    schema: TriageOutput,
+    schemaName: "TriageOutput",
+    schemaDescription: "Sifty triage output for a single captured task.",
+    system: TRIAGE_SYSTEM_PROMPT,
+    prompt: userPrompt,
+    temperature: 0.2,
+  });
+
+  const inputTokens = result.usage?.inputTokens ?? null;
+  const outputTokens = result.usage?.outputTokens ?? null;
+  const costCents = estimateCostCents({ model: option, inputTokens, outputTokens });
+
   return {
-    output,
+    output: result.object,
     meta: {
       promptVersion: TRIAGE_PROMPT_VERSION,
-      model: "sifty.local.heuristic",
+      model: option.gatewaySlug,
+      transport,
       durationMs: Date.now() - start,
-      inputTokens: null,
-      outputTokens: null,
-      costCents: null,
-      offline: true,
+      inputTokens,
+      outputTokens,
+      costCents,
+      offline: false,
     },
   };
 }
 
-async function runOnline(_input: TriageInput, start: number): Promise<TriageResult> {
-  // Placeholder. When wiring a real provider, build prompt with
-  // buildTriageUserPrompt + TRIAGE_SYSTEM_PROMPT, request structured output,
-  // and parse with TriageOutput.parse(...). For now we fall through to the
-  // heuristic so the app behaves identically in dev.
-  const output = heuristicTriage(_input);
-  return {
-    output,
-    meta: {
-      promptVersion: TRIAGE_PROMPT_VERSION,
-      model: "sifty.local.heuristic",
-      durationMs: Date.now() - start,
-      inputTokens: null,
-      outputTokens: null,
-      costCents: null,
-      offline: true,
-    },
-  };
-}
+export { MissingAiKeyError, getModel };
 
 // ---------------------------------------------------------------------------
-// Heuristic triage — a small expert system, not a model. Keeps the demo
-// honest: every inferred field can be traced back to a rule, and the
-// rationale shown in the UI explains itself.
+// Heuristic triage — debug-only fallback used when `offline: true` is set.
+// Kept verbatim from the MVP so the explainability still works for screenshots
+// and offline demos. After Stage 1 ships, this is *not* a product feature; it's
+// a developer escape hatch.
 // ---------------------------------------------------------------------------
 
 interface Signals {
@@ -138,7 +179,6 @@ function detectDate(text: string, now: Date): { iso: string | null; daysFromNow:
     return { iso: toIso(d), daysFromNow: 1 };
   }
 
-  // "by friday", "on monday", "next thursday"
   const wdMatch = lower.match(
     /\b(by|on|next|this)\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/,
   );
@@ -148,7 +188,6 @@ function detectDate(text: string, now: Date): { iso: string | null; daysFromNow:
     const current = today.getDay();
     let delta = target - current;
     if (prefix === "next") {
-      // "next Thursday" on Monday → this week's Thursday (3 days), not +7 more.
       if (delta <= 0) delta += 7;
     } else if (delta <= 0) {
       delta += 7;
@@ -157,7 +196,6 @@ function detectDate(text: string, now: Date): { iso: string | null; daysFromNow:
     return { iso: toIso(d), daysFromNow: delta };
   }
 
-  // "in 3 days", "in 2 weeks"
   const inMatch = lower.match(/\bin\s+(\d+)\s+(day|days|week|weeks)\b/);
   if (inMatch) {
     const n = Number.parseInt(inMatch[1]!, 10);
