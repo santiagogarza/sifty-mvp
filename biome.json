@@ -7,7 +7,15 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "ignore": [".next/**", "node_modules/**", "next-env.d.ts"]
+    "ignore": [
+      ".next/**",
+      "node_modules/**",
+      "next-env.d.ts",
+      "drizzle/**",
+      "playwright-report/**",
+      "test-results/**",
+      "coverage/**"
+    ]
   },
   "formatter": {
     "enabled": true,
