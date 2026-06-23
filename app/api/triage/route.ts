@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
-  const aiRunsToday = countAiRunsToday(session.user.id);
+  const aiRunsToday = await countAiRunsToday(session.user.id);
   const entitlement = deriveEntitlement({
     profile: session.user,
     trialStartedAt: session.trialStartedAt,
@@ -57,7 +57,7 @@ export async function POST(req: Request) {
       offline,
     });
 
-    recordAiRun({
+    await recordAiRun({
       userId: session.user.id,
       taskId: parsed.data.taskId ?? null,
       meta: result.meta,
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
     }
 
     const message = err instanceof Error ? err.message : "Triage failed";
-    recordAiRun({
+    await recordAiRun({
       userId: session.user.id,
       taskId: parsed.data.taskId ?? null,
       meta: {

@@ -3,7 +3,11 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    environment: "jsdom",
+    // Default to node — most tests are server logic, jose / Buffer / Uint8Array
+    // checks misbehave under jsdom because realm-bound globals don't match.
+    // Component tests opt into jsdom via the `// @vitest-environment jsdom`
+    // pragma at the top of the file.
+    environment: "node",
     globals: true,
     setupFiles: ["./tests/setup.ts"],
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],

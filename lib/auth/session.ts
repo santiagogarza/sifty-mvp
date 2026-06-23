@@ -1,45 +1,81 @@
+import { getRepos } from "@/lib/db/repos";
 import type { UserProfile } from "@/lib/domain/types";
+import { cookies } from "next/headers";
+import { verifySessionToken } from "./jwt";
+import { CREATOR_EMAIL, SESSION_COOKIE_NAME, isCreatorEmail } from "./session-shared";
 
 /**
  * Session boundary.
  *
- * The MVP demo runs without sign-in. `getSession()` returns a synthetic
- * session derived from `SIFTY_USER_EMAIL` (or the creator email by default).
- * Stage 2 swaps this implementation for cookie-based auth — every other file
- * stays the same.
+ * Reads the `sifty_session` JWT cookie, verifies it, loads the session row
+ * (so we can revoke), and returns the user profile + entitlement snapshot
+ * the route handlers care about.
+ *
+ * If `SIFTY_DISABLE_AUTH=1` (and only then), `getSession()` returns a
+ * synthetic creator session. This is the local-dev escape hatch that
+ * keeps the UI usable without going through sign-up — it is *off* by
+ * default in production.
  */
 
-const CREATOR_EMAIL = (process.env.CREATOR_EMAIL ?? "s.gonzalez.garza@gmail.com").toLowerCase();
-
-export const SESSION_COOKIE_NAME = "sifty_session";
-
-export interface Session {
-  user: UserProfile;
-  /** When the user's trial began. Used by entitlement derivation. */
-  trialStartedAt: string | null;
-  subscriptionActive: boolean;
-}
+export { SESSION_COOKIE_NAME, isCreatorEmail };
 
 export function getCreatorEmail(): string {
   return CREATOR_EMAIL;
 }
 
-export function isCreatorEmail(email: string): boolean {
-  return email.toLowerCase() === CREATOR_EMAIL;
+export interface Session {
+  user: UserProfile;
+  trialStartedAt: string | null;
+  subscriptionActive: boolean;
+  /** Raw session id for sign-out. */
+  sessionId: string | null;
 }
 
-/**
- * Returns the active session.
- *
- * The `req` parameter is read in Stage 2 (cookie-based auth). Returning a
- * non-null bypass session here keeps the single-user demo path intact.
- */
-export async function getSession(_req?: Request): Promise<Session | null> {
-  return buildBypassSession();
+export async function getSession(req?: Request): Promise<Session | null> {
+  const token = await readSessionCookie(req);
+
+  if (!token) {
+    if (isAuthBypassMode()) return buildBypassSession();
+    return null;
+  }
+
+  const payload = await verifySessionToken(token).catch(() => null);
+  if (!payload) return null;
+
+  const repos = getRepos();
+  const row = await repos.sessions.get(payload.sid);
+  if (!row || row.userId !== payload.sub) return null;
+
+  const user = await repos.users.getById(payload.sub);
+  if (!user) return null;
+
+  const ent = await repos.entitlements.get(user.id);
+  return {
+    user,
+    trialStartedAt: ent?.trialStartedAt ?? null,
+    subscriptionActive: !!ent?.subscriptionActive,
+    sessionId: payload.sid,
+  };
 }
 
-export function getSessionSync(): Session | null {
-  return buildBypassSession();
+function isAuthBypassMode(): boolean {
+  return process.env.SIFTY_DISABLE_AUTH === "1";
+}
+
+async function readSessionCookie(req?: Request): Promise<string | null> {
+  if (req) {
+    const header = req.headers.get("cookie");
+    if (!header) return null;
+    const match = header.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE_NAME}=([^;]+)`));
+    return match?.[1] ?? null;
+  }
+  try {
+    const store = await cookies();
+    const c = store.get(SESSION_COOKIE_NAME);
+    return c?.value ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function buildBypassSession(): Session {
@@ -54,6 +90,7 @@ function buildBypassSession(): Session {
   return {
     user: profile,
     trialStartedAt: null,
-    subscriptionActive: false,
+    subscriptionActive: profile.isCreator,
+    sessionId: null,
   };
 }

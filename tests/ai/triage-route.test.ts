@@ -1,6 +1,8 @@
-import { __resetAiRuns, listAiRuns } from "@/lib/ai/ai-runs";
+import { listAiRuns } from "@/lib/ai/ai-runs";
 import { MissingAiKeyError, resolveProvider } from "@/lib/ai/provider";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createUserWithCookie } from "../helpers/auth";
+import { getTestRepos } from "../setup";
 
 // We mock the AI SDK's `generateObject` and the provider resolver so the
 // route exercises every part of its contract — input validation,
@@ -44,14 +46,13 @@ async function importRoute() {
   return mod.POST;
 }
 
+let cookie: string;
+let userId: string;
+
 beforeEach(async () => {
-  __resetAiRuns();
   vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
   vi.stubEnv("CREATOR_EMAIL", "creator@example.com");
-  vi.stubEnv("SIFTY_USER_EMAIL", "regular@example.com");
 
-  // Default: provider resolves to a non-throwing mock model. Per-test
-  // overrides may replace this implementation (e.g. to throw).
   vi.mocked(resolveProvider).mockReturnValue({
     model: { __mock: true } as unknown as ReturnType<typeof resolveProvider>["model"],
     transport: "mock",
@@ -59,25 +60,43 @@ beforeEach(async () => {
   });
   const { generateObject } = await import("ai");
   vi.mocked(generateObject).mockReset();
+
+  const created = await createUserWithCookie(getTestRepos(), {
+    email: "regular@example.com",
+    isCreator: false,
+  });
+  cookie = created.cookie;
+  userId = created.user.id;
 });
 
 afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+function buildReq(body: unknown, opts?: { offline?: boolean; cookie?: string | null }) {
+  const url = `http://localhost/api/triage${opts?.offline ? "?offline=1" : ""}`;
+  const headers: HeadersInit = { "content-type": "application/json" };
+  if (opts?.cookie !== null) headers.cookie = opts?.cookie ?? cookie;
+  return new Request(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+}
+
 describe("POST /api/triage", () => {
   it("rejects malformed bodies with 400", async () => {
     const POST = await importRoute();
-    const res = await POST(
-      new Request("http://localhost/api/triage", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ sourceText: "" }),
-      }),
-    );
+    const res = await POST(buildReq({ sourceText: "" }));
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toBe("Invalid body");
+  });
+
+  it("returns 401 when not signed in", async () => {
+    const POST = await importRoute();
+    const res = await POST(buildReq({ sourceText: "Draft email" }, { cookie: null }));
+    expect(res.status).toBe(401);
   });
 
   it("returns 200 with schema-valid output and writes an aiRuns row", async () => {
@@ -89,14 +108,10 @@ describe("POST /api/triage", () => {
 
     const POST = await importRoute();
     const res = await POST(
-      new Request("http://localhost/api/triage", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          taskId: "task_1",
-          sourceText: "Draft email to investor by tomorrow",
-          modelId: "claude-haiku",
-        }),
+      buildReq({
+        taskId: "task_1",
+        sourceText: "Draft email to investor by tomorrow",
+        modelId: "claude-haiku",
       }),
     );
     expect(res.status).toBe(200);
@@ -108,7 +123,7 @@ describe("POST /api/triage", () => {
     expect(body.meta.outputTokens).toBe(80_000);
     expect(body.meta.costCents).toBeGreaterThan(0);
 
-    const runs = listAiRuns("user_local");
+    const runs = await listAiRuns(userId);
     expect(runs).toHaveLength(1);
     expect(runs[0]!.status).toBe("succeeded");
     expect(runs[0]!.taskId).toBe("task_1");
@@ -121,22 +136,12 @@ describe("POST /api/triage", () => {
     });
 
     const POST = await importRoute();
-    const res = await POST(
-      new Request("http://localhost/api/triage", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          sourceText: "Draft email to investor",
-          modelId: "claude-haiku",
-        }),
-      }),
-    );
+    const res = await POST(buildReq({ sourceText: "Draft email", modelId: "claude-haiku" }));
     expect(res.status).toBe(503);
     const body = await res.json();
     expect(body.code).toBe("no_ai_key");
 
-    // No successful run should have been logged for this failure mode.
-    const runs = listAiRuns("user_local");
+    const runs = await listAiRuns(userId);
     expect(runs).toHaveLength(0);
   });
 
@@ -145,21 +150,12 @@ describe("POST /api/triage", () => {
     vi.mocked(generateObject).mockRejectedValue(new Error("model unavailable"));
 
     const POST = await importRoute();
-    const res = await POST(
-      new Request("http://localhost/api/triage", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          sourceText: "Draft email",
-          modelId: "claude-haiku",
-        }),
-      }),
-    );
+    const res = await POST(buildReq({ sourceText: "Draft email", modelId: "claude-haiku" }));
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(body.error).toBe("model unavailable");
 
-    const runs = listAiRuns("user_local");
+    const runs = await listAiRuns(userId);
     expect(runs).toHaveLength(1);
     expect(runs[0]!.status).toBe("failed");
     expect(runs[0]!.error).toBe("model unavailable");
@@ -169,13 +165,7 @@ describe("POST /api/triage", () => {
     const { generateObject } = await import("ai");
     const POST = await importRoute();
     const res = await POST(
-      new Request("http://localhost/api/triage?offline=1", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          sourceText: "Draft email to investor by tomorrow",
-        }),
-      }),
+      buildReq({ sourceText: "Draft email to investor by tomorrow" }, { offline: true }),
     );
     expect(res.status).toBe(200);
     const body = await res.json();

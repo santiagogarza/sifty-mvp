@@ -1,38 +1,13 @@
-import { nanoid } from "nanoid";
+import { getRepos } from "@/lib/db/repos";
 import type { TriageMeta } from "./triage-agent";
 
 /**
- * `aiRuns` ring buffer.
- *
- * Stage 1 keeps this in-memory on the server process so the triage route can
- * write rows without requiring a database. Stage 2 swaps this implementation
- * for a Drizzle-backed table without touching call sites.
- *
- * The shape is the contract — keep it in sync with the eventual `ai_runs`
- * SQL table in `lib/db/schema.ts`.
+ * `aiRuns` accessor — thin wrapper over the repository so call sites stay
+ * concise. The DB-backed implementation handles persistence; tests use the
+ * in-memory implementation via `setReposForTesting()`.
  */
 
 export type AiRunStatus = "succeeded" | "failed";
-
-export interface AiRunRecord {
-  id: string;
-  userId: string;
-  taskId: string | null;
-  promptVersion: string;
-  model: string;
-  transport: string;
-  status: AiRunStatus;
-  durationMs: number;
-  inputTokens: number | null;
-  outputTokens: number | null;
-  costCents: number | null;
-  offline: boolean;
-  error: string | null;
-  createdAt: string;
-}
-
-const MAX_RECORDS = 500;
-const RECORDS: AiRunRecord[] = [];
 
 export interface RecordRunInput {
   userId: string;
@@ -42,9 +17,9 @@ export interface RecordRunInput {
   error?: string | null;
 }
 
-export function recordAiRun(input: RecordRunInput): AiRunRecord {
-  const record: AiRunRecord = {
-    id: nanoid(12),
+export async function recordAiRun(input: RecordRunInput): Promise<{ id: string }> {
+  const repos = getRepos();
+  const result = await repos.aiRuns.insert({
     userId: input.userId,
     taskId: input.taskId ?? null,
     promptVersion: input.meta.promptVersion,
@@ -57,33 +32,16 @@ export function recordAiRun(input: RecordRunInput): AiRunRecord {
     costCents: input.meta.costCents,
     offline: input.meta.offline,
     error: input.error ?? null,
-    createdAt: new Date().toISOString(),
-  };
-  RECORDS.push(record);
-  if (RECORDS.length > MAX_RECORDS) RECORDS.shift();
-  return record;
+  });
+  return { id: result.id };
 }
 
-export function countAiRunsToday(userId: string, now: Date = new Date()): number {
-  const dayStart = new Date(now);
-  dayStart.setHours(0, 0, 0, 0);
-  const start = dayStart.getTime();
-  return RECORDS.filter(
-    (r) =>
-      r.userId === userId &&
-      r.status === "succeeded" &&
-      !r.offline &&
-      Date.parse(r.createdAt) >= start,
-  ).length;
+export async function countAiRunsToday(userId: string, now: Date = new Date()): Promise<number> {
+  const repos = getRepos();
+  return repos.aiRuns.countSucceededToday(userId, now);
 }
 
-export function listAiRuns(userId: string, limit = 50): AiRunRecord[] {
-  return RECORDS.filter((r) => r.userId === userId)
-    .slice(-limit)
-    .reverse();
-}
-
-/** Test-only helper. */
-export function __resetAiRuns(): void {
-  RECORDS.length = 0;
+export async function listAiRuns(userId: string, limit = 50) {
+  const repos = getRepos();
+  return repos.aiRuns.list(userId, limit);
 }
