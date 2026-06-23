@@ -90,6 +90,21 @@ export function createPostgresRepos(): Repos {
         .set({ stripeCustomerId: customerId, updatedAt: new Date() })
         .where(eq(schema.users.id, userId));
     },
+    async findByStripeCustomerId(customerId) {
+      const db = getDb();
+      const [row] = await db
+        .select()
+        .from(schema.users)
+        .where(eq(schema.users.stripeCustomerId, customerId));
+      if (!row) return null;
+      return {
+        id: row.id,
+        email: row.email,
+        displayName: row.displayName,
+        isCreator: row.isCreator,
+        createdAt: row.createdAt.toISOString(),
+      };
+    },
   };
 
   const entitlements: EntitlementRepo = {

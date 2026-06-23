@@ -102,9 +102,20 @@ export function createMemoryRepos(): MemoryReposHandle {
       return u ? { ...u } : null;
     },
     async setStripeCustomerId(userId, customerId) {
-      // Tracked on the entitlement snapshot in this fake.
       const ent = state.entitlements.get(userId);
       if (ent) ent.stripeCustomerId = customerId;
+    },
+    async findByStripeCustomerId(customerId) {
+      for (const [userId, ent] of state.entitlements) {
+        if (ent.stripeCustomerId === customerId) {
+          const u = state.users.get(userId);
+          if (!u) continue;
+          const { passwordHash, ...rest } = u;
+          void passwordHash;
+          return rest;
+        }
+      }
+      return null;
     },
   };
 

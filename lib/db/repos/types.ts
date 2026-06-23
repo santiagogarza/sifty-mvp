@@ -56,6 +56,7 @@ export interface UserRepo {
   getById(id: string): Promise<UserProfile | null>;
   getByEmail(email: string): Promise<(UserProfile & { passwordHash: string | null }) | null>;
   setStripeCustomerId(userId: string, customerId: string): Promise<void>;
+  findByStripeCustomerId(customerId: string): Promise<UserProfile | null>;
 }
 
 export interface EntitlementRepo {
