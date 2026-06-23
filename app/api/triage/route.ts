@@ -2,6 +2,9 @@ import { countAiRunsToday, recordAiRun } from "@/lib/ai/ai-runs";
 import { MissingAiKeyError, triageTask } from "@/lib/ai/triage-agent";
 import { getSession } from "@/lib/auth/session";
 import { canRunAi, deriveEntitlement } from "@/lib/entitlements/entitlements";
+import { reportError } from "@/lib/observability/report-error";
+import { buildRateLimitKey, consumeToken, rateLimitResponseInit } from "@/lib/ratelimit/limiter";
+import { TRIAGE_POLICY, clientIdFromRequest } from "@/lib/ratelimit/policies";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -33,6 +36,17 @@ export async function POST(req: Request) {
   const session = await getSession(req);
   if (!session) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  }
+
+  const limit = consumeToken(
+    buildRateLimitKey("triage", session.user.id, clientIdFromRequest(req)),
+    TRIAGE_POLICY,
+  );
+  if (!limit.ok) {
+    return NextResponse.json(
+      { error: "Too many triage requests. Slow down a bit." },
+      rateLimitResponseInit(limit),
+    );
   }
 
   const aiRunsToday = await countAiRunsToday(session.user.id);
@@ -78,6 +92,11 @@ export async function POST(req: Request) {
     }
 
     const message = err instanceof Error ? err.message : "Triage failed";
+    reportError(err, {
+      area: "triage.route",
+      userId: session.user.id,
+      tags: { modelId: parsed.data.modelId ?? null, offline },
+    });
     await recordAiRun({
       userId: session.user.id,
       taskId: parsed.data.taskId ?? null,

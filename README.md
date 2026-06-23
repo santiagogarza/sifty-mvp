@@ -2,15 +2,11 @@
 
 Calm, AI-first productivity. Capture instantly. Sifty organizes the rest.
 
-This is the MVP bootstrap of the Sifty product, scoped to the personal-use
-loop: capture → triage → review → act. The plan is in
-[PLAN.md](./PLAN.md); this README focuses on running the app and the
-shape of the codebase.
-
 ## Run
 
 ```bash
 pnpm install
+cp .env.example .env.local       # then fill in values
 pnpm dev
 ```
 
@@ -24,11 +20,23 @@ pnpm build        # production build
 pnpm typecheck    # tsc --noEmit
 pnpm lint         # biome check
 pnpm lint:fix     # biome check --write
+pnpm test         # vitest unit + integration suite
+pnpm test:e2e     # Playwright smoke (boots dev server)
+pnpm db:generate  # produce a new Drizzle migration from lib/db/schema.ts
+pnpm db:migrate   # apply migrations to DATABASE_URL
+```
+
+### Quickest local setup (no auth, no DB, no AI keys)
+
+```bash
+SIFTY_DISABLE_AUTH=1 pnpm dev
+# triage will work with ?offline=1 (heuristic) or fail clearly without
+# an AI provider key set
 ```
 
 ## Design philosophy
 
-Sifty's MVP optimises three things, in this order:
+Sifty optimises three things, in this order:
 
 1. **Calm.** The app should never shout. Empty states are quiet, motion is
    subtle, the type stack is generous. The single warm accent ("ember") is
@@ -42,96 +50,162 @@ Sifty's MVP optimises three things, in this order:
    confidence are visible in the detail sheet so you can disagree on
    evidence, not vibes.
 
-## Shape of the codebase
+## Production architecture
 
 ```
 app/
-  (app)/                         # signed-in app shell + pages
-    layout.tsx                   # mounts AppFrame (sidebar, overlays)
-    today | focus | inbox |      # view pages — all tiny, structure
-    waiting | someday |          # comes from <TaskView />
-    memory | settings/page.tsx
-  api/triage/route.ts            # AI triage endpoint (offline-safe)
-  globals.css                    # design tokens + base layer
-  layout.tsx                     # root layout, theme boot script
+  (app)/...                    # signed-in app shell + pages
+  (auth)/sign-in, sign-up      # auth pages
+  api/
+    auth/{sign-in,sign-up,sign-out}/route.ts
+    tasks/route.ts             # GET (list), POST (create)
+    tasks/[id]/route.ts        # GET, PATCH, DELETE
+    memories/...               # GET, POST, PATCH, DELETE
+    triage/route.ts            # AI triage with rate limit + entitlement gate
+    stripe/{checkout,portal,webhook}/route.ts
+middleware.ts                  # gates /today, /focus, /inbox, /waiting,
+                               # /someday, /memory, /settings on a JWT cookie
 
 components/
-  app-shell/                     # frame, sidebar, top bar, palette,
-                                 # bottom nav, theme provider, global keys
-  tasks/                         # capture-dialog, task-row, task-list,
-                                 # task-detail-sheet, priority-glyph,
-                                 # ai-status, empty-state
-  ui/                            # primitives: button, dialog, sheet,
-                                 # popover, badge, input, kbd, tooltip,
-                                 # skeleton
+  app-shell/                   # frame, sidebar, top bar, palette, bottom nav
+  tasks/                       # capture, list, row, detail sheet, ai status
+  auth/auth-form.tsx           # sign-in / sign-up shared form
+  billing/billing-panel.tsx    # checkout + portal + tier display
+  ui/                          # primitives
 
 lib/
-  domain/                        # types, schemas, priority utilities
-  store/                         # zustand store + selectors + seeds
-  ai/                            # triage schema, prompts, agent (with
-                                 # deterministic offline heuristic),
-                                 # client-side run-triage driver
-  auth/session.ts                # creator-bypass session boundary
-  entitlements/entitlements.ts   # creator + 30-day trial entitlement
-  utils/                         # cn, dates, ids
+  ai/                          # models registry, provider resolver,
+                               # generateObject-based triage agent, prompts,
+                               # ai_runs accessor
+  auth/                        # jwt, passwords (bcryptjs), service, session
+  billing/                     # Stripe SDK singleton, pure event reducer
+  db/
+    schema.ts                  # Drizzle schema for users, entitlements,
+                               # tasks, labels, task_labels, memories,
+                               # task_events, ai_runs, sessions, stripe_events
+    client.ts                  # lazy postgres-js client
+    repos/                     # Postgres + in-memory implementations behind
+                               # one Repos interface; swap via setReposForTesting
+  domain/                      # types, schemas, priority utilities
+  entitlements/                # pure deriveEntitlement, canRunAi
+  observability/report-error.ts# central error reporter (Sentry-ready seam)
+  ratelimit/                   # token-bucket limiter + policies (triage,
+                               # stripe webhook, stripe user)
+  store/                       # Zustand store + server sync
+  utils/                       # cn, dates, ids
+
+drizzle/                       # generated SQL migrations
 ```
 
-## What's implemented
+## Configuration
 
-- **App shell**: sidebar (md+), bottom nav (mobile), sticky top bar with
-  command palette + capture, dark/light/system theme, global shortcuts
-  (`C` capture, `/` palette, `⌘K` palette).
-- **Capture flow**: dialog with primary textarea + optional context, cmd+enter
-  submit, instant task creation, non-blocking triage.
-- **Views**: Today, Focus, Inbox, Waiting, Someday, Memory, Settings.
-  Each view shares one `TaskView` component; the differences are pure
-  selectors.
-- **Task detail sheet**: editable title, next action, priority sliders,
-  effort, due-date popover, lifecycle, delegation, labels with picker,
-  subtasks, AI rationale + confidence + clarifying-question reply,
-  original capture, retry triage, delete.
-- **AI triage**: structured Zod schema (`triage.v1`), system prompt and
-  prompt builder, deterministic offline triage with explainable
-  rationales (no API key required to demo), online provider stub ready
-  for AI Gateway / OpenAI wiring.
-- **Persistence**: client-authoritative Zustand store with localStorage
-  persistence. Easy to swap for Supabase by replacing the store layer.
-- **Entitlements**: creator-email bypass, 30-day trial, AI usage cap, all
-  centralised in `lib/entitlements`.
+Every environment variable lives in `.env.example` with descriptions.
+Required for production:
 
-## What's intentionally not implemented yet
+| Variable | What it's for |
+| --- | --- |
+| `AUTH_SECRET` | HS256 key for the session JWT. ≥ 32 chars. |
+| `CREATOR_EMAIL` | Email address that gets the permanent unlimited tier. |
+| `DATABASE_URL` | Postgres connection (Vercel Postgres / Neon / Supabase). |
+| `AI_GATEWAY_API_KEY` | Vercel AI Gateway key — preferred path. |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | Direct fallback when no Gateway key. |
+| `STRIPE_SECRET_KEY` | Stripe secret. Used by checkout, portal, webhook. |
+| `STRIPE_WEBHOOK_SECRET` | HMAC verifier for the webhook endpoint. |
+| `STRIPE_PRICE_MONTHLY` / `STRIPE_PRICE_YEARLY` | Pro recurring price ids. |
+| `NEXT_PUBLIC_APP_URL` | Public URL for Stripe success/cancel redirects. |
 
-- Real Supabase auth, Postgres, and realtime sync. The session and store
-  boundaries are designed so the swap is local.
-- Stripe webhooks. Entitlement plumbing is in place; the webhook handler
-  will replace the in-memory derivation.
-- Trigger.dev for durable background jobs. Triage already runs on the
-  server via a route handler; the driver can be moved to a queue without
-  changing the UI.
-- Automatic delegation to external agents. The data model captures the
-  recommendation; the manual "Prepare for agent" handoff is the next
-  phase.
+Optional:
+
+- `SIFTY_DISABLE_AUTH=1` — local-dev escape hatch; bypasses auth in the
+  middleware and `getSession`. Off in production.
+- `RATELIMIT_TRIAGE_PER_MIN`, `RATELIMIT_STRIPE_USER_PER_MIN`,
+  `RATELIMIT_STRIPE_WEBHOOK_PER_MIN` — token bucket capacity overrides.
 
 ## AI configuration
 
-Out of the box, triage runs locally with a deterministic, explainable
-heuristic. Every inferred field traces back to a rule and the rationale
-shown in the detail sheet reflects what fired.
+Triage runs through the [AI SDK](https://sdk.vercel.ai/) and validates
+output against the `TriageOutput` Zod schema. The system prompt and
+prompt builder are in `lib/ai/prompts.ts`; the model registry (Claude
+Sonnet, Claude Haiku, GPT-4o, GPT-4o mini) is in `lib/ai/models.ts`.
 
-To wire a real provider, set `AI_GATEWAY_API_KEY` (or `OPENAI_API_KEY`)
-in `.env.local` and implement the `runOnline` branch in
-`lib/ai/triage-agent.ts`. The Zod schema (`TriageOutput`) is the
-contract; downstream code stays unchanged.
+Pinned memories from `/memory` are passed into the prompt as `User
+preferences` — adding a memory like "I avoid deep work after 4pm"
+demonstrably influences how the model triages later evening tasks.
 
-## Theming
+If no provider key is set, the route returns 503 with `code: "no_ai_key"`.
+The deterministic offline heuristic still works as an explicit debug
+fallback when you call `/api/triage?offline=1` — useful for screenshots
+and CI smoke runs that don't need a real model.
 
-Tokens are in `app/globals.css` and follow a two-layer pattern:
+## Billing
 
-1. A neutral palette (`paper-*`) plus two accent palettes (`ember-*` for
-   commit/important, `mist-*` for AI) live as `@theme` variables.
-2. Semantic variables (`--bg`, `--fg`, `--surface`, `--accent`, `--ai`,
-   etc.) reference the palette and are what components consume. This is
-   what makes light/dark and future themes a one-file change.
+- Checkout: `/api/stripe/checkout` (POST `{ cadence: "monthly" | "yearly" }`)
+  creates the Stripe customer if needed, then a Checkout Session with
+  `allow_promotion_codes: true`. Discount/comp codes you create in the
+  Stripe Dashboard are redeemable end-to-end.
+- Portal: `/api/stripe/portal` (POST) opens the Stripe Billing Portal
+  for active subscribers.
+- Webhook: `/api/stripe/webhook` verifies the `Stripe-Signature` HMAC,
+  deduplicates by `event.id` in the `stripe_events` table, then runs the
+  pure reducer in `lib/billing/events.ts` against the user's
+  entitlement. Creator entitlement is sticky.
+- UI: `/settings/billing` shows tier, trial countdown, Upgrade
+  (monthly/yearly), Manage subscription.
+
+## Pre-deploy smoke checklist
+
+Run through this on the preview URL before promoting to production:
+
+- [ ] Sign-up flow lands a fresh user on `/today`.
+- [ ] Capture creates a task instantly; triage status flips from
+      `running` to `ready`; rationale + confidence are populated.
+- [ ] Editing a triage field protects it on re-triage (toggle re-triage,
+      observe the field doesn't change).
+- [ ] Settings → AI model picker change is reflected in `meta.model` on
+      the next triage run.
+- [ ] `/settings/billing` shows the trial countdown.
+- [ ] Stripe Checkout completes with `4242 4242 4242 4242` and a
+      promo code; webhook activates the entitlement.
+- [ ] Forging a webhook signature returns 400.
+- [ ] Replaying the same `event.id` returns 200 + `deduped: true` with
+      no duplicate DB writes.
+- [ ] Trial-expired account hits the AI route → 402 with the cap message.
+- [ ] Bursting `/api/triage` past the per-minute cap returns 429 with
+      `Retry-After`.
+- [ ] Sentry / logs receive a structured `reportError(...)` payload from
+      a forced server failure.
+- [ ] Hard-refreshing `/today` while signed in keeps tasks; the localStorage
+      seed never overwrites server state.
+
+## Testing philosophy
+
+Tests in this repo justify their maintenance cost. We have tests for:
+
+- Pure boundary logic — Zod schemas, the entitlement matrix, the Stripe
+  event reducer, prompt builder.
+- Server route contracts — input validation, entitlement gating, error
+  mapping, `ai_runs` persistence, rate-limit enforcement, webhook HMAC +
+  idempotency.
+- Cross-tenant tenancy invariants on the repo layer (no cross-user reads
+  or writes).
+- Auth — sign-up / sign-in success and failure paths, middleware gating
+  protected and public routes.
+- One Playwright smoke per stage that exercises the happy path on the
+  live server.
+
+We do not test rendered output of every component, the deterministic
+heuristic (it's a debug fallback, not a product feature), or LLM output
+content (the schema parser is what we trust).
+
+Pre-merge gate (also enforced in `.github/workflows/ci.yml`):
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm test:e2e
+```
 
 ## Keyboard
 

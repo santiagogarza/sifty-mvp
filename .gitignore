@@ -24,3 +24,8 @@ pnpm-debug.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# test artifacts
+playwright-report/
+test-results/
+coverage/

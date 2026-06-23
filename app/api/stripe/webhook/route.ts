@@ -1,6 +1,9 @@
 import { type ReducibleEvent, applyStripeEvent } from "@/lib/billing/events";
 import { StripeNotConfiguredError, verifyAndParseEvent } from "@/lib/billing/stripe";
 import { getRepos } from "@/lib/db/repos";
+import { reportError } from "@/lib/observability/report-error";
+import { buildRateLimitKey, consumeToken, rateLimitResponseInit } from "@/lib/ratelimit/limiter";
+import { STRIPE_WEBHOOK_POLICY, clientIdFromRequest } from "@/lib/ratelimit/policies";
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 
@@ -25,6 +28,14 @@ const HANDLED_EVENTS = new Set([
  * replays, in which case we 200 immediately without doing work.
  */
 export async function POST(req: Request) {
+  const limit = consumeToken(
+    buildRateLimitKey("stripe-webhook", clientIdFromRequest(req)),
+    STRIPE_WEBHOOK_POLICY,
+  );
+  if (!limit.ok) {
+    return NextResponse.json({ error: "Webhook rate limited" }, rateLimitResponseInit(limit));
+  }
+
   const signature = req.headers.get("stripe-signature");
   if (!signature) {
     return NextResponse.json({ error: "Missing signature" }, { status: 400 });
@@ -61,6 +72,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Webhook handler failed";
+    reportError(err, {
+      area: "stripe.webhook",
+      tags: { type: event.type, eventId: event.id },
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
