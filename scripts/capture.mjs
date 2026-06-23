@@ -64,68 +64,66 @@ async function shoot(name, viewport, theme, navigateTo, after) {
 const ONLY_RECORD = process.env.ONLY_RECORD === "1";
 
 if (!ONLY_RECORD) {
+  // ---- Static shots ---------------------------------------------------------
 
-// ---- Static shots ---------------------------------------------------------
+  const views = [
+    { name: "today", path: "/today" },
+    { name: "focus", path: "/focus" },
+    { name: "inbox", path: "/inbox" },
+    { name: "waiting", path: "/waiting" },
+    { name: "someday", path: "/someday" },
+    { name: "memory", path: "/memory" },
+    { name: "settings", path: "/settings" },
+  ];
 
-const views = [
-  { name: "today", path: "/today" },
-  { name: "focus", path: "/focus" },
-  { name: "inbox", path: "/inbox" },
-  { name: "waiting", path: "/waiting" },
-  { name: "someday", path: "/someday" },
-  { name: "memory", path: "/memory" },
-  { name: "settings", path: "/settings" },
-];
-
-for (const theme of ["dark", "light"]) {
-  for (const v of views) {
-    await shoot(`shot-${theme}-${v.name}`, DESKTOP, theme, v.path);
+  for (const theme of ["dark", "light"]) {
+    for (const v of views) {
+      await shoot(`shot-${theme}-${v.name}`, DESKTOP, theme, v.path);
+    }
   }
-}
 
-// Mobile shots
-for (const theme of ["dark", "light"]) {
-  await shoot(`shot-${theme}-mobile-today`, MOBILE, theme, "/today");
-  await shoot(`shot-${theme}-mobile-focus`, MOBILE, theme, "/focus");
-}
+  // Mobile shots
+  for (const theme of ["dark", "light"]) {
+    await shoot(`shot-${theme}-mobile-today`, MOBILE, theme, "/today");
+    await shoot(`shot-${theme}-mobile-focus`, MOBILE, theme, "/focus");
+  }
 
-// Capture dialog open
-await shoot("shot-dark-capture-open", DESKTOP, "dark", "/today", async (page) => {
-  await page.keyboard.press("c");
-  await new Promise((r) => setTimeout(r, 400));
-  await page.keyboard.type("Draft launch announcement for the Sifty preview by Friday", {
-    delay: 18,
+  // Capture dialog open
+  await shoot("shot-dark-capture-open", DESKTOP, "dark", "/today", async (page) => {
+    await page.keyboard.press("c");
+    await new Promise((r) => setTimeout(r, 400));
+    await page.keyboard.type("Draft launch announcement for the Sifty preview by Friday", {
+      delay: 18,
+    });
+    await new Promise((r) => setTimeout(r, 250));
   });
-  await new Promise((r) => setTimeout(r, 250));
-});
 
-// Command palette
-await shoot("shot-dark-palette-open", DESKTOP, "dark", "/today", async (page) => {
-  await page.keyboard.press("/");
-  await new Promise((r) => setTimeout(r, 400));
-  await page.keyboard.type("focus", { delay: 30 });
-  await new Promise((r) => setTimeout(r, 200));
-});
-
-// Task detail sheet — open the first task on Focus
-await shoot("shot-dark-detail", DESKTOP, "dark", "/focus", async (page) => {
-  await page.waitForSelector('[role="option"]');
-  await page.evaluate(() => {
-    const first = document.querySelector('[role="option"]');
-    if (first) first.click();
+  // Command palette
+  await shoot("shot-dark-palette-open", DESKTOP, "dark", "/today", async (page) => {
+    await page.keyboard.press("/");
+    await new Promise((r) => setTimeout(r, 400));
+    await page.keyboard.type("focus", { delay: 30 });
+    await new Promise((r) => setTimeout(r, 200));
   });
-  await new Promise((r) => setTimeout(r, 700));
-});
 
-await shoot("shot-light-detail", DESKTOP, "light", "/focus", async (page) => {
-  await page.waitForSelector('[role="option"]');
-  await page.evaluate(() => {
-    const first = document.querySelector('[role="option"]');
-    if (first) first.click();
+  // Task detail sheet — open the first task on Focus
+  await shoot("shot-dark-detail", DESKTOP, "dark", "/focus", async (page) => {
+    await page.waitForSelector('[role="option"]');
+    await page.evaluate(() => {
+      const first = document.querySelector('[role="option"]');
+      if (first) first.click();
+    });
+    await new Promise((r) => setTimeout(r, 700));
   });
-  await new Promise((r) => setTimeout(r, 700));
-});
 
+  await shoot("shot-light-detail", DESKTOP, "light", "/focus", async (page) => {
+    await page.waitForSelector('[role="option"]');
+    await page.evaluate(() => {
+      const first = document.querySelector('[role="option"]');
+      if (first) first.click();
+    });
+    await new Promise((r) => setTimeout(r, 700));
+  });
 } // /ONLY_RECORD gate
 
 // ---- Screencast of the capture flow --------------------------------------
@@ -185,10 +183,7 @@ async function recordCapture(name, theme) {
   await new Promise((r) => setTimeout(r, 750));
 
   // Type a task with deliberate pacing
-  await page.keyboard.type(
-    "Reply to investor email about the demo by Friday",
-    { delay: 36 },
-  );
+  await page.keyboard.type("Reply to investor email about the demo by Friday", { delay: 36 });
   await new Promise((r) => setTimeout(r, 700));
 
   // Submit. The new task lands at the top of Inbox with "Triaging" status,
