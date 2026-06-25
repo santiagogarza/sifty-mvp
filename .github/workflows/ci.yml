@@ -19,10 +19,8 @@ jobs:
       CREATOR_EMAIL: s.gonzalez.garza@gmail.com
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -54,10 +52,8 @@ jobs:
       CREATOR_EMAIL: s.gonzalez.garza@gmail.com
       SIFTY_DISABLE_AUTH: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
       - uses: actions/setup-node@v4
         with:
           node-version: 22
