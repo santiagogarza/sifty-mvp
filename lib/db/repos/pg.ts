@@ -287,10 +287,11 @@ export function createPostgresRepos(): Repos {
     },
     async delete(userId, taskId) {
       const db = getDb();
-      const result = await db
+      const deleted = await db
         .delete(schema.tasks)
-        .where(and(eq(schema.tasks.id, taskId), eq(schema.tasks.userId, userId)));
-      return (result as unknown as { count: number }).count > 0;
+        .where(and(eq(schema.tasks.id, taskId), eq(schema.tasks.userId, userId)))
+        .returning({ id: schema.tasks.id });
+      return deleted.length > 0;
     },
     async addSubtask(userId, taskId, subtask: Subtask) {
       const existing = await tasks.get(userId, taskId);
@@ -357,10 +358,11 @@ export function createPostgresRepos(): Repos {
     },
     async delete(userId, id) {
       const db = getDb();
-      const result = await db
+      const deleted = await db
         .delete(schema.memories)
-        .where(and(eq(schema.memories.id, id), eq(schema.memories.userId, userId)));
-      return (result as unknown as { count: number }).count > 0;
+        .where(and(eq(schema.memories.id, id), eq(schema.memories.userId, userId)))
+        .returning({ id: schema.memories.id });
+      return deleted.length > 0;
     },
   };
 
@@ -456,11 +458,16 @@ export function createPostgresRepos(): Repos {
   const stripeEvents: StripeEventRepo = {
     async recordIfNew(eventId, type) {
       const db = getDb();
-      const result = await db
+      const inserted = await db
         .insert(schema.stripeEvents)
         .values({ id: eventId, type })
-        .onConflictDoNothing();
-      return (result as unknown as { count: number }).count > 0;
+        .onConflictDoNothing()
+        .returning({ id: schema.stripeEvents.id });
+      return inserted.length > 0;
+    },
+    async delete(eventId) {
+      const db = getDb();
+      await db.delete(schema.stripeEvents).where(eq(schema.stripeEvents.id, eventId));
     },
   };
 
