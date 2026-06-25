@@ -1,5 +1,6 @@
 "use client";
 
+import { DEFAULT_MODEL_ID } from "@/lib/ai/models";
 import { bucketFromScalars } from "@/lib/domain/priority";
 import {
   type AiStatus,
@@ -35,8 +36,10 @@ interface SiftyState {
   tasks: Task[];
   labels: Label[];
   memories: Memory[];
+  preferredModelId: string;
 
   setHydrated: (v: boolean) => void;
+  setPreferredModelId: (modelId: string) => void;
 
   createTask: (input: { sourceText: string; sourceContext?: string | null }) => Task;
   updateTask: (
@@ -81,8 +84,10 @@ export const useStore = create<SiftyState>()(
       tasks: seedTasks(),
       labels: seedLabels(),
       memories: seedMemories(),
+      preferredModelId: DEFAULT_MODEL_ID,
 
       setHydrated: (v) => set({ hydrated: v }),
+      setPreferredModelId: (modelId) => set({ preferredModelId: modelId }),
 
       createTask: ({ sourceText, sourceContext }) => {
         const now = new Date().toISOString();
@@ -271,7 +276,12 @@ export const useStore = create<SiftyState>()(
     {
       name: "sifty-store-v1",
       version: VERSION,
-      partialize: (s) => ({ tasks: s.tasks, labels: s.labels, memories: s.memories }),
+      partialize: (s) => ({
+        tasks: s.tasks,
+        labels: s.labels,
+        memories: s.memories,
+        preferredModelId: s.preferredModelId,
+      }),
       onRehydrateStorage: () => (state) => {
         state?.setHydrated(true);
       },

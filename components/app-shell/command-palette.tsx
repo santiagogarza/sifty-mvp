@@ -1,5 +1,6 @@
 "use client";
 
+import { useOpenDetail } from "@/components/app-shell/app-frame";
 import { useTheme } from "@/components/app-shell/theme-context";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
@@ -16,7 +17,6 @@ import {
   Sun,
   Target,
 } from "lucide-react";
-import { useOpenDetail } from "@/components/app-shell/app-frame";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
