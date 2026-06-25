@@ -357,6 +357,9 @@ export function createMemoryRepos(): MemoryReposHandle {
       state.stripeEvents.add(eventId);
       return true;
     },
+    async delete(eventId) {
+      state.stripeEvents.delete(eventId);
+    },
   };
 
   return {

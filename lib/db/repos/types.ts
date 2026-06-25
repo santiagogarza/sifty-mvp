@@ -122,6 +122,8 @@ export interface SessionRepo {
 export interface StripeEventRepo {
   /** Returns true if this is the first time we've seen this event id. */
   recordIfNew(eventId: string, type: string): Promise<boolean>;
+  /** Remove a recorded event id so Stripe retries can re-process. */
+  delete(eventId: string): Promise<void>;
 }
 
 export interface Repos {

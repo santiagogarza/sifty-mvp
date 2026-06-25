@@ -25,7 +25,9 @@ const HANDLED_EVENTS = new Set([
  * tampering (different bytes, expired timestamp) throws and we return 400.
  *
  * Idempotency lives in `stripe_events` — `recordIfNew` returns false on
- * replays, in which case we 200 immediately without doing work.
+ * replays, in which case we 200 immediately without doing work. If the
+ * processing step fails we delete the record so Stripe's retry can
+ * actually re-run the reducer instead of falsely deduping.
  */
 export async function POST(req: Request) {
   const limit = consumeToken(
@@ -71,6 +73,9 @@ export async function POST(req: Request) {
     await processEvent(event, repos);
     return NextResponse.json({ ok: true });
   } catch (err) {
+    // Roll back the dedupe record so Stripe's retry can re-process the
+    // event instead of being incorrectly short-circuited as a duplicate.
+    await repos.stripeEvents.delete(event.id).catch(() => undefined);
     const message = err instanceof Error ? err.message : "Webhook handler failed";
     reportError(err, {
       area: "stripe.webhook",
@@ -93,11 +98,13 @@ async function processEvent(
   const user = await repos.users.findByStripeCustomerId(customerId);
   const userId = user?.id ?? null;
   if (!userId) {
-    // No matching user — this can happen during dev if a Stripe sandbox
-    // event arrives before the app records the customer linkage. Log and
-    // 200; Stripe will not retry.
-    console.warn(`[stripe.webhook] No user for stripe customer ${customerId} (event ${event.id})`);
-    return;
+    // No matching user — this can happen if a webhook arrives before the
+    // app records the Stripe customer linkage. Throw so the caller drops
+    // the dedupe record and returns 5xx; Stripe will retry and the next
+    // attempt can resolve the user.
+    throw new Error(
+      `[stripe.webhook] No user for stripe customer ${customerId} (event ${event.id})`,
+    );
   }
 
   const current = (await repos.entitlements.get(userId)) ?? {

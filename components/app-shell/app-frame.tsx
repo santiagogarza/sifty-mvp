@@ -2,6 +2,7 @@
 
 import { CaptureDialog } from "@/components/tasks/capture-dialog";
 import { TaskDetailSheet } from "@/components/tasks/task-detail-sheet";
+import { useServerSync } from "@/lib/store/sync";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 import { BottomNav } from "./bottom-nav";
@@ -35,6 +36,10 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
   const search = useSearchParams();
   const [captureOpen, setCaptureOpen] = React.useState(false);
   const [commandOpen, setCommandOpen] = React.useState(false);
+
+  // Pulls server snapshot into the store on mount and is a no-op when the
+  // user isn't authenticated (sync hook handles the 401 case internally).
+  useServerSync();
 
   const detailTaskId = search.get("task");
 
