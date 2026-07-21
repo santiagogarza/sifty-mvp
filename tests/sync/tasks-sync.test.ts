@@ -105,6 +105,56 @@ describe("task sync contract", () => {
     expect(b.id).toBe(a.id);
   });
 
+  it("accepts the sync layer's full-entity PATCH body verbatim", async () => {
+    // Regression: the client pushes edits as the complete wire entity. If
+    // the strict PATCH schema drifts from that shape, every edit push 400s
+    // and user edits silently stop reaching the server.
+    const repos = getTestRepos();
+    const { user, cookie } = await createUserWithCookie(repos, { email: "patch@example.com" });
+    const task = await repos.tasks.create(user.id, {
+      sourceText: "Original capture",
+      sourceContext: null,
+    });
+
+    const fullEntityBody = {
+      title: "Edited title",
+      description: null,
+      nextAction: null,
+      sourceContext: "Answer: yes, by Friday",
+      lifecycle: "inbox",
+      aiStatus: "ready",
+      aiError: null,
+      aiAttempts: 1,
+      urgency: 0.5,
+      importance: 0.5,
+      priorityBucket: "schedule",
+      effort: "small",
+      due: null,
+      delegationCandidate: "self",
+      confidence: 0.7,
+      clarifyingQuestion: null,
+      rationale: "r",
+      agentBrief: null,
+      labelIds: [],
+      subtasks: [],
+      editedFields: ["title"],
+    };
+    const { PATCH } = await import("@/app/api/tasks/[id]/route");
+    const res = await PATCH(
+      new Request(`http://localhost/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify(fullEntityBody),
+      }),
+      { params: Promise.resolve({ id: task.id }) },
+    );
+    expect(res.status).toBe(200);
+    const persisted = await repos.tasks.get(user.id, task.id);
+    expect(persisted?.title).toBe("Edited title");
+    expect(persisted?.sourceContext).toBe("Answer: yes, by Friday");
+    expect(persisted?.editedFields).toEqual(["title"]);
+  });
+
   it("memory create accepts the client id and full shape", async () => {
     const repos = getTestRepos();
     const { user, cookie } = await createUserWithCookie(repos, { email: "mem@example.com" });

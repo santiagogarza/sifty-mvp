@@ -326,6 +326,7 @@ export function createPostgresRepos(): Repos {
           .set({
             title: merged.title,
             description: merged.description,
+            sourceContext: merged.sourceContext,
             nextAction: merged.nextAction,
             lifecycle: merged.lifecycle,
             aiStatus: merged.aiStatus,

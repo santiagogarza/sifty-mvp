@@ -27,6 +27,8 @@ export const TaskPatchSchema = z
   .object({
     title: z.string().min(1).max(280).optional(),
     description: z.string().max(4000).nullable().optional(),
+    /** Editable: clarifying-question answers append to it. */
+    sourceContext: z.string().max(8000).nullable().optional(),
     nextAction: z.string().max(280).nullable().optional(),
     lifecycle: z.enum(LIFECYCLE).optional(),
     aiStatus: z.enum(AI_STATUS).optional(),

@@ -83,23 +83,29 @@ export async function runTriage(taskId: string): Promise<void> {
     const elapsed = Date.now() - startedAt;
     if (elapsed < minDelayMs) await new Promise((r) => setTimeout(r, minDelayMs - elapsed));
 
-    if (data.task) {
-      // Server applied the result durably; adopt its canonical state.
+    if (data.task && !getSyncHooks()?.isTaskDirty(taskId)) {
+      // Server applied the result durably and no local edit raced it —
+      // adopt the canonical server state wholesale.
       const s = useStore.getState();
       s.upsertLabels(data.labels);
       s.replaceTaskFromServer(data.task);
-      // Edits made while triage ran are still pending locally — push the
-      // merged truth back so the server converges on it.
-      if (getSyncHooks()?.isTaskDirty(taskId)) {
-        const merged = useStore.getState().tasks.find((t) => t.id === taskId);
-        if (merged) getSyncHooks()?.taskUpserted(merged, { created: false });
-      }
       return;
     }
 
-    // Fallback: task not on the server — apply locally (this pushes).
+    // Apply locally: either the task never reached the server, or the user
+    // edited it while triage ran (the local `editedFields` are the freshest
+    // protection). `applyTriage` merges with protection and pushes, so the
+    // server converges on the same result.
     const s = useStore.getState();
-    const labelIds = data.output.suggestedLabels.map((name) => s.ensureLabel(name).id);
+    let labelIds: string[];
+    if (data.task) {
+      // Reuse the canonical labels the server ensured (same order as
+      // `suggestedLabels`), so both sides reference identical label ids.
+      s.upsertLabels(data.labels);
+      labelIds = data.labels.map((l) => l.id);
+    } else {
+      labelIds = data.output.suggestedLabels.map((name) => s.ensureLabel(name).id);
+    }
     const subtasks = data.output.subtasks.map((title, order) => ({
       id: makeId("st"),
       title,

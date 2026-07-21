@@ -137,7 +137,10 @@ let pushesEnabled = true;
 
 const chains = new Map<string, Promise<void>>();
 const pendingOps = new Map<string, number>();
-const patchTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const patchTimers = new Map<
+  string,
+  { job: () => Promise<boolean>; timer: ReturnType<typeof setTimeout> }
+>();
 
 function bumpPending(key: string): void {
   pendingOps.set(key, (pendingOps.get(key) ?? 0) + 1);
@@ -168,15 +171,26 @@ function schedulePatch(kind: EntityKind, id: string, job: () => Promise<boolean>
   const key = `${kind}:${id}`;
   markDirty(kind, id);
   const existing = patchTimers.get(key);
-  if (existing) clearTimeout(existing);
-  patchTimers.set(
-    key,
-    setTimeout(() => {
+  if (existing) clearTimeout(existing.timer);
+  patchTimers.set(key, {
+    job,
+    timer: setTimeout(() => {
       patchTimers.delete(key);
       bumpPending(key);
       void enqueue(kind, id, job);
     }, PATCH_DEBOUNCE_MS),
-  );
+  });
+}
+
+/** Fire a debounced patch immediately (e.g. before triage reads the row). */
+function flushScheduledPatch(kind: EntityKind, id: string): void {
+  const key = `${kind}:${id}`;
+  const scheduled = patchTimers.get(key);
+  if (!scheduled) return;
+  clearTimeout(scheduled.timer);
+  patchTimers.delete(key);
+  bumpPending(key);
+  void enqueue(kind, id, scheduled.job);
 }
 
 function pushNow(kind: EntityKind, id: string, job: () => Promise<boolean>): Promise<void> {
@@ -360,6 +374,9 @@ const hooks: SyncHooks = {
     void pushNow("memories", memoryId, () => pushMemoryDeleteJob(memoryId));
   },
   waitForTask(taskId) {
+    // Flush any debounced edit first so the server sees current
+    // editedFields before it applies a triage result.
+    flushScheduledPatch("tasks", taskId);
     return chains.get(`tasks:${taskId}`) ?? Promise.resolve();
   },
   isTaskDirty(taskId) {

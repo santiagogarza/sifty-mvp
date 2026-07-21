@@ -22,7 +22,6 @@ export async function GET(req: Request) {
 const CreateBody = TaskPatchSchema.extend({
   id: ClientId.optional(),
   sourceText: z.string().min(1).max(4000),
-  sourceContext: z.string().max(8000).nullable().optional(),
   createdAt: z.string().datetime().optional(),
 });
 

@@ -27,6 +27,33 @@ test("offline triage round-trips through the API", async ({ request }) => {
   expect(json.output.title).toBeTruthy();
 });
 
+test("captured task syncs to the server and survives cleared local state", async ({ page }) => {
+  await page.goto("/today", { waitUntil: "networkidle" });
+
+  const marker = `Sync smoke ${Date.now()}`;
+  await page.keyboard.press("c");
+  await page.getByPlaceholder("What do you need to do?").fill(marker);
+  await page.keyboard.press("ControlOrMeta+Enter");
+
+  // The capture push is background; poll the API until it lands.
+  await expect
+    .poll(
+      async () => {
+        const res = await page.request.get("/api/tasks");
+        if (!res.ok()) return false;
+        const { tasks } = (await res.json()) as { tasks: Array<{ sourceText: string }> };
+        return tasks.some((t) => t.sourceText === marker);
+      },
+      { timeout: 10_000 },
+    )
+    .toBe(true);
+
+  // The reverse direction: a fresh client (no localStorage) pulls it back.
+  await page.evaluate(() => window.localStorage.clear());
+  await page.goto("/inbox", { waitUntil: "networkidle" });
+  await expect(page.getByText(marker.slice(0, 30)).first()).toBeVisible({ timeout: 10_000 });
+});
+
 test("rate limit returns 429 with Retry-After when bursting the triage route", async ({
   request,
 }) => {

@@ -226,8 +226,10 @@ Run through this on the preview URL before promoting to production:
       `Retry-After`.
 - [ ] Sentry / logs receive a structured `reportError(...)` payload from
       a forced server failure.
-- [ ] Hard-refreshing `/today` while signed in keeps tasks; the localStorage
-      seed never overwrites server state.
+- [ ] Capture a task, clear site data (or use a second browser), sign in
+      again — the task and its enrichment come back from the server.
+- [ ] Editing a task offline (dev tools → offline) and reloading once back
+      online replays the edit (dirty ledger).
 
 ## Testing philosophy
 
