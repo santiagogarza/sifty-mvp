@@ -4,6 +4,7 @@ import { applyTriageToTask } from "@/lib/ai/apply-triage";
 import { MissingAiKeyError, triageTask } from "@/lib/ai/triage-agent";
 import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
+import { AI_CONTEXT_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
 import { reportError } from "@/lib/observability/report-error";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -13,10 +14,10 @@ export const maxDuration = 60;
 
 const Body = z.object({
   taskId: z.string().min(1).max(64).optional(),
-  sourceText: z.string().min(1).max(4000),
-  sourceContext: z.string().max(8000).nullable().optional(),
-  recentLabels: z.array(z.string()).max(20).optional(),
-  preferences: z.array(z.string()).max(20).optional(),
+  sourceText: z.string().min(1).max(TASK_LIMITS.sourceText),
+  sourceContext: z.string().max(TASK_LIMITS.sourceContext).nullable().optional(),
+  recentLabels: z.array(z.string()).max(AI_CONTEXT_LIMITS.maxRecentLabels).optional(),
+  preferences: z.array(z.string()).max(AI_CONTEXT_LIMITS.maxPreferences).optional(),
   modelId: z.string().min(1).max(64).optional(),
 });
 
@@ -94,6 +95,8 @@ export async function POST(req: Request) {
       );
     }
 
+    // Full detail goes to the error reporter and the ai_runs record; the
+    // client gets a stable, provider-free message (it renders in aiError).
     const message = err instanceof Error ? err.message : "Triage failed";
     reportError(err, {
       area: "triage.route",
@@ -117,6 +120,6 @@ export async function POST(req: Request) {
       error: message,
     });
 
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Triage failed — try again." }, { status: 500 });
   }
 }

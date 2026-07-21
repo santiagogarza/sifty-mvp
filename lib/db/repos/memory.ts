@@ -14,6 +14,7 @@ import {
   type AiRunWriteInput,
   type EntitlementRepo,
   type EntitlementSnapshot,
+  IdConflictError,
   type LabelRepo,
   type MemoryCreateInput,
   type MemoryRepo,
@@ -21,7 +22,6 @@ import {
   type SessionRepo,
   type StripeEventRepo,
   type TaskCreateInput,
-  TaskIdConflictError,
   type TaskRepo,
   type UserCreateInput,
   type UserRepo,
@@ -177,7 +177,7 @@ export function createMemoryRepos(): MemoryReposHandle {
       if (input.id) {
         const existing = state.tasks.get(input.id);
         if (existing && existing.userId !== userId) {
-          throw new TaskIdConflictError(input.id);
+          throw new IdConflictError(input.id);
         }
         if (existing) return stripUserId(existing);
       }
@@ -306,8 +306,11 @@ export function createMemoryRepos(): MemoryReposHandle {
         (l) => l.userId === userId && l.name.toLowerCase() === input.name.toLowerCase(),
       );
       if (existing) return stripUserId(existing);
+      // Never let a suggested id claim or clobber an existing row (it may
+      // belong to another tenant); mint a fresh one instead.
+      const id = state.labels.has(input.id) ? makeId("label") : input.id;
       const label: Label & { userId: string } = {
-        id: input.id,
+        id,
         name: input.name,
         tone: input.tone,
         userId,
@@ -327,7 +330,10 @@ export function createMemoryRepos(): MemoryReposHandle {
     async create(userId, input: MemoryCreateInput) {
       if (input.id) {
         const existing = state.memories.get(input.id);
-        if (existing && existing.userId === userId) {
+        if (existing && existing.userId !== userId) {
+          throw new IdConflictError(input.id);
+        }
+        if (existing) {
           const { userId: _u, ...rest } = existing;
           return rest;
         }

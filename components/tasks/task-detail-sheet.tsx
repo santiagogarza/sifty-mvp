@@ -6,6 +6,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetClose, SheetContent } from "@/components/ui/sheet";
 import { runTriage } from "@/lib/ai/run-triage";
+import { LABEL_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
 import { bucketLabel } from "@/lib/domain/priority";
 import {
   type DelegationCandidate,
@@ -15,7 +16,7 @@ import {
   type Subtask,
   type Task,
 } from "@/lib/domain/types";
-import { useStore } from "@/lib/store/store";
+import { getSyncHooks, useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import { formatExactTime, formatRelativeDay, isOverdue } from "@/lib/utils/dates";
 import {
@@ -131,6 +132,7 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
 
           <input
             value={task.title}
+            maxLength={TASK_LIMITS.title}
             onChange={(e) =>
               updateTask(task.id, { title: e.target.value }, { editedFields: ["title"] })
             }
@@ -149,6 +151,7 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
           <div className="text-eyebrow mb-1.5">Next action</div>
           <Textarea
             value={task.nextAction ?? ""}
+            maxLength={TASK_LIMITS.nextAction}
             placeholder="What's the very next concrete step?"
             onChange={(e) =>
               updateTask(task.id, { nextAction: e.target.value }, { editedFields: ["nextAction"] })
@@ -294,7 +297,6 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
  * wherever the work will happen (an AI agent, a teammate, a doc).
  */
 function AgentBriefSection({ task }: { task: Task }) {
-  const replaceTaskFromServer = useStore((s) => s.replaceTaskFromServer);
   const [generating, setGenerating] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [expanded, setExpanded] = React.useState(false);
@@ -304,6 +306,9 @@ function AgentBriefSection({ task }: { task: Task }) {
     setGenerating(true);
     setError(null);
     try {
+      // Let pending pushes land first so the server sees the task (and its
+      // latest content) before generating from it.
+      await getSyncHooks()?.waitForTask(task.id);
       const res = await fetch("/api/agent-brief", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -317,7 +322,17 @@ function AgentBriefSection({ task }: { task: Task }) {
         task?: Task | null;
       };
       if (!res.ok) throw new Error(data.error || `Brief failed (${res.status})`);
-      if (data.task) replaceTaskFromServer(data.task);
+      if (data.task) {
+        const store = useStore.getState();
+        if (getSyncHooks()?.isTaskDirty(task.id)) {
+          // The user edited the task while the brief generated — keep
+          // their edits and take only the brief (updateTask pushes, so
+          // both sides converge).
+          store.updateTask(task.id, { agentBrief: data.task.agentBrief });
+        } else {
+          store.replaceTaskFromServer(data.task);
+        }
+      }
       setExpanded(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Brief generation failed");
@@ -671,9 +686,11 @@ function LabelEditor({
   const taskLabels = task.labelIds.map((id) => labelMap.get(id)).filter(Boolean) as Label[];
   const remaining = labels.filter((l) => !task.labelIds.includes(l.id));
 
+  const atCap = task.labelIds.length >= TASK_LIMITS.maxLabels;
+
   const add = (name: string) => {
     const cleaned = name.trim();
-    if (!cleaned) return;
+    if (!cleaned || atCap) return;
     const label = ensureLabel(cleaned);
     if (!task.labelIds.includes(label.id)) {
       updateTask(
@@ -712,6 +729,7 @@ function LabelEditor({
         <Input
           autoFocus
           value={input}
+          maxLength={LABEL_LIMITS.name}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -729,7 +747,7 @@ function LabelEditor({
           placeholder="Label name"
           className="h-6 w-[140px] text-[12px]"
         />
-      ) : (
+      ) : atCap ? null : (
         <Popover>
           <PopoverTrigger asChild>
             <button
@@ -815,22 +833,25 @@ function SubtaskList({
           </button>
         </div>
       ))}
-      <div className="flex items-center gap-2 mt-1">
-        <ArrowRight size={12} className="text-[var(--fg-subtle)]" />
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && draft.trim()) {
-              e.preventDefault();
-              onAdd(draft);
-              setDraft("");
-            }
-          }}
-          placeholder="Add a subtask"
-          className="flex-1 bg-transparent text-[13px] text-[var(--fg)] placeholder:text-[var(--fg-subtle)] focus:outline-none"
-        />
-      </div>
+      {subtasks.length < TASK_LIMITS.maxSubtasks ? (
+        <div className="flex items-center gap-2 mt-1">
+          <ArrowRight size={12} className="text-[var(--fg-subtle)]" />
+          <input
+            value={draft}
+            maxLength={TASK_LIMITS.subtaskTitle}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && draft.trim()) {
+                e.preventDefault();
+                onAdd(draft);
+                setDraft("");
+              }
+            }}
+            placeholder="Add a subtask"
+            className="flex-1 bg-transparent text-[13px] text-[var(--fg)] placeholder:text-[var(--fg-subtle)] focus:outline-none"
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

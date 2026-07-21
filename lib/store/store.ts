@@ -96,10 +96,21 @@ interface SiftyState {
     },
   ) => void;
 
-  /** Server-origin: replace a task with its canonical server state. No push. */
+  /**
+   * Server-origin: replace a task with its canonical server state. No
+   * push. Update-only — if the task was deleted while the server call ran,
+   * adopting the response would resurrect it as a ghost.
+   */
   replaceTaskFromServer: (task: Task) => void;
   /** Server-origin: merge labels into the local set. No push. */
   upsertLabels: (labels: Label[]) => void;
+  /**
+   * The sync layer hit an id conflict (409): give the entity a fresh id so
+   * its create push can succeed. Returns the new id, or null if the entity
+   * is gone. No push — the caller re-pushes under the new id.
+   */
+  adoptFreshTaskId: (oldId: string) => string | null;
+  adoptFreshMemoryId: (oldId: string) => string | null;
   /**
    * Adopt the server's canonical id for a label that collided by name.
    * Returns the ids of tasks whose labelIds were rewritten (they need a
@@ -284,9 +295,7 @@ export const useStore = create<SiftyState>()(
 
         replaceTaskFromServer: (task) => {
           set((s) => ({
-            tasks: s.tasks.some((t) => t.id === task.id)
-              ? s.tasks.map((t) => (t.id === task.id ? task : t))
-              : [task, ...s.tasks],
+            tasks: s.tasks.map((t) => (t.id === task.id ? task : t)),
           }));
         },
 
@@ -297,6 +306,24 @@ export const useStore = create<SiftyState>()(
             for (const label of labels) byId.set(label.id, label);
             return { labels: Array.from(byId.values()) };
           });
+        },
+
+        adoptFreshTaskId: (oldId) => {
+          if (!get().tasks.some((t) => t.id === oldId)) return null;
+          const newId = id("task");
+          set((s) => ({
+            tasks: s.tasks.map((t) => (t.id === oldId ? { ...t, id: newId } : t)),
+          }));
+          return newId;
+        },
+
+        adoptFreshMemoryId: (oldId) => {
+          if (!get().memories.some((m) => m.id === oldId)) return null;
+          const newId = id("mem");
+          set((s) => ({
+            memories: s.memories.map((m) => (m.id === oldId ? { ...m, id: newId } : m)),
+          }));
+          return newId;
         },
 
         remapLabel: (localId, canonical) => {

@@ -145,7 +145,7 @@ describe("POST /api/triage", () => {
     expect(runs).toHaveLength(0);
   });
 
-  it("surfaces model errors as 500 and writes a failed aiRuns row", async () => {
+  it("surfaces model errors as a sanitized 500 and writes a failed aiRuns row", async () => {
     const { generateObject } = await import("ai");
     vi.mocked(generateObject).mockRejectedValue(new Error("model unavailable"));
 
@@ -153,7 +153,8 @@ describe("POST /api/triage", () => {
     const res = await POST(buildReq({ sourceText: "Draft email", modelId: "claude-haiku" }));
     expect(res.status).toBe(500);
     const body = await res.json();
-    expect(body.error).toBe("model unavailable");
+    // Provider detail never reaches the client; it lives in ai_runs.
+    expect(body.error).toBe("Triage failed — try again.");
 
     const runs = await listAiRuns(userId);
     expect(runs).toHaveLength(1);

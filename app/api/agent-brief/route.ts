@@ -78,6 +78,8 @@ export async function POST(req: Request) {
         { status: 503 },
       );
     }
+    // Full detail goes to the error reporter and the ai_runs record; the
+    // client gets a stable, provider-free message.
     const message = err instanceof Error ? err.message : "Brief generation failed";
     reportError(err, {
       area: "agent-brief.route",
@@ -100,6 +102,6 @@ export async function POST(req: Request) {
       status: "failed",
       error: message,
     });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Brief generation failed — try again." }, { status: 500 });
   }
 }

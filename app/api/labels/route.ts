@@ -1,5 +1,6 @@
 import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
+import { LABEL_LIMITS } from "@/lib/domain/limits";
 import { ClientId } from "@/lib/domain/task-patch-schema";
 import { LABEL_TONES } from "@/lib/domain/types";
 import { NextResponse } from "next/server";
@@ -16,7 +17,7 @@ export async function GET(req: Request) {
 
 const EnsureBody = z.object({
   id: ClientId,
-  name: z.string().min(1).max(24),
+  name: z.string().min(1).max(LABEL_LIMITS.name),
   tone: z.enum(LABEL_TONES),
 });
 

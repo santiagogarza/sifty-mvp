@@ -100,11 +100,11 @@ export interface EntitlementRepo {
   startTrialIfMissing(userId: string, days: number): Promise<EntitlementSnapshot>;
 }
 
-/** Thrown when a client-supplied task id already belongs to another tenant. */
-export class TaskIdConflictError extends Error {
-  constructor(taskId: string) {
-    super(`Task id is not available: ${taskId}`);
-    this.name = "TaskIdConflictError";
+/** Thrown when a client-supplied entity id already belongs to another tenant. */
+export class IdConflictError extends Error {
+  constructor(id: string) {
+    super(`Id is not available: ${id}`);
+    this.name = "IdConflictError";
   }
 }
 
@@ -112,8 +112,9 @@ export interface LabelRepo {
   list(userId: string): Promise<Label[]>;
   /**
    * Idempotent ensure-by-name (case-insensitive). Returns the existing
-   * label when the name is already taken — the caller must treat the
-   * returned label (not its input) as canonical.
+   * label when the name is already taken, and mints a fresh id when the
+   * suggested one is unavailable — the caller must treat the returned
+   * label (not its input) as canonical.
    */
   ensure(userId: string, input: LabelEnsureInput): Promise<Label>;
 }

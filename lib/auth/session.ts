@@ -99,6 +99,9 @@ function getBypassSession(): Promise<Session> {
   if (!bootstrap) {
     bootstrap = bootstrapBypassSession(repos);
     bypassBootstraps.set(repos, bootstrap);
+    // Never cache a rejection: a transient DB failure would otherwise
+    // poison every bypass request this instance serves.
+    bootstrap.catch(() => bypassBootstraps.delete(repos));
   }
   return bootstrap;
 }
@@ -113,13 +116,30 @@ async function bootstrapBypassSession(repos: Repos): Promise<Session> {
     const { passwordHash: _ph, ...profile } = existing;
     user = profile;
   } else {
-    user = await repos.users.create({
-      id: "user_local",
-      email,
-      passwordHash: null,
-      displayName: isCreator ? "Santi" : email.split("@")[0]!,
-      isCreator,
-    });
+    user = await repos.users
+      .create({
+        id: "user_local",
+        email,
+        passwordHash: null,
+        displayName: isCreator ? "Santi" : email.split("@")[0]!,
+        isCreator,
+      })
+      .catch(async () => {
+        // A concurrent instance won the create race — adopt its row.
+        const raced = await repos.users.getByEmail(email);
+        if (raced) {
+          const { passwordHash: _ph, ...profile } = raced;
+          return profile;
+        }
+        // The fixed id is taken by a *different* email (SIFTY_USER_EMAIL
+        // changed against a persistent DB): fall back to a generated id.
+        return repos.users.create({
+          email,
+          passwordHash: null,
+          displayName: isCreator ? "Santi" : email.split("@")[0]!,
+          isCreator,
+        });
+      });
   }
 
   if (isCreator) {

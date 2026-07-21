@@ -11,6 +11,7 @@ import {
   type AiRunWriteInput,
   type EntitlementRepo,
   type EntitlementSnapshot,
+  IdConflictError,
   type LabelRepo,
   type MemoryCreateInput,
   type MemoryRepo,
@@ -18,7 +19,6 @@ import {
   type SessionRepo,
   type StripeEventRepo,
   type TaskCreateInput,
-  TaskIdConflictError,
   type TaskRepo,
   type UserCreateInput,
   type UserRepo,
@@ -216,13 +216,25 @@ export function createPostgresRepos(): Repos {
           );
       const [existing] = await findByName();
       if (existing) return rowToLabel(existing);
-      await db
-        .insert(schema.labels)
-        .values({ id: input.id, userId, name: input.name, tone: input.tone })
-        .onConflictDoNothing();
+
+      const tryInsert = (id: string) =>
+        db
+          .insert(schema.labels)
+          .values({ id, userId, name: input.name, tone: input.tone })
+          .onConflictDoNothing()
+          .returning();
+
+      const inserted = await tryInsert(input.id);
+      if (inserted.length) return rowToLabel(inserted[0]!);
+
+      // Insert lost a conflict: either a concurrent create of the same
+      // name won (adopt it), or the suggested id is taken — possibly by
+      // another tenant — so mint a fresh id instead of failing.
+      const [raced] = await findByName();
+      if (raced) return rowToLabel(raced);
+      const reminted = await tryInsert(makeId("label"));
+      if (reminted.length) return rowToLabel(reminted[0]!);
       const [row] = await findByName();
-      // The row exists after insert-or-conflict; re-select covers the
-      // concurrent-create race where the conflict row won.
       return rowToLabel(row!);
     },
   };
@@ -259,22 +271,12 @@ export function createPostgresRepos(): Repos {
     },
     async create(userId, input: TaskCreateInput) {
       const db = getDb();
-      if (input.id) {
-        const [existing] = await db
-          .select()
-          .from(schema.tasks)
-          .where(eq(schema.tasks.id, input.id));
-        if (existing && existing.userId !== userId) {
-          throw new TaskIdConflictError(input.id);
-        }
-        if (existing) return (await tasks.get(userId, input.id))!;
-      }
       const text = input.sourceText.trim();
       const provisionalTitle = text.length > 80 ? `${text.slice(0, 78)}…` : text || "Untitled task";
       const id = input.id ?? makeId("task");
       const now = new Date();
       const createdAt = input.createdAt ? new Date(input.createdAt) : now;
-      const [row] = await db
+      const inserted = await db
         .insert(schema.tasks)
         .values({
           id,
@@ -289,8 +291,14 @@ export function createPostgresRepos(): Repos {
           createdAt,
           updatedAt: now,
         })
+        .onConflictDoNothing()
         .returning();
-      return rowToTask(row!, []);
+      if (inserted.length) return rowToTask(inserted[0]!, []);
+      // Conflict on the client-supplied id: idempotent replay for the
+      // owner, hard reject for anyone else.
+      const existing = await tasks.get(userId, id);
+      if (existing) return existing;
+      throw new IdConflictError(id);
     },
     async update(userId, taskId, patch, opts) {
       const db = getDb();
@@ -416,25 +424,25 @@ export function createPostgresRepos(): Repos {
     },
     async create(userId, input: MemoryCreateInput) {
       const db = getDb();
-      if (input.id) {
-        const [existing] = await db
-          .select()
-          .from(schema.memories)
-          .where(and(eq(schema.memories.id, input.id), eq(schema.memories.userId, userId)));
-        if (existing) return rowToMemory(existing);
-      }
-      const [row] = await db
+      const id = input.id ?? makeId("mem");
+      const inserted = await db
         .insert(schema.memories)
         .values({
-          id: input.id ?? makeId("mem"),
+          id,
           userId,
           text: input.text,
           kind: input.kind ?? "preference",
           pinned: input.pinned ?? false,
           createdAt: input.createdAt ? new Date(input.createdAt) : undefined,
         })
+        .onConflictDoNothing()
         .returning();
-      return rowToMemory(row!);
+      if (inserted.length) return rowToMemory(inserted[0]!);
+      // Conflict on the id: idempotent replay for the owner, hard reject
+      // for anyone else.
+      const [existing] = await db.select().from(schema.memories).where(eq(schema.memories.id, id));
+      if (existing && existing.userId === userId) return rowToMemory(existing);
+      throw new IdConflictError(id);
     },
     async update(userId, id, patch) {
       const db = getDb();

@@ -1,6 +1,7 @@
 import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
-import { TaskIdConflictError } from "@/lib/db/repos/types";
+import { IdConflictError } from "@/lib/db/repos/types";
+import { TASK_LIMITS } from "@/lib/domain/limits";
 import { ClientId, TaskPatchSchema } from "@/lib/domain/task-patch-schema";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -21,7 +22,7 @@ export async function GET(req: Request) {
  */
 const CreateBody = TaskPatchSchema.extend({
   id: ClientId.optional(),
-  sourceText: z.string().min(1).max(4000),
+  sourceText: z.string().min(1).max(TASK_LIMITS.sourceText),
   createdAt: z.string().datetime().optional(),
 });
 
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ task }, { status: 201 });
   } catch (err) {
-    if (err instanceof TaskIdConflictError) {
+    if (err instanceof IdConflictError) {
       return NextResponse.json({ error: "Task id is not available" }, { status: 409 });
     }
     throw err;

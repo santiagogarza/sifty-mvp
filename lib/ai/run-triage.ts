@@ -1,5 +1,6 @@
 "use client";
 
+import { AI_CONTEXT_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
 import type { Label, Task } from "@/lib/domain/types";
 import { getSyncHooks, useStore } from "@/lib/store/store";
 import { id as makeId } from "@/lib/utils/ids";
@@ -61,21 +62,29 @@ export async function runTriage(taskId: string): Promise<void> {
     const current = state.tasks.find((t) => t.id === taskId);
     if (!current) return;
 
+    // Clamped to the shared wire limits so the request can't be rejected
+    // for legacy oversized content or an over-pinned memory list.
+    const clip = (s: string, max: number) => (s.length <= max ? s : `${s.slice(0, max - 1)}…`);
     const res = await fetch("/api/triage", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         taskId,
-        sourceText: current.sourceText,
-        sourceContext: current.sourceContext,
+        sourceText: clip(current.sourceText, TASK_LIMITS.sourceText),
+        sourceContext: current.sourceContext
+          ? clip(current.sourceContext, TASK_LIMITS.sourceContext)
+          : current.sourceContext,
         recentLabels: state.labels.slice(0, 6).map((l) => l.name),
-        preferences: state.memories.filter((m) => m.pinned).map((m) => m.text),
+        preferences: state.memories
+          .filter((m) => m.pinned)
+          .slice(0, AI_CONTEXT_LIMITS.maxPreferences)
+          .map((m) => m.text),
         modelId: state.preferredModelId,
       }),
     });
     if (!res.ok) {
-      const err = await res.text();
-      throw new Error(err || `Triage failed (${res.status})`);
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(body?.error || `Triage failed (${res.status})`);
     }
     const data = (await res.json()) as TriageResponse;
 

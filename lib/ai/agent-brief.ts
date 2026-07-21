@@ -158,28 +158,32 @@ export async function generateAgentBrief(input: AgentBriefInput): Promise<AgentB
 
 /**
  * Deterministic template used with `?offline=1` / `SIFTY_AI_OFFLINE=1` —
- * keyless local dev and CI. Not a product feature.
+ * keyless local dev and CI. Not a product feature. Constructed as a typed
+ * literal (no Zod parse — that validation exists for model output, and
+ * task content is wider than the model caps): every composed string is
+ * fitted into the schema bounds and falsy fields fall back, so the
+ * template can never throw.
  */
 function offlineBrief(task: Task): AgentBriefOutput {
-  const steps = task.subtasks.length
-    ? task.subtasks.map((s) => s.title)
+  const fit = (s: string, max = 300) => (s.length <= max ? s : `${s.slice(0, max - 1)}…`);
+  const subtaskSteps = task.subtasks.map((s) => s.title.trim()).filter(Boolean);
+  const steps = subtaskSteps.length
+    ? subtaskSteps.map((s) => fit(s))
     : [
-        task.nextAction ?? `Decide the first concrete step for: ${task.title}`,
+        fit(task.nextAction?.trim() || `Decide the first concrete step for: ${task.title}`),
         "Do the work in small, verifiable increments.",
         "Summarize what changed and what remains.",
       ];
-  return AgentBriefOutput.parse({
-    objective: task.title,
+  if (steps.length < 2) steps.push("Review the result against the objective.");
+  return {
+    objective: fit(task.title.trim() || task.sourceText.trim() || "Complete the task"),
     context: [
-      `Original capture: ${task.sourceText}`,
-      ...(task.sourceContext ? [`Context: ${task.sourceContext}`] : []),
+      fit(`Original capture: ${task.sourceText}`),
+      ...(task.sourceContext ? [fit(`Context: ${task.sourceContext}`)] : []),
       ...(task.due ? [`Due: ${task.due}`] : []),
     ],
-    steps:
-      steps.length >= 2
-        ? steps.slice(0, 8)
-        : [...steps, "Review the result against the objective."],
+    steps: steps.slice(0, 8),
     successCriteria: ["The objective above is demonstrably complete."],
     openQuestions: [],
-  });
+  };
 }

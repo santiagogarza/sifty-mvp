@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TASK_LIMITS } from "./limits";
 import {
   AI_STATUS,
   DELEGATION_CANDIDATE,
@@ -25,14 +26,14 @@ export const ClientId = z
 
 export const TaskPatchSchema = z
   .object({
-    title: z.string().min(1).max(280).optional(),
-    description: z.string().max(4000).nullable().optional(),
+    title: z.string().min(1).max(TASK_LIMITS.title).optional(),
+    description: z.string().max(TASK_LIMITS.description).nullable().optional(),
     /** Editable: clarifying-question answers append to it. */
-    sourceContext: z.string().max(8000).nullable().optional(),
-    nextAction: z.string().max(280).nullable().optional(),
+    sourceContext: z.string().max(TASK_LIMITS.sourceContext).nullable().optional(),
+    nextAction: z.string().max(TASK_LIMITS.nextAction).nullable().optional(),
     lifecycle: z.enum(LIFECYCLE).optional(),
     aiStatus: z.enum(AI_STATUS).optional(),
-    aiError: z.string().max(2000).nullable().optional(),
+    aiError: z.string().max(TASK_LIMITS.aiError).nullable().optional(),
     aiAttempts: z.number().int().nonnegative().optional(),
     urgency: z.number().min(0).max(1).optional(),
     importance: z.number().min(0).max(1).optional(),
@@ -45,20 +46,20 @@ export const TaskPatchSchema = z
       .optional(),
     delegationCandidate: z.enum(DELEGATION_CANDIDATE).optional(),
     confidence: z.number().min(0).max(1).optional(),
-    clarifyingQuestion: z.string().max(500).nullable().optional(),
-    rationale: z.string().max(2000).nullable().optional(),
-    agentBrief: z.string().max(8000).nullable().optional(),
-    labelIds: z.array(ClientId).max(20).optional(),
+    clarifyingQuestion: z.string().max(TASK_LIMITS.clarifyingQuestion).nullable().optional(),
+    rationale: z.string().max(TASK_LIMITS.rationale).nullable().optional(),
+    agentBrief: z.string().max(TASK_LIMITS.agentBrief).nullable().optional(),
+    labelIds: z.array(ClientId).max(TASK_LIMITS.maxLabels).optional(),
     subtasks: z
       .array(
         z.object({
           id: z.string().max(64),
-          title: z.string().min(1).max(160),
+          title: z.string().min(1).max(TASK_LIMITS.subtaskTitle),
           done: z.boolean(),
           order: z.number().int().nonnegative(),
         }),
       )
-      .max(20)
+      .max(TASK_LIMITS.maxSubtasks)
       .optional(),
     editedFields: z.array(z.enum(TASK_EDITABLE_FIELDS)).max(20).optional(),
   })

@@ -1,5 +1,6 @@
 import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
+import { MEMORY_LIMITS } from "@/lib/domain/limits";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -7,7 +8,7 @@ export const runtime = "nodejs";
 
 const PatchBody = z
   .object({
-    text: z.string().min(1).max(2000).optional(),
+    text: z.string().min(1).max(MEMORY_LIMITS.text).optional(),
     pinned: z.boolean().optional(),
     kind: z.enum(["preference", "fact", "context"]).optional(),
   })

@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Textarea } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import { runTriage } from "@/lib/ai/run-triage";
+import { TASK_LIMITS } from "@/lib/domain/limits";
 import { useStore } from "@/lib/store/store";
 import { ArrowUpRight, Sparkles } from "lucide-react";
 import * as React from "react";
@@ -72,6 +73,7 @@ export function CaptureDialog({
             ref={textRef}
             placeholder="What do you need to do?"
             value={text}
+            maxLength={TASK_LIMITS.sourceText}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -88,6 +90,7 @@ export function CaptureDialog({
               <Textarea
                 placeholder="Anything Sifty should know — links, deadlines, who's involved."
                 value={context}
+                maxLength={TASK_LIMITS.sourceContext}
                 onChange={(e) => setContext(e.target.value)}
                 rows={3}
                 className="text-[14px] leading-[1.55] border-transparent bg-[var(--surface-muted)]"
