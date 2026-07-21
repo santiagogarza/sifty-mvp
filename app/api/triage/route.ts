@@ -1,10 +1,11 @@
-import { countAiRunsToday, recordAiRun } from "@/lib/ai/ai-runs";
+import { gateAiRequest, resolveOfflineMode } from "@/lib/ai/ai-gate";
+import { recordAiRun } from "@/lib/ai/ai-runs";
+import { applyTriageToTask } from "@/lib/ai/apply-triage";
 import { MissingAiKeyError, triageTask } from "@/lib/ai/triage-agent";
 import { getSession } from "@/lib/auth/session";
-import { canRunAi, deriveEntitlement } from "@/lib/entitlements/entitlements";
+import { getRepos } from "@/lib/db/repos";
+import { AI_CONTEXT_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
 import { reportError } from "@/lib/observability/report-error";
-import { buildRateLimitKey, consumeToken, rateLimitResponseInit } from "@/lib/ratelimit/limiter";
-import { TRIAGE_POLICY, clientIdFromRequest } from "@/lib/ratelimit/policies";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -13,10 +14,10 @@ export const maxDuration = 60;
 
 const Body = z.object({
   taskId: z.string().min(1).max(64).optional(),
-  sourceText: z.string().min(1).max(4000),
-  sourceContext: z.string().max(8000).nullable().optional(),
-  recentLabels: z.array(z.string()).max(20).optional(),
-  preferences: z.array(z.string()).max(20).optional(),
+  sourceText: z.string().min(1).max(TASK_LIMITS.sourceText),
+  sourceContext: z.string().max(TASK_LIMITS.sourceContext).nullable().optional(),
+  recentLabels: z.array(z.string()).max(AI_CONTEXT_LIMITS.maxRecentLabels).optional(),
+  preferences: z.array(z.string()).max(AI_CONTEXT_LIMITS.maxPreferences).optional(),
   modelId: z.string().min(1).max(64).optional(),
 });
 
@@ -30,36 +31,15 @@ export async function POST(req: Request) {
     );
   }
 
-  const url = new URL(req.url);
-  const offline = url.searchParams.get("offline") === "1";
+  const offline = resolveOfflineMode(req);
 
   const session = await getSession(req);
   if (!session) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
-  const limit = consumeToken(
-    buildRateLimitKey("triage", session.user.id, clientIdFromRequest(req)),
-    TRIAGE_POLICY,
-  );
-  if (!limit.ok) {
-    return NextResponse.json(
-      { error: "Too many triage requests. Slow down a bit." },
-      rateLimitResponseInit(limit),
-    );
-  }
-
-  const aiRunsToday = await countAiRunsToday(session.user.id);
-  const entitlement = deriveEntitlement({
-    profile: session.user,
-    trialStartedAt: session.trialStartedAt,
-    subscriptionActive: session.subscriptionActive,
-    aiRunsToday,
-  });
-  const allowed = canRunAi(entitlement);
-  if (!allowed.ok) {
-    return NextResponse.json({ error: allowed.reason, entitlement }, { status: 402 });
-  }
+  const gate = await gateAiRequest({ req, session, bucket: "triage" });
+  if (!gate.ok) return gate.response;
 
   try {
     const result = await triageTask({
@@ -71,6 +51,26 @@ export async function POST(req: Request) {
       offline,
     });
 
+    // Persist the result to the task so it survives a client disconnect.
+    // Best-effort: when the task hasn't reached the server yet the client
+    // applies locally and the sync layer reconciles later.
+    let applied = null;
+    if (parsed.data.taskId) {
+      applied = await applyTriageToTask(
+        getRepos(),
+        session.user.id,
+        parsed.data.taskId,
+        result.output,
+      ).catch((err) => {
+        reportError(err, {
+          area: "triage.apply",
+          userId: session.user.id,
+          tags: { taskId: parsed.data.taskId ?? null },
+        });
+        return null;
+      });
+    }
+
     await recordAiRun({
       userId: session.user.id,
       taskId: parsed.data.taskId ?? null,
@@ -78,7 +78,11 @@ export async function POST(req: Request) {
       status: "succeeded",
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      ...result,
+      task: applied?.task ?? null,
+      labels: applied?.labels ?? [],
+    });
   } catch (err) {
     if (err instanceof MissingAiKeyError) {
       return NextResponse.json(
@@ -91,6 +95,8 @@ export async function POST(req: Request) {
       );
     }
 
+    // Full detail goes to the error reporter and the ai_runs record; the
+    // client gets a stable, provider-free message (it renders in aiError).
     const message = err instanceof Error ? err.message : "Triage failed";
     reportError(err, {
       area: "triage.route",
@@ -114,6 +120,6 @@ export async function POST(req: Request) {
       error: message,
     });
 
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Triage failed — try again." }, { status: 500 });
   }
 }

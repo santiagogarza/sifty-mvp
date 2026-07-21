@@ -51,6 +51,7 @@ jobs:
       AUTH_SECRET: ci-auth-secret-do-not-use-in-production-please-32
       CREATOR_EMAIL: s.gonzalez.garza@gmail.com
       SIFTY_DISABLE_AUTH: "1"
+      SIFTY_AI_OFFLINE: "1"
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v5

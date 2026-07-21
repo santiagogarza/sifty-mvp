@@ -37,9 +37,9 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
   const [captureOpen, setCaptureOpen] = React.useState(false);
   const [commandOpen, setCommandOpen] = React.useState(false);
 
-  // Pulls server snapshot into the store on mount and is a no-op when the
-  // user isn't authenticated (sync hook handles the 401 case internally).
-  useServerSync();
+  // Pulls the server snapshot into the store on mount and reconciles; a
+  // no-op when the user isn't authenticated (the hook handles 401s).
+  const sync = useServerSync();
 
   const detailTaskId = search.get("task");
 
@@ -80,6 +80,14 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} onCapture={openCapture} />
       <TaskDetailSheet taskId={detailTaskId} onClose={closeDetail} />
       <GlobalKeyboard onCapture={openCapture} onCommand={openCommand} />
+      {sync.hydrated && sync.error ? (
+        <div
+          role="status"
+          className="fixed bottom-[92px] md:bottom-4 left-1/2 -translate-x-1/2 z-40 rounded-full border border-[var(--border)] bg-[var(--bg-elevated)]/95 backdrop-blur px-3.5 py-1.5 text-[12px] text-[var(--fg-muted)] shadow-sm"
+        >
+          Can't reach Sifty — changes are saved locally and will sync.
+        </div>
+      ) : null}
     </FrameContext.Provider>
   );
 }

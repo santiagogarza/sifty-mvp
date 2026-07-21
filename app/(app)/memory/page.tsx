@@ -5,10 +5,10 @@ import { PageShell } from "@/components/app-shell/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
+import { MEMORY_LIMITS } from "@/lib/domain/limits";
 import type { Memory } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
-import { id as makeId } from "@/lib/utils/ids";
 import { Brain, Pin, Plus, Trash2 } from "lucide-react";
 import * as React from "react";
 
@@ -37,31 +37,15 @@ export default function MemoryPage() {
 
 function MemoryList({ memories }: { memories: Memory[] }) {
   const [draft, setDraft] = React.useState("");
-  const set = useStore.setState;
+  const addMemory = useStore((s) => s.addMemory);
+  const update = useStore((s) => s.updateMemory);
+  const remove = useStore((s) => s.removeMemory);
 
   const add = () => {
     const text = draft.trim();
     if (!text) return;
-    const m: Memory = {
-      id: makeId("mem"),
-      text,
-      kind: "preference",
-      pinned: false,
-      createdAt: new Date().toISOString(),
-    };
-    set((s) => ({ ...s, memories: [m, ...s.memories] }));
+    addMemory({ text });
     setDraft("");
-  };
-
-  const update = (id: string, patch: Partial<Memory>) => {
-    set((s) => ({
-      ...s,
-      memories: s.memories.map((m) => (m.id === id ? { ...m, ...patch } : m)),
-    }));
-  };
-
-  const remove = (id: string) => {
-    set((s) => ({ ...s, memories: s.memories.filter((m) => m.id !== id) }));
   };
 
   return (
@@ -69,6 +53,7 @@ function MemoryList({ memories }: { memories: Memory[] }) {
       <div className="surface-card p-3">
         <Textarea
           value={draft}
+          maxLength={MEMORY_LIMITS.text}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="A preference, a fact, or a piece of context Sifty should remember…"
           className="bg-transparent border-transparent text-[14px]"
@@ -99,7 +84,13 @@ function MemoryList({ memories }: { memories: Memory[] }) {
             <Brain size={14} className="text-[var(--ai)] mt-0.5" />
             <textarea
               value={m.text}
+              maxLength={MEMORY_LIMITS.text}
               onChange={(e) => update(m.id, { text: e.target.value })}
+              onBlur={() => {
+                // An emptied memory is a deleted memory — don't keep a
+                // blank row around (or try to sync one).
+                if (!m.text.trim()) remove(m.id);
+              }}
               className="flex-1 bg-transparent text-[13.5px] leading-[1.5] text-[var(--fg)] focus:outline-none resize-none"
               rows={Math.min(5, Math.max(1, m.text.split("\n").length))}
             />

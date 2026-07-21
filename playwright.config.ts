@@ -22,5 +22,14 @@ export default defineConfig({
         url: BASE_URL,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
+        env: {
+          ...process.env,
+          // Every smoke test shares one bypass user, and triage requests
+          // count against a persistent per-user window. Keep the cap high
+          // enough that the burst test can't starve the functional tests
+          // running in parallel (it skips itself when no 429 is observed;
+          // limiter semantics are covered by unit tests).
+          RATELIMIT_TRIAGE_PER_MIN: process.env.RATELIMIT_TRIAGE_PER_MIN ?? "200",
+        },
       },
 });

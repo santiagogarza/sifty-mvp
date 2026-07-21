@@ -6,6 +6,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetClose, SheetContent } from "@/components/ui/sheet";
 import { runTriage } from "@/lib/ai/run-triage";
+import { LABEL_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
 import { bucketLabel } from "@/lib/domain/priority";
 import {
   type DelegationCandidate,
@@ -15,15 +16,17 @@ import {
   type Subtask,
   type Task,
 } from "@/lib/domain/types";
-import { useStore } from "@/lib/store/store";
+import { getSyncHooks, useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import { formatExactTime, formatRelativeDay, isOverdue } from "@/lib/utils/dates";
 import {
   ArrowRight,
+  Bot,
   CalendarDays,
   Check,
   ChevronRight,
   Clock,
+  Copy,
   Plus,
   RotateCw,
   Sparkles,
@@ -129,6 +132,7 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
 
           <input
             value={task.title}
+            maxLength={TASK_LIMITS.title}
             onChange={(e) =>
               updateTask(task.id, { title: e.target.value }, { editedFields: ["title"] })
             }
@@ -147,6 +151,7 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
           <div className="text-eyebrow mb-1.5">Next action</div>
           <Textarea
             value={task.nextAction ?? ""}
+            maxLength={TASK_LIMITS.nextAction}
             placeholder="What's the very next concrete step?"
             onChange={(e) =>
               updateTask(task.id, { nextAction: e.target.value }, { editedFields: ["nextAction"] })
@@ -202,6 +207,8 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
             onAdd={(title) => addSubtask(task.id, title)}
           />
         </section>
+
+        <AgentBriefSection task={task} />
 
         <section className="mt-6 pt-4 border-t border-[var(--border)]">
           <button
@@ -281,6 +288,124 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * "Prepare for agent" — generates a clean markdown handoff brief for the
+ * task. The MVP never auto-launches an agent; the brief is copied out to
+ * wherever the work will happen (an AI agent, a teammate, a doc).
+ */
+function AgentBriefSection({ task }: { task: Task }) {
+  const [generating, setGenerating] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [expanded, setExpanded] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
+
+  const generate = async () => {
+    setGenerating(true);
+    setError(null);
+    try {
+      // Let pending pushes land first so the server sees the task (and its
+      // latest content) before generating from it.
+      await getSyncHooks()?.waitForTask(task.id);
+      const res = await fetch("/api/agent-brief", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          taskId: task.id,
+          modelId: useStore.getState().preferredModelId,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        task?: Task | null;
+      };
+      if (!res.ok) throw new Error(data.error || `Brief failed (${res.status})`);
+      if (data.task) {
+        const store = useStore.getState();
+        if (getSyncHooks()?.isTaskDirty(task.id)) {
+          // The user edited the task while the brief generated — keep
+          // their edits and take only the brief (updateTask pushes, so
+          // both sides converge).
+          store.updateTask(task.id, { agentBrief: data.task.agentBrief });
+        } else {
+          store.replaceTaskFromServer(data.task);
+        }
+      }
+      setExpanded(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Brief generation failed");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const copy = async () => {
+    if (!task.agentBrief) return;
+    await navigator.clipboard.writeText(task.agentBrief);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <section className="mt-5">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-eyebrow flex items-center gap-1.5">
+          <Bot size={12} className="text-[var(--ai)]" />
+          Agent brief
+        </div>
+        <Button variant="ghost" size="sm" onClick={generate} disabled={generating}>
+          {generating ? (
+            <>
+              <AiThinking /> Preparing…
+            </>
+          ) : task.agentBrief ? (
+            <>
+              <RotateCw size={12} /> Regenerate
+            </>
+          ) : (
+            <>
+              <Sparkles size={12} /> Prepare for agent
+            </>
+          )}
+        </Button>
+      </div>
+      {error ? (
+        <p className="text-[12.5px] text-[var(--warn)] leading-[1.5] mb-2">{error}</p>
+      ) : null}
+      {task.agentBrief ? (
+        <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-muted)]">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="flex w-full items-center justify-between px-3 py-2 text-[12.5px] text-[var(--fg-muted)] hover:text-[var(--fg)]"
+          >
+            <span>Handoff brief — ready to copy</span>
+            <ChevronRight
+              size={13}
+              className={cn(
+                "transition-transform duration-200 ease-[var(--ease-product)]",
+                expanded && "rotate-90",
+              )}
+            />
+          </button>
+          {expanded ? (
+            <div className="px-3 pb-3">
+              <pre className="whitespace-pre-wrap font-sans text-[12.5px] leading-[1.55] text-[var(--fg-muted)] max-h-64 overflow-y-auto">
+                {task.agentBrief}
+              </pre>
+              <div className="mt-2 flex justify-end">
+                <Button variant="ghost" size="sm" onClick={copy}>
+                  <Copy size={12} />
+                  {copied ? "Copied" : "Copy brief"}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -561,9 +686,11 @@ function LabelEditor({
   const taskLabels = task.labelIds.map((id) => labelMap.get(id)).filter(Boolean) as Label[];
   const remaining = labels.filter((l) => !task.labelIds.includes(l.id));
 
+  const atCap = task.labelIds.length >= TASK_LIMITS.maxLabels;
+
   const add = (name: string) => {
     const cleaned = name.trim();
-    if (!cleaned) return;
+    if (!cleaned || atCap) return;
     const label = ensureLabel(cleaned);
     if (!task.labelIds.includes(label.id)) {
       updateTask(
@@ -602,6 +729,7 @@ function LabelEditor({
         <Input
           autoFocus
           value={input}
+          maxLength={LABEL_LIMITS.name}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -619,7 +747,7 @@ function LabelEditor({
           placeholder="Label name"
           className="h-6 w-[140px] text-[12px]"
         />
-      ) : (
+      ) : atCap ? null : (
         <Popover>
           <PopoverTrigger asChild>
             <button
@@ -705,22 +833,25 @@ function SubtaskList({
           </button>
         </div>
       ))}
-      <div className="flex items-center gap-2 mt-1">
-        <ArrowRight size={12} className="text-[var(--fg-subtle)]" />
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && draft.trim()) {
-              e.preventDefault();
-              onAdd(draft);
-              setDraft("");
-            }
-          }}
-          placeholder="Add a subtask"
-          className="flex-1 bg-transparent text-[13px] text-[var(--fg)] placeholder:text-[var(--fg-subtle)] focus:outline-none"
-        />
-      </div>
+      {subtasks.length < TASK_LIMITS.maxSubtasks ? (
+        <div className="flex items-center gap-2 mt-1">
+          <ArrowRight size={12} className="text-[var(--fg-subtle)]" />
+          <input
+            value={draft}
+            maxLength={TASK_LIMITS.subtaskTitle}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && draft.trim()) {
+                e.preventDefault();
+                onAdd(draft);
+                setDraft("");
+              }
+            }}
+            placeholder="Add a subtask"
+            className="flex-1 bg-transparent text-[13px] text-[var(--fg)] placeholder:text-[var(--fg-subtle)] focus:outline-none"
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -38,6 +38,9 @@ const happy = {
 
 beforeEach(() => {
   vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
+  // These tests seed many runs "just now"; raise the per-minute burst cap so
+  // only the daily entitlement cap is under test.
+  vi.stubEnv("RATELIMIT_TRIAGE_PER_MIN", "100000");
   vi.mocked(resolveProvider).mockReturnValue({
     model: { __mock: true } as unknown as ReturnType<typeof resolveProvider>["model"],
     transport: "mock",

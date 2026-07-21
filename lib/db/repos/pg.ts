@@ -1,23 +1,27 @@
 import { bucketFromScalars } from "@/lib/domain/priority";
+import { LABEL_TONES, type Label, type LabelTone } from "@/lib/domain/types";
 import type { Memory, Subtask, Task, TaskEditableField } from "@/lib/domain/types";
 import { id as makeId } from "@/lib/utils/ids";
-import { and, count, desc, eq, gte } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "../client";
 import * as schema from "../schema";
-import type {
-  AiRunRepo,
-  AiRunWriteInput,
-  EntitlementRepo,
-  EntitlementSnapshot,
-  MemoryRepo,
-  Repos,
-  SessionRepo,
-  StripeEventRepo,
-  TaskCreateInput,
-  TaskRepo,
-  UserCreateInput,
-  UserRepo,
+import {
+  type AiRunRepo,
+  type AiRunWriteInput,
+  type EntitlementRepo,
+  type EntitlementSnapshot,
+  IdConflictError,
+  type LabelRepo,
+  type MemoryCreateInput,
+  type MemoryRepo,
+  type Repos,
+  type SessionRepo,
+  type StripeEventRepo,
+  type TaskCreateInput,
+  type TaskRepo,
+  type UserCreateInput,
+  type UserRepo,
 } from "./types";
 
 /**
@@ -33,7 +37,7 @@ export function createPostgresRepos(): Repos {
   const users: UserRepo = {
     async create(input: UserCreateInput) {
       const db = getDb();
-      const id = makeId("user");
+      const id = input.id ?? makeId("user");
       const now = new Date();
       const [row] = await db
         .insert(schema.users)
@@ -188,15 +192,66 @@ export function createPostgresRepos(): Repos {
     },
   };
 
-  const tasks: TaskRepo = {
+  const labels: LabelRepo = {
     async list(userId) {
       const db = getDb();
       const rows = await db
         .select()
-        .from(schema.tasks)
-        .where(eq(schema.tasks.userId, userId))
-        .orderBy(desc(schema.tasks.updatedAt));
-      return rows.map(rowToTask);
+        .from(schema.labels)
+        .where(eq(schema.labels.userId, userId))
+        .orderBy(schema.labels.createdAt);
+      return rows.map(rowToLabel);
+    },
+    async ensure(userId, input) {
+      const db = getDb();
+      const findByName = () =>
+        db
+          .select()
+          .from(schema.labels)
+          .where(
+            and(
+              eq(schema.labels.userId, userId),
+              sql`lower(${schema.labels.name}) = lower(${input.name})`,
+            ),
+          );
+      const [existing] = await findByName();
+      if (existing) return rowToLabel(existing);
+
+      const tryInsert = (id: string) =>
+        db
+          .insert(schema.labels)
+          .values({ id, userId, name: input.name, tone: input.tone })
+          .onConflictDoNothing()
+          .returning();
+
+      const inserted = await tryInsert(input.id);
+      if (inserted.length) return rowToLabel(inserted[0]!);
+
+      // Insert lost a conflict: either a concurrent create of the same
+      // name won (adopt it), or the suggested id is taken — possibly by
+      // another tenant — so mint a fresh id instead of failing.
+      const [raced] = await findByName();
+      if (raced) return rowToLabel(raced);
+      const reminted = await tryInsert(makeId("label"));
+      if (reminted.length) return rowToLabel(reminted[0]!);
+      const [row] = await findByName();
+      return rowToLabel(row!);
+    },
+  };
+
+  const tasks: TaskRepo = {
+    async list(userId) {
+      const db = getDb();
+      const [rows, labelRows] = await Promise.all([
+        db
+          .select()
+          .from(schema.tasks)
+          .where(eq(schema.tasks.userId, userId))
+          .orderBy(desc(schema.tasks.updatedAt)),
+        db.select().from(schema.taskLabels).where(eq(schema.taskLabels.userId, userId)),
+      ]);
+      const byTask = groupLabelIds(labelRows);
+      return rows.map((row) => rowToTask(row, byTask.get(row.id) ?? []));
     },
     async get(userId, taskId) {
       const db = getDb();
@@ -204,15 +259,24 @@ export function createPostgresRepos(): Repos {
         .select()
         .from(schema.tasks)
         .where(and(eq(schema.tasks.id, taskId), eq(schema.tasks.userId, userId)));
-      return row ? rowToTask(row) : null;
+      if (!row) return null;
+      const labelRows = await db
+        .select()
+        .from(schema.taskLabels)
+        .where(and(eq(schema.taskLabels.taskId, taskId), eq(schema.taskLabels.userId, userId)));
+      return rowToTask(
+        row,
+        labelRows.map((l) => l.labelId),
+      );
     },
     async create(userId, input: TaskCreateInput) {
       const db = getDb();
       const text = input.sourceText.trim();
       const provisionalTitle = text.length > 80 ? `${text.slice(0, 78)}…` : text || "Untitled task";
-      const id = makeId("task");
+      const id = input.id ?? makeId("task");
       const now = new Date();
-      const [row] = await db
+      const createdAt = input.createdAt ? new Date(input.createdAt) : now;
+      const inserted = await db
         .insert(schema.tasks)
         .values({
           id,
@@ -224,11 +288,17 @@ export function createPostgresRepos(): Repos {
           aiStatus: "pending",
           urgency: 40,
           importance: 40,
-          createdAt: now,
+          createdAt,
           updatedAt: now,
         })
+        .onConflictDoNothing()
         .returning();
-      return rowToTask(row!);
+      if (inserted.length) return rowToTask(inserted[0]!, []);
+      // Conflict on the client-supplied id: idempotent replay for the
+      // owner, hard reject for anyone else.
+      const existing = await tasks.get(userId, id);
+      if (existing) return existing;
+      throw new IdConflictError(id);
     },
     async update(userId, taskId, patch, opts) {
       const db = getDb();
@@ -239,12 +309,12 @@ export function createPostgresRepos(): Repos {
         ? Array.from(new Set([...existing.editedFields, ...opts.editedFields]))
         : existing.editedFields;
       const merged = { ...existing, ...patch, editedFields } as Task;
+      // Recompute the derived bucket from the scalars unless the caller set
+      // it explicitly or the user has protected it with a manual edit.
       if (
-        ("urgency" in patch ||
-          "importance" in patch ||
-          opts?.editedFields?.includes("urgency") ||
-          opts?.editedFields?.includes("importance")) &&
-        !opts?.editedFields?.includes("priorityBucket")
+        ("urgency" in patch || "importance" in patch) &&
+        !("priorityBucket" in patch) &&
+        !editedFields.includes("priorityBucket")
       ) {
         merged.priorityBucket = bucketFromScalars(merged.urgency, merged.importance);
       }
@@ -257,31 +327,57 @@ export function createPostgresRepos(): Repos {
         completedAt = null;
       }
 
-      await db
-        .update(schema.tasks)
-        .set({
-          title: merged.title,
-          description: merged.description,
-          nextAction: merged.nextAction,
-          lifecycle: merged.lifecycle,
-          aiStatus: merged.aiStatus,
-          aiError: merged.aiError,
-          aiAttempts: merged.aiAttempts,
-          urgency: Math.round(merged.urgency * 100),
-          importance: Math.round(merged.importance * 100),
-          priorityBucket: merged.priorityBucket,
-          effort: merged.effort,
-          due: merged.due,
-          delegationCandidate: merged.delegationCandidate,
-          confidence: Math.round(merged.confidence * 100),
-          clarifyingQuestion: merged.clarifyingQuestion,
-          rationale: merged.rationale,
-          editedFields: merged.editedFields,
-          subtasks: merged.subtasks,
-          completedAt,
-          updatedAt: now,
-        })
-        .where(and(eq(schema.tasks.id, taskId), eq(schema.tasks.userId, userId)));
+      // Task row + label links change together — one transaction.
+      await db.transaction(async (tx) => {
+        await tx
+          .update(schema.tasks)
+          .set({
+            title: merged.title,
+            description: merged.description,
+            sourceContext: merged.sourceContext,
+            nextAction: merged.nextAction,
+            lifecycle: merged.lifecycle,
+            aiStatus: merged.aiStatus,
+            aiError: merged.aiError,
+            aiAttempts: merged.aiAttempts,
+            urgency: Math.round(merged.urgency * 100),
+            importance: Math.round(merged.importance * 100),
+            priorityBucket: merged.priorityBucket,
+            effort: merged.effort,
+            due: merged.due,
+            delegationCandidate: merged.delegationCandidate,
+            confidence: Math.round(merged.confidence * 100),
+            clarifyingQuestion: merged.clarifyingQuestion,
+            rationale: merged.rationale,
+            agentBrief: merged.agentBrief,
+            editedFields: merged.editedFields,
+            subtasks: merged.subtasks,
+            completedAt,
+            updatedAt: now,
+          })
+          .where(and(eq(schema.tasks.id, taskId), eq(schema.tasks.userId, userId)));
+
+        if (patch.labelIds) {
+          // Only link labels this user owns; a stale/foreign id is dropped.
+          const owned = patch.labelIds.length
+            ? await tx
+                .select({ id: schema.labels.id })
+                .from(schema.labels)
+                .where(
+                  and(eq(schema.labels.userId, userId), inArray(schema.labels.id, patch.labelIds)),
+                )
+            : [];
+          await tx
+            .delete(schema.taskLabels)
+            .where(and(eq(schema.taskLabels.taskId, taskId), eq(schema.taskLabels.userId, userId)));
+          if (owned.length) {
+            await tx
+              .insert(schema.taskLabels)
+              .values(owned.map((l) => ({ taskId, labelId: l.id, userId })))
+              .onConflictDoNothing();
+          }
+        }
+      });
 
       return tasks.get(userId, taskId);
     },
@@ -326,19 +422,27 @@ export function createPostgresRepos(): Repos {
         .orderBy(desc(schema.memories.createdAt));
       return rows.map(rowToMemory);
     },
-    async create(userId, text) {
+    async create(userId, input: MemoryCreateInput) {
       const db = getDb();
-      const [row] = await db
+      const id = input.id ?? makeId("mem");
+      const inserted = await db
         .insert(schema.memories)
         .values({
-          id: makeId("mem"),
+          id,
           userId,
-          text,
-          kind: "preference",
-          pinned: false,
+          text: input.text,
+          kind: input.kind ?? "preference",
+          pinned: input.pinned ?? false,
+          createdAt: input.createdAt ? new Date(input.createdAt) : undefined,
         })
+        .onConflictDoNothing()
         .returning();
-      return rowToMemory(row!);
+      if (inserted.length) return rowToMemory(inserted[0]!);
+      // Conflict on the id: idempotent replay for the owner, hard reject
+      // for anyone else.
+      const [existing] = await db.select().from(schema.memories).where(eq(schema.memories.id, id));
+      if (existing && existing.userId === userId) return rowToMemory(existing);
+      throw new IdConflictError(id);
     },
     async update(userId, id, patch) {
       const db = getDb();
@@ -406,6 +510,14 @@ export function createPostgresRepos(): Repos {
         );
       return row?.value ?? 0;
     },
+    async countSince(userId, since) {
+      const db = getDb();
+      const [row] = await db
+        .select({ value: count() })
+        .from(schema.aiRuns)
+        .where(and(eq(schema.aiRuns.userId, userId), gte(schema.aiRuns.createdAt, since)));
+      return row?.value ?? 0;
+    },
     async list(userId, limit = 50) {
       const db = getDb();
       const rows = await db
@@ -471,10 +583,27 @@ export function createPostgresRepos(): Repos {
     },
   };
 
-  return { users, entitlements, tasks, memories, aiRuns, sessions, stripeEvents };
+  return { users, entitlements, tasks, labels, memories, aiRuns, sessions, stripeEvents };
 }
 
-function rowToTask(row: typeof schema.tasks.$inferSelect): Task {
+function groupLabelIds(rows: Array<{ taskId: string; labelId: string }>): Map<string, string[]> {
+  const byTask = new Map<string, string[]>();
+  for (const row of rows) {
+    const list = byTask.get(row.taskId);
+    if (list) list.push(row.labelId);
+    else byTask.set(row.taskId, [row.labelId]);
+  }
+  return byTask;
+}
+
+function rowToLabel(row: typeof schema.labels.$inferSelect): Label {
+  const tone = (LABEL_TONES as readonly string[]).includes(row.tone)
+    ? (row.tone as LabelTone)
+    : "neutral";
+  return { id: row.id, name: row.name, tone };
+}
+
+function rowToTask(row: typeof schema.tasks.$inferSelect, labelIds: string[]): Task {
   return {
     id: row.id,
     sourceText: row.sourceText,
@@ -495,7 +624,8 @@ function rowToTask(row: typeof schema.tasks.$inferSelect): Task {
     confidence: row.confidence / 100,
     clarifyingQuestion: row.clarifyingQuestion,
     rationale: row.rationale,
-    labelIds: [],
+    agentBrief: row.agentBrief,
+    labelIds,
     subtasks: row.subtasks ?? [],
     editedFields: (row.editedFields ?? []) as TaskEditableField[],
     createdAt: row.createdAt.toISOString(),

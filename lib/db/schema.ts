@@ -101,6 +101,8 @@ export const tasks = pgTable(
     confidence: integer("confidence_x100").notNull().default(0),
     clarifyingQuestion: text("clarifying_question"),
     rationale: text("rationale"),
+    /** Markdown handoff brief from "Prepare for agent". */
+    agentBrief: text("agent_brief"),
     /** Field names the user has manually edited; protected from re-triage. */
     editedFields: jsonb("edited_fields").$type<string[]>().notNull().default([]),
     /** Inline subtasks (small list, no need for a join). */

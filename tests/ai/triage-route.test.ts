@@ -145,7 +145,7 @@ describe("POST /api/triage", () => {
     expect(runs).toHaveLength(0);
   });
 
-  it("surfaces model errors as 500 and writes a failed aiRuns row", async () => {
+  it("surfaces model errors as a sanitized 500 and writes a failed aiRuns row", async () => {
     const { generateObject } = await import("ai");
     vi.mocked(generateObject).mockRejectedValue(new Error("model unavailable"));
 
@@ -153,7 +153,8 @@ describe("POST /api/triage", () => {
     const res = await POST(buildReq({ sourceText: "Draft email", modelId: "claude-haiku" }));
     expect(res.status).toBe(500);
     const body = await res.json();
-    expect(body.error).toBe("model unavailable");
+    // Provider detail never reaches the client; it lives in ai_runs.
+    expect(body.error).toBe("Triage failed — try again.");
 
     const runs = await listAiRuns(userId);
     expect(runs).toHaveLength(1);
@@ -172,5 +173,91 @@ describe("POST /api/triage", () => {
     expect(body.meta.offline).toBe(true);
     expect(body.meta.model).toContain("heuristic");
     expect(generateObject).not.toHaveBeenCalled();
+  });
+
+  it("applies the result to the server task durably, linking suggested labels", async () => {
+    const { generateObject } = await import("ai");
+    vi.mocked(generateObject).mockResolvedValue({
+      object: happyOutput,
+      usage: { inputTokens: 100, outputTokens: 50 },
+    } as unknown as Awaited<ReturnType<typeof generateObject>>);
+
+    const repos = getTestRepos();
+    const task = await repos.tasks.create(userId, {
+      sourceText: "Draft email to investor by tomorrow",
+      sourceContext: null,
+    });
+
+    const POST = await importRoute();
+    const res = await POST(
+      buildReq({
+        taskId: task.id,
+        sourceText: task.sourceText,
+        modelId: "claude-haiku",
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    // Response carries the canonical applied task + the labels it links.
+    expect(body.task.id).toBe(task.id);
+    expect(body.task.aiStatus).toBe("ready");
+    expect(body.task.title).toBe("Draft email to investor");
+    expect(body.labels).toHaveLength(1);
+    expect(body.labels[0].name).toBe("Work");
+    expect(body.task.labelIds).toEqual([body.labels[0].id]);
+
+    // And it is persisted, not just echoed.
+    const persisted = await repos.tasks.get(userId, task.id);
+    expect(persisted?.aiStatus).toBe("ready");
+    expect(persisted?.title).toBe("Draft email to investor");
+    expect(persisted?.due).toBe("2026-07-01");
+    expect(persisted?.labelIds).toEqual([body.labels[0].id]);
+  });
+
+  it("server-side apply never overwrites user-edited fields", async () => {
+    const { generateObject } = await import("ai");
+    vi.mocked(generateObject).mockResolvedValue({
+      object: happyOutput,
+      usage: { inputTokens: 100, outputTokens: 50 },
+    } as unknown as Awaited<ReturnType<typeof generateObject>>);
+
+    const repos = getTestRepos();
+    const task = await repos.tasks.create(userId, {
+      sourceText: "Draft email to investor by tomorrow",
+      sourceContext: null,
+    });
+    await repos.tasks.update(
+      userId,
+      task.id,
+      { title: "My own title", urgency: 0.1 },
+      { editedFields: ["title", "urgency"] },
+    );
+
+    const POST = await importRoute();
+    const res = await POST(buildReq({ taskId: task.id, sourceText: task.sourceText }));
+    expect(res.status).toBe(200);
+
+    const persisted = await repos.tasks.get(userId, task.id);
+    expect(persisted?.title).toBe("My own title");
+    expect(persisted?.urgency).toBe(0.1);
+    // Unprotected fields still update.
+    expect(persisted?.nextAction).toBe(happyOutput.nextAction);
+    expect(persisted?.aiStatus).toBe("ready");
+  });
+
+  it("returns task: null when the task does not exist server-side (client applies locally)", async () => {
+    const { generateObject } = await import("ai");
+    vi.mocked(generateObject).mockResolvedValue({
+      object: happyOutput,
+      usage: { inputTokens: 100, outputTokens: 50 },
+    } as unknown as Awaited<ReturnType<typeof generateObject>>);
+
+    const POST = await importRoute();
+    const res = await POST(buildReq({ taskId: "task_never_pushed", sourceText: "Draft email" }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.task).toBeNull();
+    expect(body.output.title).toBe("Draft email to investor");
   });
 });

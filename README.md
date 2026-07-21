@@ -29,10 +29,26 @@ pnpm db:migrate   # apply migrations to DATABASE_URL
 ### Quickest local setup (no auth, no DB, no AI keys)
 
 ```bash
-SIFTY_DISABLE_AUTH=1 pnpm dev
-# triage will work with ?offline=1 (heuristic) or fail clearly without
-# an AI provider key set
+SIFTY_DISABLE_AUTH=1 SIFTY_AI_OFFLINE=1 pnpm dev
 ```
+
+`SIFTY_AI_OFFLINE=1` routes triage and agent briefs through the
+deterministic offline heuristic so the full loop works without a provider
+key. Without it, AI routes fail clearly (503 `no_ai_key`).
+
+### Demo workspace
+
+```bash
+SIFTY_DISABLE_AUTH=1 SIFTY_AI_OFFLINE=1 SIFTY_DEMO_SEED=1 pnpm dev
+```
+
+`SIFTY_DEMO_SEED=1` populates every new account (or the auth-bypass user)
+with a fully-triaged workspace: a dozen tasks across Today/Focus/Inbox/
+Waiting/Someday/Done — labeled, prioritized, with subtasks, rationale,
+confidence, one clarifying question, and one prepared agent brief — plus
+pinned memories. Seeding is first-run only: an account with any existing
+task or memory is never touched. It works with real sign-up too (each new
+account gets the demo set), and with or without a database.
 
 ## Design philosophy
 
@@ -57,11 +73,13 @@ app/
   (app)/...                    # signed-in app shell + pages
   (auth)/sign-in, sign-up      # auth pages
   api/
-    auth/{sign-in,sign-up,sign-out}/route.ts
-    tasks/route.ts             # GET (list), POST (create)
+    auth/{sign-in,sign-up,sign-out,me}/route.ts
+    tasks/route.ts             # GET (list), POST (create, client ids ok)
     tasks/[id]/route.ts        # GET, PATCH, DELETE
+    labels/route.ts            # GET, PUT (idempotent ensure-by-name)
     memories/...               # GET, POST, PATCH, DELETE
-    triage/route.ts            # AI triage with rate limit + entitlement gate
+    triage/route.ts            # AI triage: gate → model → durable apply
+    agent-brief/route.ts       # "Prepare for agent" handoff brief
     stripe/{checkout,portal,webhook}/route.ts
 middleware.ts                  # gates /today, /focus, /inbox, /waiting,
                                # /someday, /memory, /settings on a JWT cookie
@@ -86,7 +104,9 @@ lib/
     client.ts                  # lazy postgres-js client
     repos/                     # Postgres + in-memory implementations behind
                                # one Repos interface; swap via setReposForTesting
-  domain/                      # types, schemas, priority utilities
+  demo/                        # SIFTY_DEMO_SEED workspace seeding
+  domain/                      # types, schemas, priority utilities,
+                               # shared triage merge (editedFields guard)
   entitlements/                # pure deriveEntitlement, canRunAi
   observability/report-error.ts# central error reporter (Sentry-ready seam)
   ratelimit/                   # token-bucket limiter + policies (triage,
@@ -96,6 +116,26 @@ lib/
 
 drizzle/                       # generated SQL migrations
 ```
+
+## Sync architecture
+
+The Zustand store is the optimistic source of truth for the UI; Postgres is
+the durable source of truth across devices.
+
+- Every mutation (task capture/edit/delete, labels, memories) pushes to the
+  API in the background: creates and deletes immediately, field edits
+  debounced 400 ms, always full-entity last-writer-wins, per-entity ordered.
+- A localStorage ledger marks entities dirty before each push (with
+  tombstones for deletes). Pushes that never land — tab closed, offline —
+  replay on the next mount.
+- On mount the client pulls the server snapshot and reconciles: dirty-local
+  wins, clean rows follow the server, tombstones are honored, and an
+  account switch on a shared browser resets the local cache instead of
+  leaking the previous user's workspace.
+- Triage results are applied server-side by the triage route itself
+  (respecting `editedFields`), so an enrichment survives even if the tab
+  closes mid-run. Tasks left `pending`/`running` by an interrupted session
+  auto-resume (bounded) on the next load.
 
 ## Configuration
 
@@ -118,8 +158,15 @@ Optional:
 
 - `SIFTY_DISABLE_AUTH=1` — local-dev escape hatch; bypasses auth in the
   middleware and `getSession`. Off in production.
+- `SIFTY_DEMO_SEED=1` — populate new accounts with the fully-triaged demo
+  workspace (first-run only; never touches existing data).
+- `SIFTY_AI_OFFLINE=1` — keyless dev: AI routes use the deterministic
+  offline heuristic instead of a provider.
 - `RATELIMIT_TRIAGE_PER_MIN`, `RATELIMIT_STRIPE_USER_PER_MIN`,
   `RATELIMIT_STRIPE_WEBHOOK_PER_MIN` — token bucket capacity overrides.
+  The triage cap is enforced twice: an in-process bucket per instance, and
+  a persistent sliding window over `ai_runs` that holds across serverless
+  instances.
 
 ## AI configuration
 
@@ -134,8 +181,13 @@ demonstrably influences how the model triages later evening tasks.
 
 If no provider key is set, the route returns 503 with `code: "no_ai_key"`.
 The deterministic offline heuristic still works as an explicit debug
-fallback when you call `/api/triage?offline=1` — useful for screenshots
-and CI smoke runs that don't need a real model.
+fallback via `/api/triage?offline=1` or `SIFTY_AI_OFFLINE=1` — useful for
+keyless local dev, screenshots, and CI smoke runs.
+
+"Prepare for agent" (`/api/agent-brief`) turns a task into a markdown
+handoff brief — objective, context, steps, success criteria — stored on
+the task and shown in the detail sheet with copy/regenerate. Same gates,
+schema validation, and offline fallback as triage.
 
 ## Billing
 
@@ -174,8 +226,10 @@ Run through this on the preview URL before promoting to production:
       `Retry-After`.
 - [ ] Sentry / logs receive a structured `reportError(...)` payload from
       a forced server failure.
-- [ ] Hard-refreshing `/today` while signed in keeps tasks; the localStorage
-      seed never overwrites server state.
+- [ ] Capture a task, clear site data (or use a second browser), sign in
+      again — the task and its enrichment come back from the server.
+- [ ] Editing a task offline (dev tools → offline) and reloading once back
+      online replays the edit (dirty ledger).
 
 ## Testing philosophy
 
