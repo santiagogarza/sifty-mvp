@@ -20,10 +20,12 @@ import { cn } from "@/lib/utils/cn";
 import { formatExactTime, formatRelativeDay, isOverdue } from "@/lib/utils/dates";
 import {
   ArrowRight,
+  Bot,
   CalendarDays,
   Check,
   ChevronRight,
   Clock,
+  Copy,
   Plus,
   RotateCw,
   Sparkles,
@@ -203,6 +205,8 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
           />
         </section>
 
+        <AgentBriefSection task={task} />
+
         <section className="mt-6 pt-4 border-t border-[var(--border)]">
           <button
             type="button"
@@ -281,6 +285,112 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * "Prepare for agent" — generates a clean markdown handoff brief for the
+ * task. The MVP never auto-launches an agent; the brief is copied out to
+ * wherever the work will happen (an AI agent, a teammate, a doc).
+ */
+function AgentBriefSection({ task }: { task: Task }) {
+  const replaceTaskFromServer = useStore((s) => s.replaceTaskFromServer);
+  const [generating, setGenerating] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [expanded, setExpanded] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
+
+  const generate = async () => {
+    setGenerating(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/agent-brief", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          taskId: task.id,
+          modelId: useStore.getState().preferredModelId,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        task?: Task | null;
+      };
+      if (!res.ok) throw new Error(data.error || `Brief failed (${res.status})`);
+      if (data.task) replaceTaskFromServer(data.task);
+      setExpanded(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Brief generation failed");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const copy = async () => {
+    if (!task.agentBrief) return;
+    await navigator.clipboard.writeText(task.agentBrief);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <section className="mt-5">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-eyebrow flex items-center gap-1.5">
+          <Bot size={12} className="text-[var(--ai)]" />
+          Agent brief
+        </div>
+        <Button variant="ghost" size="sm" onClick={generate} disabled={generating}>
+          {generating ? (
+            <>
+              <AiThinking /> Preparing…
+            </>
+          ) : task.agentBrief ? (
+            <>
+              <RotateCw size={12} /> Regenerate
+            </>
+          ) : (
+            <>
+              <Sparkles size={12} /> Prepare for agent
+            </>
+          )}
+        </Button>
+      </div>
+      {error ? (
+        <p className="text-[12.5px] text-[var(--warn)] leading-[1.5] mb-2">{error}</p>
+      ) : null}
+      {task.agentBrief ? (
+        <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-muted)]">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="flex w-full items-center justify-between px-3 py-2 text-[12.5px] text-[var(--fg-muted)] hover:text-[var(--fg)]"
+          >
+            <span>Handoff brief — ready to copy</span>
+            <ChevronRight
+              size={13}
+              className={cn(
+                "transition-transform duration-200 ease-[var(--ease-product)]",
+                expanded && "rotate-90",
+              )}
+            />
+          </button>
+          {expanded ? (
+            <div className="px-3 pb-3">
+              <pre className="whitespace-pre-wrap font-sans text-[12.5px] leading-[1.55] text-[var(--fg-muted)] max-h-64 overflow-y-auto">
+                {task.agentBrief}
+              </pre>
+              <div className="mt-2 flex justify-end">
+                <Button variant="ghost" size="sm" onClick={copy}>
+                  <Copy size={12} />
+                  {copied ? "Copied" : "Copy brief"}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
   );
 }
 

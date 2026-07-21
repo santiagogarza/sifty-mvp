@@ -41,6 +41,12 @@ export async function countAiRunsToday(userId: string, now: Date = new Date()): 
   return repos.aiRuns.countSucceededToday(userId, now);
 }
 
+/** All runs (any status) since `since` — backs the sliding-window limit. */
+export async function countAiRunsSince(userId: string, since: Date): Promise<number> {
+  const repos = getRepos();
+  return repos.aiRuns.countSince(userId, since);
+}
+
 export async function listAiRuns(userId: string, limit = 50) {
   const repos = getRepos();
   return repos.aiRuns.list(userId, limit);

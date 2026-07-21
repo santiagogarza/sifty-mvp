@@ -8,7 +8,6 @@ import { Textarea } from "@/components/ui/input";
 import type { Memory } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
-import { id as makeId } from "@/lib/utils/ids";
 import { Brain, Pin, Plus, Trash2 } from "lucide-react";
 import * as React from "react";
 
@@ -37,31 +36,15 @@ export default function MemoryPage() {
 
 function MemoryList({ memories }: { memories: Memory[] }) {
   const [draft, setDraft] = React.useState("");
-  const set = useStore.setState;
+  const addMemory = useStore((s) => s.addMemory);
+  const update = useStore((s) => s.updateMemory);
+  const remove = useStore((s) => s.removeMemory);
 
   const add = () => {
     const text = draft.trim();
     if (!text) return;
-    const m: Memory = {
-      id: makeId("mem"),
-      text,
-      kind: "preference",
-      pinned: false,
-      createdAt: new Date().toISOString(),
-    };
-    set((s) => ({ ...s, memories: [m, ...s.memories] }));
+    addMemory({ text });
     setDraft("");
-  };
-
-  const update = (id: string, patch: Partial<Memory>) => {
-    set((s) => ({
-      ...s,
-      memories: s.memories.map((m) => (m.id === id ? { ...m, ...patch } : m)),
-    }));
-  };
-
-  const remove = (id: string) => {
-    set((s) => ({ ...s, memories: s.memories.filter((m) => m.id !== id) }));
   };
 
   return (

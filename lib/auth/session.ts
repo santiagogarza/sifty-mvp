@@ -1,5 +1,11 @@
-import { getRepos } from "@/lib/db/repos";
+import { type Repos, getRepos } from "@/lib/db/repos";
+import {
+  isDemoSeedEnabled,
+  seedDefaultLabels,
+  seedDemoWorkspaceIfEmpty,
+} from "@/lib/demo/seed-demo";
 import type { UserProfile } from "@/lib/domain/types";
+import { TRIAL_DAYS } from "@/lib/entitlements/entitlements";
 import { cookies } from "next/headers";
 import { verifySessionToken } from "./jwt";
 import { CREATOR_EMAIL, SESSION_COOKIE_NAME, isCreatorEmail } from "./session-shared";
@@ -12,9 +18,11 @@ import { CREATOR_EMAIL, SESSION_COOKIE_NAME, isCreatorEmail } from "./session-sh
  * the route handlers care about.
  *
  * If `SIFTY_DISABLE_AUTH=1` (and only then), `getSession()` returns a
- * synthetic creator session. This is the local-dev escape hatch that
- * keeps the UI usable without going through sign-up — it is *off* by
- * default in production.
+ * bypass session without requiring sign-in. The bypass user is a real row
+ * in the configured store (created on first touch) so that task/memory
+ * writes — which carry foreign keys to `users` — work identically with and
+ * without auth. This is the local-dev escape hatch; it is *off* by default
+ * in production.
  */
 
 export { SESSION_COOKIE_NAME, isCreatorEmail };
@@ -35,7 +43,7 @@ export async function getSession(req?: Request): Promise<Session | null> {
   const token = await readSessionCookie(req);
 
   if (!token) {
-    if (isAuthBypassMode()) return buildBypassSession();
+    if (isAuthBypassMode()) return getBypassSession();
     return null;
   }
 
@@ -78,19 +86,69 @@ async function readSessionCookie(req?: Request): Promise<string | null> {
   }
 }
 
-function buildBypassSession(): Session {
-  const email = process.env.SIFTY_USER_EMAIL ?? CREATOR_EMAIL;
-  const profile: UserProfile = {
-    id: "user_local",
-    email,
-    displayName: isCreatorEmail(email) ? "Santi" : email.split("@")[0]!,
-    isCreator: isCreatorEmail(email),
-    createdAt: new Date(0).toISOString(),
-  };
+/**
+ * One bootstrap per repos instance: the bypass user is created (or found by
+ * email), entitled, and seeded exactly once per process. Keyed by the repos
+ * object so `setReposForTesting()` gets a fresh bootstrap.
+ */
+const bypassBootstraps = new WeakMap<Repos, Promise<Session>>();
+
+function getBypassSession(): Promise<Session> {
+  const repos = getRepos();
+  let bootstrap = bypassBootstraps.get(repos);
+  if (!bootstrap) {
+    bootstrap = bootstrapBypassSession(repos);
+    bypassBootstraps.set(repos, bootstrap);
+  }
+  return bootstrap;
+}
+
+async function bootstrapBypassSession(repos: Repos): Promise<Session> {
+  const email = (process.env.SIFTY_USER_EMAIL ?? CREATOR_EMAIL).toLowerCase();
+  const isCreator = isCreatorEmail(email);
+
+  const existing = await repos.users.getByEmail(email);
+  let user: UserProfile;
+  if (existing) {
+    const { passwordHash: _ph, ...profile } = existing;
+    user = profile;
+  } else {
+    user = await repos.users.create({
+      id: "user_local",
+      email,
+      passwordHash: null,
+      displayName: isCreator ? "Santi" : email.split("@")[0]!,
+      isCreator,
+    });
+  }
+
+  if (isCreator) {
+    await repos.entitlements.upsert(user.id, {
+      tier: "creator",
+      trialStartedAt: null,
+      trialEndsAt: null,
+      subscriptionActive: true,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      stripeStatus: null,
+      currentPeriodEnd: null,
+      aiRunsLimitDay: 1_000_000,
+    });
+  } else {
+    await repos.entitlements.startTrialIfMissing(user.id, TRIAL_DAYS);
+  }
+
+  if (isDemoSeedEnabled()) {
+    await seedDemoWorkspaceIfEmpty(repos, user.id);
+  } else {
+    await seedDefaultLabels(repos, user.id);
+  }
+
+  const ent = await repos.entitlements.get(user.id);
   return {
-    user: profile,
-    trialStartedAt: null,
-    subscriptionActive: profile.isCreator,
+    user,
+    trialStartedAt: ent?.trialStartedAt ?? null,
+    subscriptionActive: !!ent?.subscriptionActive,
     sessionId: null,
   };
 }

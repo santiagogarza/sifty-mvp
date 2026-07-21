@@ -1,5 +1,7 @@
 import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
+import { TaskIdConflictError } from "@/lib/db/repos/types";
+import { ClientId, TaskPatchSchema } from "@/lib/domain/task-patch-schema";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -12,9 +14,16 @@ export async function GET(req: Request) {
   return NextResponse.json({ tasks });
 }
 
-const CreateBody = z.object({
+/**
+ * Create accepts the client-generated id (optimistic sync) plus optional
+ * enrichment fields for replaying tasks that were captured offline and
+ * already triaged locally. Creating the same id twice is idempotent.
+ */
+const CreateBody = TaskPatchSchema.extend({
+  id: ClientId.optional(),
   sourceText: z.string().min(1).max(4000),
   sourceContext: z.string().max(8000).nullable().optional(),
+  createdAt: z.string().datetime().optional(),
 });
 
 export async function POST(req: Request) {
@@ -27,9 +36,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
 
-  const task = await getRepos().tasks.create(session.user.id, {
-    sourceText: parsed.data.sourceText,
-    sourceContext: parsed.data.sourceContext ?? null,
-  });
-  return NextResponse.json({ task }, { status: 201 });
+  const { id, sourceText, sourceContext, createdAt, editedFields, ...enrichment } = parsed.data;
+  const repos = getRepos();
+  try {
+    let task = await repos.tasks.create(session.user.id, {
+      id,
+      sourceText,
+      sourceContext: sourceContext ?? null,
+      createdAt,
+    });
+    if (Object.keys(enrichment).length > 0 || editedFields?.length) {
+      task =
+        (await repos.tasks.update(session.user.id, task.id, enrichment, { editedFields })) ?? task;
+    }
+    return NextResponse.json({ task }, { status: 201 });
+  } catch (err) {
+    if (err instanceof TaskIdConflictError) {
+      return NextResponse.json({ error: "Task id is not available" }, { status: 409 });
+    }
+    throw err;
+  }
 }

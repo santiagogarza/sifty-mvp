@@ -42,8 +42,15 @@ describe("repository tenancy", () => {
     expect(stillThere?.title).toBe(aTask.title);
 
     // Memories are isolated too
-    await repos.memories.create(a.id, "I avoid deep work after 4pm");
+    await repos.memories.create(a.id, { text: "I avoid deep work after 4pm" });
     expect(await repos.memories.list(b.id)).toEqual([]);
+
+    // Labels are isolated, and B can't link A's label to B's task
+    const aLabel = await repos.labels.ensure(a.id, { id: "label_a1", name: "Work", tone: "sand" });
+    expect(await repos.labels.list(b.id)).toEqual([]);
+    const bTask = await repos.tasks.create(b.id, { sourceText: "B task", sourceContext: null });
+    const bPatched = await repos.tasks.update(b.id, bTask.id, { labelIds: [aLabel.id] });
+    expect(bPatched?.labelIds).toEqual([]);
 
     // aiRuns counts don't leak
     await repos.aiRuns.insert({

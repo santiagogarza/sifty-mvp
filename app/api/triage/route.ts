@@ -1,10 +1,10 @@
-import { countAiRunsToday, recordAiRun } from "@/lib/ai/ai-runs";
+import { gateAiRequest, resolveOfflineMode } from "@/lib/ai/ai-gate";
+import { recordAiRun } from "@/lib/ai/ai-runs";
+import { applyTriageToTask } from "@/lib/ai/apply-triage";
 import { MissingAiKeyError, triageTask } from "@/lib/ai/triage-agent";
 import { getSession } from "@/lib/auth/session";
-import { canRunAi, deriveEntitlement } from "@/lib/entitlements/entitlements";
+import { getRepos } from "@/lib/db/repos";
 import { reportError } from "@/lib/observability/report-error";
-import { buildRateLimitKey, consumeToken, rateLimitResponseInit } from "@/lib/ratelimit/limiter";
-import { TRIAGE_POLICY, clientIdFromRequest } from "@/lib/ratelimit/policies";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -30,36 +30,15 @@ export async function POST(req: Request) {
     );
   }
 
-  const url = new URL(req.url);
-  const offline = url.searchParams.get("offline") === "1";
+  const offline = resolveOfflineMode(req);
 
   const session = await getSession(req);
   if (!session) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
-  const limit = consumeToken(
-    buildRateLimitKey("triage", session.user.id, clientIdFromRequest(req)),
-    TRIAGE_POLICY,
-  );
-  if (!limit.ok) {
-    return NextResponse.json(
-      { error: "Too many triage requests. Slow down a bit." },
-      rateLimitResponseInit(limit),
-    );
-  }
-
-  const aiRunsToday = await countAiRunsToday(session.user.id);
-  const entitlement = deriveEntitlement({
-    profile: session.user,
-    trialStartedAt: session.trialStartedAt,
-    subscriptionActive: session.subscriptionActive,
-    aiRunsToday,
-  });
-  const allowed = canRunAi(entitlement);
-  if (!allowed.ok) {
-    return NextResponse.json({ error: allowed.reason, entitlement }, { status: 402 });
-  }
+  const gate = await gateAiRequest({ req, session, bucket: "triage" });
+  if (!gate.ok) return gate.response;
 
   try {
     const result = await triageTask({
@@ -71,6 +50,26 @@ export async function POST(req: Request) {
       offline,
     });
 
+    // Persist the result to the task so it survives a client disconnect.
+    // Best-effort: when the task hasn't reached the server yet the client
+    // applies locally and the sync layer reconciles later.
+    let applied = null;
+    if (parsed.data.taskId) {
+      applied = await applyTriageToTask(
+        getRepos(),
+        session.user.id,
+        parsed.data.taskId,
+        result.output,
+      ).catch((err) => {
+        reportError(err, {
+          area: "triage.apply",
+          userId: session.user.id,
+          tags: { taskId: parsed.data.taskId ?? null },
+        });
+        return null;
+      });
+    }
+
     await recordAiRun({
       userId: session.user.id,
       taskId: parsed.data.taskId ?? null,
@@ -78,7 +77,11 @@ export async function POST(req: Request) {
       status: "succeeded",
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      ...result,
+      task: applied?.task ?? null,
+      labels: applied?.labels ?? [],
+    });
   } catch (err) {
     if (err instanceof MissingAiKeyError) {
       return NextResponse.json(

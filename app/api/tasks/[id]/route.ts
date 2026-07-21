@@ -1,55 +1,9 @@
 import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
-import {
-  AI_STATUS,
-  DELEGATION_CANDIDATE,
-  EFFORT,
-  LIFECYCLE,
-  PRIORITY_BUCKET,
-  TASK_EDITABLE_FIELDS,
-} from "@/lib/domain/types";
+import { TaskPatchSchema } from "@/lib/domain/task-patch-schema";
 import { NextResponse } from "next/server";
-import { z } from "zod";
 
 export const runtime = "nodejs";
-
-const PatchBody = z
-  .object({
-    title: z.string().min(1).max(280).optional(),
-    description: z.string().max(4000).nullable().optional(),
-    nextAction: z.string().max(280).nullable().optional(),
-    lifecycle: z.enum(LIFECYCLE).optional(),
-    aiStatus: z.enum(AI_STATUS).optional(),
-    aiError: z.string().max(2000).nullable().optional(),
-    aiAttempts: z.number().int().nonnegative().optional(),
-    urgency: z.number().min(0).max(1).optional(),
-    importance: z.number().min(0).max(1).optional(),
-    priorityBucket: z.enum(PRIORITY_BUCKET).optional(),
-    effort: z.enum(EFFORT).optional(),
-    due: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .nullable()
-      .optional(),
-    delegationCandidate: z.enum(DELEGATION_CANDIDATE).optional(),
-    confidence: z.number().min(0).max(1).optional(),
-    clarifyingQuestion: z.string().max(500).nullable().optional(),
-    rationale: z.string().max(2000).nullable().optional(),
-    labelIds: z.array(z.string()).max(20).optional(),
-    subtasks: z
-      .array(
-        z.object({
-          id: z.string(),
-          title: z.string().min(1).max(160),
-          done: z.boolean(),
-          order: z.number().int().nonnegative(),
-        }),
-      )
-      .max(20)
-      .optional(),
-    editedFields: z.array(z.enum(TASK_EDITABLE_FIELDS)).max(20).optional(),
-  })
-  .strict();
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -70,7 +24,7 @@ export async function PATCH(req: Request, ctx: RouteContext) {
   if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
   const json = await req.json().catch(() => null);
-  const parsed = PatchBody.safeParse(json);
+  const parsed = TaskPatchSchema.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }

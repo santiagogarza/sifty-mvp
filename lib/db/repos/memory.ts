@@ -1,20 +1,30 @@
 import { bucketFromScalars } from "@/lib/domain/priority";
-import type { Memory, Subtask, Task, TaskEditableField, UserProfile } from "@/lib/domain/types";
+import type {
+  Label,
+  Memory,
+  Subtask,
+  Task,
+  TaskEditableField,
+  UserProfile,
+} from "@/lib/domain/types";
 import { id as makeId } from "@/lib/utils/ids";
 import { nanoid } from "nanoid";
-import type {
-  AiRunRepo,
-  AiRunWriteInput,
-  EntitlementRepo,
-  EntitlementSnapshot,
-  MemoryRepo,
-  Repos,
-  SessionRepo,
-  StripeEventRepo,
-  TaskCreateInput,
-  TaskRepo,
-  UserCreateInput,
-  UserRepo,
+import {
+  type AiRunRepo,
+  type AiRunWriteInput,
+  type EntitlementRepo,
+  type EntitlementSnapshot,
+  type LabelRepo,
+  type MemoryCreateInput,
+  type MemoryRepo,
+  type Repos,
+  type SessionRepo,
+  type StripeEventRepo,
+  type TaskCreateInput,
+  TaskIdConflictError,
+  type TaskRepo,
+  type UserCreateInput,
+  type UserRepo,
 } from "./types";
 
 /**
@@ -31,6 +41,7 @@ interface State {
   emails: Map<string, string>; // lowercased email → user id
   entitlements: Map<string, EntitlementSnapshot>;
   tasks: Map<string, Task & { userId: string }>;
+  labels: Map<string, Label & { userId: string }>;
   memories: Map<string, Memory & { userId: string }>;
   aiRuns: Array<{
     id: string;
@@ -58,6 +69,7 @@ function emptyState(): State {
     emails: new Map(),
     entitlements: new Map(),
     tasks: new Map(),
+    labels: new Map(),
     memories: new Map(),
     aiRuns: [],
     sessions: new Map(),
@@ -75,7 +87,7 @@ export function createMemoryRepos(): MemoryReposHandle {
 
   const users: UserRepo = {
     async create(input: UserCreateInput): Promise<UserProfile> {
-      const id = makeId("user");
+      const id = input.id ?? makeId("user");
       const now = new Date().toISOString();
       const profile: UserProfile = {
         id,
@@ -162,11 +174,18 @@ export function createMemoryRepos(): MemoryReposHandle {
       return stripUserId(t);
     },
     async create(userId, input: TaskCreateInput) {
-      const now = new Date().toISOString();
+      if (input.id) {
+        const existing = state.tasks.get(input.id);
+        if (existing && existing.userId !== userId) {
+          throw new TaskIdConflictError(input.id);
+        }
+        if (existing) return stripUserId(existing);
+      }
+      const now = input.createdAt ?? new Date().toISOString();
       const text = input.sourceText.trim();
       const provisionalTitle = text.length > 80 ? `${text.slice(0, 78)}…` : text || "Untitled task";
       const task: Task = {
-        id: makeId("task"),
+        id: input.id ?? makeId("task"),
         sourceText: text,
         sourceContext: input.sourceContext?.trim() || null,
         title: provisionalTitle,
@@ -185,6 +204,7 @@ export function createMemoryRepos(): MemoryReposHandle {
         confidence: 0,
         clarifyingQuestion: null,
         rationale: null,
+        agentBrief: null,
         labelIds: [],
         subtasks: [],
         editedFields: [],
@@ -201,19 +221,27 @@ export function createMemoryRepos(): MemoryReposHandle {
       const editedFields = opts?.editedFields
         ? Array.from(new Set([...existing.editedFields, ...opts.editedFields]))
         : existing.editedFields;
+      // Mirror the Postgres behavior: only labels this user owns are linked.
+      const scopedPatch = { ...patch };
+      if (scopedPatch.labelIds) {
+        scopedPatch.labelIds = scopedPatch.labelIds.filter((id) => {
+          const label = state.labels.get(id);
+          return !!label && label.userId === userId;
+        });
+      }
       const next: Task & { userId: string } = {
         ...existing,
-        ...patch,
+        ...scopedPatch,
         editedFields,
         updatedAt: new Date().toISOString(),
         userId,
       };
+      // Recompute the derived bucket from the scalars unless the caller set
+      // it explicitly or the user has protected it with a manual edit.
       if (
-        ("urgency" in patch ||
-          "importance" in patch ||
-          opts?.editedFields?.includes("urgency") ||
-          opts?.editedFields?.includes("importance")) &&
-        !opts?.editedFields?.includes("priorityBucket")
+        ("urgency" in patch || "importance" in patch) &&
+        !("priorityBucket" in patch) &&
+        !editedFields.includes("priorityBucket")
       ) {
         next.priorityBucket = bucketFromScalars(next.urgency, next.importance);
       }
@@ -267,6 +295,28 @@ export function createMemoryRepos(): MemoryReposHandle {
     },
   };
 
+  const labels: LabelRepo = {
+    async list(userId) {
+      return Array.from(state.labels.values())
+        .filter((l) => l.userId === userId)
+        .map(stripUserId);
+    },
+    async ensure(userId, input) {
+      const existing = Array.from(state.labels.values()).find(
+        (l) => l.userId === userId && l.name.toLowerCase() === input.name.toLowerCase(),
+      );
+      if (existing) return stripUserId(existing);
+      const label: Label & { userId: string } = {
+        id: input.id,
+        name: input.name,
+        tone: input.tone,
+        userId,
+      };
+      state.labels.set(label.id, label);
+      return stripUserId(label);
+    },
+  };
+
   const memories: MemoryRepo = {
     async list(userId) {
       return Array.from(state.memories.values())
@@ -274,13 +324,20 @@ export function createMemoryRepos(): MemoryReposHandle {
         .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
         .map(({ userId: _u, ...rest }) => rest);
     },
-    async create(userId, text) {
+    async create(userId, input: MemoryCreateInput) {
+      if (input.id) {
+        const existing = state.memories.get(input.id);
+        if (existing && existing.userId === userId) {
+          const { userId: _u, ...rest } = existing;
+          return rest;
+        }
+      }
       const m: Memory & { userId: string } = {
-        id: makeId("mem"),
-        text,
-        kind: "preference",
-        pinned: false,
-        createdAt: new Date().toISOString(),
+        id: input.id ?? makeId("mem"),
+        text: input.text,
+        kind: input.kind ?? "preference",
+        pinned: input.pinned ?? false,
+        createdAt: input.createdAt ?? new Date().toISOString(),
         userId,
       };
       state.memories.set(m.id, m);
@@ -321,6 +378,11 @@ export function createMemoryRepos(): MemoryReposHandle {
           !r.offline &&
           Date.parse(r.createdAt) >= start,
       ).length;
+    },
+    async countSince(userId, since) {
+      const start = since.getTime();
+      return state.aiRuns.filter((r) => r.userId === userId && Date.parse(r.createdAt) >= start)
+        .length;
     },
     async list(userId, limit = 50) {
       return state.aiRuns
@@ -366,6 +428,7 @@ export function createMemoryRepos(): MemoryReposHandle {
     users,
     entitlements,
     tasks,
+    labels,
     memories,
     aiRuns,
     sessions,

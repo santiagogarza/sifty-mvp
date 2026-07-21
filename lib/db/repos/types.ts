@@ -1,4 +1,12 @@
-import type { Memory, Subtask, Task, TaskEditableField, UserProfile } from "@/lib/domain/types";
+import type {
+  Label,
+  LabelTone,
+  Memory,
+  Subtask,
+  Task,
+  TaskEditableField,
+  UserProfile,
+} from "@/lib/domain/types";
 
 /**
  * Repository interface.
@@ -13,6 +21,8 @@ import type { Memory, Subtask, Task, TaskEditableField, UserProfile } from "@/li
  */
 
 export interface UserCreateInput {
+  /** Optional caller-fixed id (used by the auth-bypass bootstrap). */
+  id?: string;
   email: string;
   passwordHash: string | null;
   displayName: string;
@@ -32,8 +42,32 @@ export interface EntitlementSnapshot {
 }
 
 export interface TaskCreateInput {
+  /**
+   * Optional client-generated id. The client store creates tasks
+   * optimistically and pushes them; accepting its id keeps sync free of
+   * id-remapping. Ids are unguessable random strings, so collisions across
+   * tenants are a rejected edge case, not a routine path.
+   */
+  id?: string;
   sourceText: string;
   sourceContext: string | null;
+  /** Preserved when replaying offline-captured tasks. */
+  createdAt?: string;
+}
+
+export interface MemoryCreateInput {
+  id?: string;
+  text: string;
+  kind?: Memory["kind"];
+  pinned?: boolean;
+  createdAt?: string;
+}
+
+export interface LabelEnsureInput {
+  /** Id to use if the label doesn't exist yet. */
+  id: string;
+  name: string;
+  tone: LabelTone;
 }
 
 export interface AiRunWriteInput {
@@ -66,6 +100,24 @@ export interface EntitlementRepo {
   startTrialIfMissing(userId: string, days: number): Promise<EntitlementSnapshot>;
 }
 
+/** Thrown when a client-supplied task id already belongs to another tenant. */
+export class TaskIdConflictError extends Error {
+  constructor(taskId: string) {
+    super(`Task id is not available: ${taskId}`);
+    this.name = "TaskIdConflictError";
+  }
+}
+
+export interface LabelRepo {
+  list(userId: string): Promise<Label[]>;
+  /**
+   * Idempotent ensure-by-name (case-insensitive). Returns the existing
+   * label when the name is already taken — the caller must treat the
+   * returned label (not its input) as canonical.
+   */
+  ensure(userId: string, input: LabelEnsureInput): Promise<Label>;
+}
+
 export interface TaskRepo {
   list(userId: string): Promise<Task[]>;
   get(userId: string, taskId: string): Promise<Task | null>;
@@ -84,7 +136,7 @@ export interface TaskRepo {
 
 export interface MemoryRepo {
   list(userId: string): Promise<Memory[]>;
-  create(userId: string, text: string): Promise<Memory>;
+  create(userId: string, input: MemoryCreateInput): Promise<Memory>;
   update(userId: string, id: string, patch: Partial<Memory>): Promise<Memory | null>;
   delete(userId: string, id: string): Promise<boolean>;
 }
@@ -92,6 +144,11 @@ export interface MemoryRepo {
 export interface AiRunRepo {
   insert(input: AiRunWriteInput): Promise<{ id: string; createdAt: string }>;
   countSucceededToday(userId: string, now?: Date): Promise<number>;
+  /**
+   * All runs (any status/transport) recorded at or after `since`. Backs the
+   * cross-instance sliding-window rate limit on AI routes.
+   */
+  countSince(userId: string, since: Date): Promise<number>;
   list(
     userId: string,
     limit?: number,
@@ -130,6 +187,7 @@ export interface Repos {
   users: UserRepo;
   entitlements: EntitlementRepo;
   tasks: TaskRepo;
+  labels: LabelRepo;
   memories: MemoryRepo;
   aiRuns: AiRunRepo;
   sessions: SessionRepo;

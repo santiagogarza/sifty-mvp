@@ -8,6 +8,8 @@ import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import {
   ArrowRight,
+  Brain,
+  CreditCard,
   Inbox,
   ListTodo,
   PauseCircle,
@@ -91,11 +93,25 @@ export function CommandPalette({
         run: () => router.push("/someday"),
       },
       {
+        id: "go-memory",
+        group: "navigate",
+        label: "Go to Memory",
+        icon: <Brain size={14} />,
+        run: () => router.push("/memory"),
+      },
+      {
         id: "go-settings",
         group: "navigate",
         label: "Settings",
         icon: <Settings size={14} />,
         run: () => router.push("/settings"),
+      },
+      {
+        id: "go-billing",
+        group: "navigate",
+        label: "Billing",
+        icon: <CreditCard size={14} />,
+        run: () => router.push("/settings/billing"),
       },
     ];
 

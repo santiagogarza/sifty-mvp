@@ -1,6 +1,11 @@
 import { signSessionToken } from "@/lib/auth/jwt";
 import { hashPassword, verifyPassword } from "@/lib/auth/passwords";
 import { getRepos } from "@/lib/db/repos";
+import {
+  isDemoSeedEnabled,
+  seedDefaultLabels,
+  seedDemoWorkspaceIfEmpty,
+} from "@/lib/demo/seed-demo";
 import type { UserProfile } from "@/lib/domain/types";
 import { TRIAL_DAYS } from "@/lib/entitlements/entitlements";
 import { isCreatorEmail } from "./session-shared";
@@ -68,6 +73,12 @@ export async function signUp(input: {
     });
   } else {
     await repos.entitlements.startTrialIfMissing(user.id, TRIAL_DAYS);
+  }
+
+  if (isDemoSeedEnabled()) {
+    await seedDemoWorkspaceIfEmpty(repos, user.id);
+  } else {
+    await seedDefaultLabels(repos, user.id);
   }
 
   return finishLogin(user);

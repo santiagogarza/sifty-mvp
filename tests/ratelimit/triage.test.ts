@@ -86,4 +86,39 @@ describe("triage rate limit", () => {
     expect(limited.status).toBe(429);
     expect(limited.headers.get("Retry-After")).toBeTruthy();
   });
+
+  it("the persistent ai_runs window limits across instances (fresh in-memory bucket)", async () => {
+    const { user, cookie } = await createUserWithCookie(getTestRepos(), {
+      email: "limit-db@example.com",
+      isCreator: false,
+    });
+
+    const { generateObject } = await import("ai");
+    vi.mocked(generateObject).mockResolvedValue({
+      object: happy,
+      usage: { inputTokens: 10, outputTokens: 5 },
+    } as unknown as Awaited<ReturnType<typeof generateObject>>);
+
+    const { POST } = await import("@/app/api/triage/route");
+    const fire = () =>
+      POST(
+        new Request("http://localhost/api/triage", {
+          method: "POST",
+          headers: { "content-type": "application/json", cookie },
+          body: JSON.stringify({ sourceText: "Test" }),
+        }),
+      );
+
+    expect((await fire()).status).toBe(200);
+    expect((await fire()).status).toBe(200);
+    expect((await fire()).status).toBe(200);
+
+    // Simulate a different serverless instance: local buckets are empty,
+    // but the recorded runs still gate the request.
+    __resetRateLimits();
+    const limited = await fire();
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get("Retry-After")).toBeTruthy();
+    void user;
+  });
 });
