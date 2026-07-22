@@ -430,16 +430,30 @@ function FilingStrip({ task }: { task: Task }) {
   const updateTask = useStore((s) => s.updateTask);
   const [filed, setFiled] = React.useState(false);
   const confirmationRef = React.useRef<HTMLDivElement>(null);
+  // Focus moves to the confirmation only when the strip's own button caused
+  // it — status changes made elsewhere (e.g. the Status picker) must not
+  // have their focus stolen.
+  const focusPending = React.useRef(false);
 
   const showConfirmation = filed && task.lifecycle !== "inbox";
 
+  // Back in Inbox means the filing was undone: show the buttons fresh and
+  // stop attributing later transitions to the old strip action.
   React.useEffect(() => {
-    if (showConfirmation) confirmationRef.current?.focus();
+    if (task.lifecycle === "inbox") setFiled(false);
+  }, [task.lifecycle]);
+
+  React.useEffect(() => {
+    if (showConfirmation && focusPending.current) {
+      focusPending.current = false;
+      confirmationRef.current?.focus();
+    }
   }, [showConfirmation]);
 
   const file = (to: Lifecycle) => {
     updateTask(task.id, { lifecycle: to });
     setFiled(true);
+    focusPending.current = true;
   };
 
   if (task.lifecycle !== "inbox" && !showConfirmation) return null;

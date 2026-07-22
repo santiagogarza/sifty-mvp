@@ -238,10 +238,21 @@ function useCompletionGhosts(tasks: Task[]): {
     };
   }, []);
 
-  // Invariant at the consumption point: a ghost renders only while its task
-  // is still done in the store and hasn't re-entered this list. Un-completing
-  // from anywhere (row, sheet) removes the ghost instead of leaving a stale
-  // checked snapshot whose checkbox would demote the now-active task.
+  // Structural invariant: an entry whose task is gone or no longer done is
+  // deleted, not merely hidden — otherwise a hidden entry could outlive a
+  // later re-completion and resurrect with a stale restoreTo/index.
+  React.useEffect(() => {
+    if (ghosts.size === 0) return;
+    const liveById = new Map(allTasks.map((t) => [t.id, t]));
+    for (const id of ghosts.keys()) {
+      const live = liveById.get(id);
+      if (!live || live.lifecycle !== "done") dismissGhost(id);
+    }
+  }, [ghosts, allTasks, dismissGhost]);
+
+  // Consumption-point filter (same-render defense in depth): a ghost renders
+  // only while its task is still done in the store and hasn't re-entered
+  // this list, and always renders the live task — never a stale snapshot.
   const visibleGhosts = React.useMemo(() => {
     const currentIds = new Set(tasks.map((t) => t.id));
     const liveById = new Map(allTasks.map((t) => [t.id, t]));

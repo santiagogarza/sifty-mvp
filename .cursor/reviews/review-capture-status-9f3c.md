@@ -66,3 +66,34 @@ Findings are ordered by importance (per review contract, no severity labels — 
 **Fix:** Either add the background wash (e.g. a second keyframe animating `background-color` from `var(--ai-soft)` to transparent over ~1.2s on the filled sections) or, if the simpler settle was a deliberate calm-scope cut, note the deviation so the plan and implementation agree.
 
 Found 11 issues.
+
+## Run 2 — 2026-07-22T03:38Z
+
+Re-review of fixes in `4892391` (review fixes) and `026683a` (checkbox hit target). Checks re-run: `pnpm biome check` clean, `pnpm tsc --noEmit` clean, `pnpm test` 71/71.
+
+Fix verification (all 11 original findings):
+
+- **1 (FilingStrip a11y/focus)** — fixed as claimed (`role="status"`, `tabIndex={-1}`, focus on appear, persists per sheet visit). One new focus edge introduced; see finding 1 below.
+- **2 (mobile reachability + nav drift)** — bottom nav reads `STATUS_META`/`STATUS_ICONS`; palette trigger now visible on phones with `aria-label` (icon-only below `md`). Declined bottom-nav Done slot not re-raised per caller's reasoning; palette-as-route matches the pre-existing Waiting/Someday treatment.
+- **3 (NavCount stuck pulse)** — fixed. Traced increment/decrement/zero-hide/remount paths: `pulseKey` remount restarts the animation by construction; `prevRef` starts `null` and records only while `live`, so the hydration 0→N jump can't pulse. Accepted residual (first server pull on a fresh profile) not re-raised.
+- **4 (useJustFilled stuck flag)** — fixed. Non-transition path resets; ready→running removes the class in its own commit, so the next running→ready reliably replays. Wash timing fits: max stagger 180ms + 1200ms wash < 1400ms window.
+- **5 (stale ghost snapshot)** — fixed at the consumption point: rendered ghosts are always the live store task and only while still `done`. Residual state-retention hole remains; see finding 2 below.
+- **6 (ghost timing duplication)** — fixed. `animationend` filtered on `sifty-ghost-collapse` (bubbling descendant animations like `sifty-pulse-soft` are excluded by the name check); 4s timer is safety-net only. Under `prefers-reduced-motion` the global override clamps duration but not the 600ms delay, so `animationend` still fires (~600ms) and the safety net is not load-bearing there.
+- **7 (disclosure a11y/focus steal)** — fixed. `aria-expanded`/`aria-controls` present (unmounted-when-collapsed target matches Radix convention); `autoFocus` defaults true so `TaskView` page lists keep self-focus, dropped list opts out.
+- **8 (confirmation auto-dismiss)** — fixed; timer gone, persists for the keyed `DetailBody` instance.
+- **9 (shimmer/placeholder drift)** — fixed; single `nextActionPending` drives both.
+- **10 (href filter duplication)** — fixed; `STATUS_VIEWS` derived once, consumers map with no casts.
+- **11 (missing AI wash)** — fixed; `sifty-ai-wash` runs alongside `sifty-fill-in`, one inline delay applies to both (CSS repeats the `animation-delay` list).
+- **Checkbox hit target (`026683a`)** — `after:-inset-1.5` on a 20px circle gives ~32px; 6px extension sits inside the 12px column gap, no overlap with adjacent click targets.
+
+### 1. FilingStrip confirmation steals focus from the Status picker after an inbox round-trip
+**File:** `components/tasks/task-detail-sheet.tsx` L431-L438
+**What's wrong:** `filed` persists for the sheet visit and the focus effect keys on the derived `showConfirmation` boolean, so any later inbox→non-inbox transition re-fires it — not just the strip's own buttons. Trace: file via the strip (confirmation focused, correct), then in the Status meta cell pick "Inbox" (strip reverts to buttons, `filed` still true), then pick any non-inbox status from the still-open picker: `showConfirmation` flips false→true and the effect focuses the confirmation, yanking focus out of the Radix popover — which, being non-modal, dismisses on focus-out. The picker normally stays open after a selection, so this both closes it unexpectedly and teleports keyboard focus to the bottom of the sheet mid-interaction.
+**Fix:** Make focus follow only the strip's own action: set a ref flag in `file()` (`focusOnConfirm.current = true`) and consume it in the effect before focusing. Alternatively (more thorough), reset `filed` when `task.lifecycle` returns to `"inbox"` — that also keeps the confirmation attributed to a strip action rather than replaying for picker-driven moves.
+
+### 2. Hidden ghost entries survive up to 4s and can resurrect with a stale `restoreTo`/`index`
+**File:** `components/tasks/task-list.tsx` L241-L253
+**What's wrong:** The consumption-point filter hides invalid ghosts but the comment says "removes"; the map entry is only deleted by `animationend` (never fires once the ghost is filtered out mid-collapse) or the 4s safety timer. If a ghost is hidden before the collapse finishes (~840ms) because the task was un-completed from the sheet (lifecycle→`active`, so it does not re-enter this list), and the task is then re-completed from the sheet within the 4s window, the stale entry resurrects: a row materializes in a list where none was visible, and its `restoreTo` is the original status (e.g. `inbox`) rather than the actual pre-completion status (`active`), so unchecking it demotes the task. The re-enter path is safe (the layout effect overwrites with a fresh ghost), but the not-done path retains stale state. Narrow (bounded by the safety timer and the sub-840ms hide) but the stated invariant is implemented as hide-not-remove.
+**Fix:** Prune instead of filter: add an effect over `allTasks` that calls `dismissGhost(id)` for any ghost whose live task is missing or not `done`, keeping the memo filter as defense in depth. Entries then cannot outlive their validity, and the comment becomes structurally true.
+
+Found 2 issues.
