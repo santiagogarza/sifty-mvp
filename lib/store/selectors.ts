@@ -106,6 +106,23 @@ export function selectByLifecycle(
     .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
 }
 
+/** Tasks eligible for the Kanban board (excludes dropped). */
+export function selectBoardTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
+  return applyCommonFilters(tasks, args)
+    .filter((t) => t.lifecycle !== "dropped")
+    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+}
+
+export function groupTasksByLifecycle(tasks: Task[]): Map<Lifecycle, Task[]> {
+  const groups = new Map<Lifecycle, Task[]>();
+  for (const task of tasks) {
+    const bucket = groups.get(task.lifecycle) ?? [];
+    bucket.push(task);
+    groups.set(task.lifecycle, bucket);
+  }
+  return groups;
+}
+
 export function useTaskCounts() {
   const tasks = useStore((s) => s.tasks);
   return useMemo(() => {
