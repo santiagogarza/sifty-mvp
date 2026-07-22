@@ -45,11 +45,20 @@ export function BoardCard({
     [setNodeRef, registerNode, task.id],
   );
 
+  const dndMouseDown = listeners?.onMouseDown as ((e: React.MouseEvent) => void) | undefined;
+
   return (
     <div
       ref={setRefs}
       {...attributes}
       {...listeners}
+      onMouseDown={(e) => {
+        dndMouseDown?.(e);
+        // The drag sensor swallows the native mousedown focus; take it
+        // explicitly so the detail sheet hands focus back to this card on
+        // close and the [ ] keys keep working.
+        e.currentTarget.focus({ preventScroll: true });
+      }}
       role="option"
       aria-selected={focused}
       tabIndex={tabbable ? 0 : -1}

@@ -33,6 +33,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { CircleCheck, Inbox, ListTodo, type LucideIcon, PauseCircle, Target } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import * as React from "react";
 import { BoardCard, BoardCardContent } from "./board-card";
 import { TaskEmptyState } from "./empty-state";
@@ -144,6 +145,27 @@ export function TaskBoard() {
       el.scrollIntoView({ block: "nearest", inline: "nearest" });
     }
   });
+
+  // The detail sheet closes via a query-param navigation, which re-renders
+  // the page and strands Radix's own focus restoration. Hand focus back to
+  // the card that was open so Enter → Escape → [ ] chains keep working.
+  const detailTaskId = useSearchParams().get("task");
+  const lastDetailTaskId = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (detailTaskId) {
+      lastDetailTaskId.current = detailTaskId;
+      return;
+    }
+    const id = lastDetailTaskId.current;
+    lastDetailTaskId.current = null;
+    const el = id ? cardNodes.current.get(id) : undefined;
+    if (id && el) {
+      setFocusedId(id);
+      // Radix restores focus asynchronously on unmount and lands on <body>
+      // after the navigation; queue ours behind it.
+      requestAnimationFrame(() => el.focus({ preventScroll: true }));
+    }
+  }, [detailTaskId]);
 
   const moveTask = React.useCallback(
     (task: Task, target: BoardLifecycle, opts: { refocus: boolean }) => {
