@@ -152,7 +152,9 @@ function useCompletionGhosts(tasks: Task[]): CompletionGhost[] {
   const prevRef = React.useRef(tasks);
   const timersRef = React.useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
-  React.useEffect(() => {
+  // Layout effect: the ghost must mount in the same paint as the task's
+  // removal, otherwise the row visibly blinks out before lingering.
+  React.useLayoutEffect(() => {
     const prev = prevRef.current;
     prevRef.current = tasks;
     if (prev === tasks) return;
