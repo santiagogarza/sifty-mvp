@@ -10,16 +10,12 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import * as React from "react";
 import { AiStatusInline } from "./ai-status";
 import { PriorityGlyph } from "./priority-glyph";
-
-const BOARD_COLUMNS: Array<{ lifecycle: Lifecycle; title: string }> = [
-  { lifecycle: "inbox", title: "Inbox" },
-  { lifecycle: "active", title: "Focus" },
-  { lifecycle: "waiting", title: "Waiting" },
-  { lifecycle: "someday", title: "Someday" },
-  { lifecycle: "done", title: "Done" },
-];
-
-const BOARD_LIFECYCLES = BOARD_COLUMNS.map((column) => column.lifecycle);
+import {
+  TASK_BOARD_COLUMNS,
+  TASK_BOARD_LIFECYCLES,
+  isTaskBoardLifecycle,
+  taskBoardLifecycleAfter,
+} from "./task-board-model";
 
 export function TaskBoard({ tasks, onOpen }: { tasks: Task[]; onOpen: (id: string) => void }) {
   const labels = useStore((s) => s.labels);
@@ -27,16 +23,13 @@ export function TaskBoard({ tasks, onOpen }: { tasks: Task[]; onOpen: (id: strin
   const [dragOverLifecycle, setDragOverLifecycle] = React.useState<Lifecycle | null>(null);
   const [draggingTaskId, setDraggingTaskId] = React.useState<string | null>(null);
 
-  const labelMap = React.useMemo(
-    () => new Map(labels.map((label) => [label.id, label])),
-    [labels],
-  );
+  const labelMap = React.useMemo(() => new Map(labels.map((label) => [label.id, label])), [labels]);
 
   const tasksByLifecycle = React.useMemo(() => {
     const grouped = new Map<Lifecycle, Task[]>();
-    for (const column of BOARD_COLUMNS) grouped.set(column.lifecycle, []);
+    for (const column of TASK_BOARD_COLUMNS) grouped.set(column.lifecycle, []);
     for (const task of tasks) {
-      if (!BOARD_LIFECYCLES.includes(task.lifecycle)) continue;
+      if (!isTaskBoardLifecycle(task.lifecycle)) continue;
       grouped.get(task.lifecycle)?.push(task);
     }
     for (const columnTasks of grouped.values()) {
@@ -55,8 +48,7 @@ export function TaskBoard({ tasks, onOpen }: { tasks: Task[]; onOpen: (id: strin
 
   const moveByOffset = React.useCallback(
     (task: Task, offset: -1 | 1) => {
-      const index = BOARD_LIFECYCLES.indexOf(task.lifecycle);
-      const lifecycle = BOARD_LIFECYCLES[index + offset];
+      const lifecycle = taskBoardLifecycleAfter(task.lifecycle, offset);
       if (lifecycle) moveTask(task, lifecycle);
     },
     [moveTask],
@@ -76,7 +68,7 @@ export function TaskBoard({ tasks, onOpen }: { tasks: Task[]; onOpen: (id: strin
       className="grid grid-flow-col auto-cols-[minmax(230px,1fr)] gap-3 overflow-x-auto pb-2"
       aria-label="Kanban task board"
     >
-      {BOARD_COLUMNS.map((column) => {
+      {TASK_BOARD_COLUMNS.map((column) => {
         const columnTasks = tasksByLifecycle.get(column.lifecycle) ?? [];
         const isDropTarget = dragOverLifecycle === column.lifecycle;
 
@@ -121,9 +113,9 @@ export function TaskBoard({ tasks, onOpen }: { tasks: Task[]; onOpen: (id: strin
                   task={task}
                   labelMap={labelMap}
                   dragging={draggingTaskId === task.id}
-                  canMoveLeft={BOARD_LIFECYCLES.indexOf(task.lifecycle) > 0}
+                  canMoveLeft={TASK_BOARD_LIFECYCLES.indexOf(task.lifecycle) > 0}
                   canMoveRight={
-                    BOARD_LIFECYCLES.indexOf(task.lifecycle) < BOARD_LIFECYCLES.length - 1
+                    TASK_BOARD_LIFECYCLES.indexOf(task.lifecycle) < TASK_BOARD_LIFECYCLES.length - 1
                   }
                   onOpen={onOpen}
                   onMoveLeft={() => moveByOffset(task, -1)}
