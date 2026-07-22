@@ -43,8 +43,8 @@ SIFTY_DISABLE_AUTH=1 SIFTY_AI_OFFLINE=1 SIFTY_DEMO_SEED=1 pnpm dev
 ```
 
 `SIFTY_DEMO_SEED=1` populates every new account (or the auth-bypass user)
-with a fully-triaged workspace: a dozen tasks across Today/Focus/Inbox/
-Waiting/Someday/Done — labeled, prioritized, with subtasks, rationale,
+with a fully-triaged workspace: a dozen tasks across Today/Inbox/Focus/
+Waiting on/Someday/Done — labeled, prioritized, with subtasks, rationale,
 confidence, one clarifying question, and one prepared agent brief — plus
 pinned memories. Seeding is first-run only: an account with any existing
 task or memory is never touched. It works with real sign-up too (each new
