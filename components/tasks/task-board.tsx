@@ -51,6 +51,7 @@ export function TaskBoard() {
   const updateTask = useStore((s) => s.updateTask);
   const [activeTaskId, setActiveTaskId] = React.useState<string | null>(null);
   const [overStatus, setOverStatus] = React.useState<Lifecycle | null>(null);
+  const keyboardStatusRef = React.useRef<Lifecycle | null>(null);
   const prefersReducedMotion = usePrefersReducedMotion();
   const dropEasing = useCssVariable("--ease-product", "cubic-bezier(0.32, 0.72, 0.18, 1)");
 
@@ -70,7 +71,7 @@ export function TaskBoard() {
   const activeTask = activeTaskId ? tasksById.get(activeTaskId) : null;
 
   const keyboardCoordinates = React.useMemo(
-    () => createColumnKeyboardCoordinates(tasksById),
+    () => createColumnKeyboardCoordinates(tasksById, keyboardStatusRef),
     [tasksById],
   );
 
@@ -89,11 +90,15 @@ export function TaskBoard() {
     const id = String(event.active.id);
     setActiveTaskId(id);
     const task = tasksById.get(id);
-    setOverStatus(task?.lifecycle && isBoardStatus(task.lifecycle) ? task.lifecycle : null);
+    const status = task?.lifecycle && isBoardStatus(task.lifecycle) ? task.lifecycle : null;
+    keyboardStatusRef.current = status;
+    setOverStatus(status);
   };
 
   const onDragOver = (event: DragOverEvent) => {
-    setOverStatus(statusFromOver(event.over?.id));
+    const status = statusFromOver(event.over?.id);
+    if (status) keyboardStatusRef.current = status;
+    setOverStatus(status);
   };
 
   const onDragEnd = (event: DragEndEvent) => {
@@ -103,6 +108,7 @@ export function TaskBoard() {
 
     setActiveTaskId(null);
     setOverStatus(null);
+    keyboardStatusRef.current = null;
 
     if (!task || !targetStatus || task.lifecycle === targetStatus) return;
     updateTask(activeId, { lifecycle: targetStatus });
@@ -111,6 +117,7 @@ export function TaskBoard() {
   const onDragCancel = () => {
     setActiveTaskId(null);
     setOverStatus(null);
+    keyboardStatusRef.current = null;
   };
 
   return (
@@ -224,13 +231,17 @@ function ViewToggle() {
   );
 }
 
-function createColumnKeyboardCoordinates(tasksById: Map<string, Task>): KeyboardCoordinateGetter {
+function createColumnKeyboardCoordinates(
+  tasksById: Map<string, Task>,
+  keyboardStatusRef: React.MutableRefObject<Lifecycle | null>,
+): KeyboardCoordinateGetter {
   return (event, { active, currentCoordinates, context }) => {
     const direction = keyDirection(event.code);
     if (direction === 0) return;
 
     const task = tasksById.get(String(active));
     const currentStatus =
+      keyboardStatusRef.current ??
       statusFromOver(context.over?.id) ??
       (task?.lifecycle && isBoardStatus(task.lifecycle) ? task.lifecycle : null);
     if (!currentStatus) return;
@@ -238,6 +249,7 @@ function createColumnKeyboardCoordinates(tasksById: Map<string, Task>): Keyboard
     const currentIndex = BOARD_STATUSES.indexOf(currentStatus);
     const targetStatus = BOARD_STATUSES[currentIndex + direction];
     if (!targetStatus) return currentCoordinates;
+    keyboardStatusRef.current = targetStatus;
 
     const targetRect = document
       .querySelector<HTMLElement>(`[data-board-column-id="${targetStatus}"]`)
