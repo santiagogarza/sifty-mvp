@@ -87,3 +87,20 @@ Follow-up on commit 1b0ea56 (all 7 Run 1 findings addressed). Verification: full
 **Fix:** One assertion in the existing test, right after `page.keyboard.press("v")` resolves to /board: `await expect(page.locator('[aria-label="Board columns"]')).toBeFocused()`. Keep the explicit `card.focus()` for the bracket portion — parallel workers seed tasks concurrently, so "first card = marker" is not deterministic. No new test file.
 
 Found 3 issues.
+
+## Run 3 — 2026-07-22 04:55 UTC
+
+Follow-up on commit cabe91c (all 3 Run 2 findings addressed). Verification: re-read of `task-board.tsx`, `board-card.tsx`, `board.spec.ts`; delta since Run 2 confirmed limited to those files plus this log; `pnpm biome check` (136 files) and `pnpm tsc --noEmit` re-run clean here; live Playwright probes against the running dev server (Chromium 149).
+
+**All 3 fixes verified correct:**
+
+1. Whitespace clicks probed on all five columns, including overflowing ones (inbox/active/done had scrollHeight > clientHeight): every click lands focus on the board container and `j` immediately enters a card. Chromium does not click-focus scrollers, so the fall-through holds even where columns scroll.
+2. Show-all probed with 72 done tasks: Enter on the button focuses the card at index `DONE_PREVIEW_COUNT` (the first newly revealed one) and `j` continues to index 31. Index math is right — `columns.done` is the full list, the preview shows 0..29, and the button only renders when index 30 exists. `setFocusedId` + `setShowAllDone` batch into one render, ref callbacks register the new cards before the `pendingFocusId` effect runs, so the focus handoff has no interim gap.
+3. The toggle e2e asserts `[aria-label="Board columns"]` is focused after `v`; the selector is unique, `toBeFocused` auto-retries, and the entry probe here confirms the behavior it locks down.
+
+### Removing the listbox tabindex opted overflowing columns into Chromium's focusable-scroller heuristic — Tab now lands on dead listboxes
+**File:** `components/tasks/task-board.tsx` L534-L539 (listbox), L257-L262 (target guard)
+**What's wrong:** Chromium (127+, shipped form ~130; probed here on 149) makes a scroll container keyboard-focusable when it has no keyboard-focusable descendants. Every card except the single roving-tabindex one is `tabIndex={-1}`, so any overflowing column that doesn't hold the current roving card qualifies. Probed tab walk: card → Active listbox → Done listbox → Show-all button. On a tab-focused listbox the target guard rejects everything: `j`, `Enter`, and `]` are dead (probe: no focus change, no scroll), while ArrowDown natively scrolls the column without ever entering a card — the same stranded-keys state Run 2's finding eliminated for clicks, now reachable through the default Tab path. The old explicit `tabIndex={-1}` suppressed the heuristic (probe: re-adding it restores the clean walk card → button); removing the attribute un-suppressed it. Also an ARIA wart: a focused `role="listbox"` whose arrows never reach an option.
+**Fix:** Restore `tabIndex={-1}` on the listbox (delete the biome-ignore — the attribute satisfies `useFocusableInteractive`, as pre-cabe91c) and neutralize the click-focus it re-enables with a focus redirect on the board container, which already owns the keyboard contract: in the container's `onFocus` (focusin bubbles in React), when `e.target` has `role="listbox"`, call `boardRef.current?.focus({ preventScroll: true })`. Clicks on whitespace then land on the container in every browser (the exact UX Run 2 probed), Tab never stops on a column body, and card/button focus events pass through untouched. Do not put the redirect on an attribute-less listbox instead: without `tabIndex={-1}` the heuristic keeps the listbox in the Tab order and the redirect would bounce Tab back to the container, trapping keyboard users inside the board.
+
+Found 1 issue.

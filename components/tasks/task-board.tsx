@@ -373,6 +373,14 @@ export function TaskBoard() {
             aria-label="Board columns"
             tabIndex={-1}
             onKeyDown={onBoardKeyDown}
+            onFocus={(e) => {
+              // Column bodies are scroll containers and can catch focus
+              // (whitespace clicks). The board container owns the keyboard
+              // contract, so take the focus back.
+              if (e.target.getAttribute("role") === "listbox") {
+                boardRef.current?.focus({ preventScroll: true });
+              }
+            }}
             className={cn(
               "flex flex-1 min-h-0 items-stretch gap-2.5 overflow-x-auto pb-3 focus:outline-none",
               !activeTask && "snap-x snap-proximity md:snap-none",
@@ -531,11 +539,14 @@ function BoardColumn({
           </span>
         ) : null}
       </header>
-      {/* biome-ignore lint/a11y/useFocusableInteractive: options carry a roving tabindex (ARIA listbox pattern); a focusable container would add a state where clicks on column whitespace strand keyboard handling. */}
       <div
         role="listbox"
         aria-label={`${label} tasks`}
-        className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-1.5 pb-1.5"
+        // -1 keeps Chromium's focusable-scroller heuristic from putting
+        // overflowing columns in the Tab order; the board container's focus
+        // redirect handles the click-focus this re-enables.
+        tabIndex={-1}
+        className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-1.5 pb-1.5 focus:outline-none"
       >
         {tasks.map((task) => (
           <BoardCard
