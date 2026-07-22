@@ -322,6 +322,14 @@ button,
     transform: none;
   }
 }
+@keyframes sifty-ai-wash {
+  from {
+    background-color: var(--ai-soft);
+  }
+  to {
+    background-color: transparent;
+  }
+}
 @keyframes sifty-count-pulse {
   0% {
     transform: none;
@@ -354,10 +362,13 @@ button,
 .animate-pulse-soft {
   animation: sifty-pulse-soft 1800ms var(--ease-soft) infinite;
 }
-/* Sections settling in after Sifty fills a task — staggered via
-   animation-delay set inline. */
+/* Sections settling in after Sifty fills a task — a short rise plus a
+   longer AI-tinted wash that fades out; staggered via animation-delay
+   set inline (one value applies to both animations). */
 .animate-fill-in {
-  animation: sifty-fill-in 420ms var(--ease-product) both;
+  border-radius: var(--radius-md);
+  animation: sifty-fill-in 420ms var(--ease-product) both, sifty-ai-wash 1200ms var(--ease-soft)
+    both;
 }
 /* One-shot pulse when a sidebar count goes up. */
 .animate-count-pulse {

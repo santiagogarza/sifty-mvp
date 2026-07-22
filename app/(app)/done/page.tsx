@@ -45,6 +45,8 @@ function DroppedSection() {
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        aria-controls="dropped-tasks"
         className="flex w-full items-center justify-between text-[12.5px] text-[var(--fg-muted)] hover:text-[var(--fg)]"
       >
         <span>
@@ -60,8 +62,8 @@ function DroppedSection() {
         />
       </button>
       {expanded ? (
-        <div className="mt-2">
-          <TaskList tasks={dropped} onOpen={openDetail} />
+        <div id="dropped-tasks" className="mt-2">
+          <TaskList tasks={dropped} onOpen={openDetail} autoFocus={false} />
         </div>
       ) : null}
     </section>

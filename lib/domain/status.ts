@@ -69,6 +69,23 @@ export const STATUSES_IN_ORDER: readonly Lifecycle[] = (
   Object.keys(STATUS_META) as Lifecycle[]
 ).sort((a, b) => STATUS_META[a].order - STATUS_META[b].order);
 
+export interface StatusView {
+  status: Lifecycle;
+  label: string;
+  description: string;
+  href: string;
+}
+
+/**
+ * Statuses that have a view of their own, in pipeline order, with `href`
+ * guaranteed. Nav surfaces map over this so no consumer needs to re-derive
+ * the "has a page" invariant (or cast `href`).
+ */
+export const STATUS_VIEWS: readonly StatusView[] = STATUSES_IN_ORDER.flatMap((status) => {
+  const { label, description, href } = STATUS_META[status];
+  return href === null ? [] : [{ status, label, description, href }];
+});
+
 export function statusLabel(status: Lifecycle): string {
   return STATUS_META[status].label;
 }

@@ -109,6 +109,9 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
   // First fill = the capture moment: nothing triaged yet, slots are blank.
   const firstFill = organizing && task.aiAttempts === 0;
   const edited = (f: TaskEditableField) => task.editedFields.includes(f);
+  // One condition drives both the shimmer overlay and the placeholder
+  // suppression so the field can never end up blank with neither.
+  const nextActionPending = firstFill && !task.nextAction && !edited("nextAction");
 
   const justFilled = useJustFilled(task.aiStatus);
   const fillProps = (order: number, base: string) => ({
@@ -197,9 +200,7 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
             <Textarea
               value={task.nextAction ?? ""}
               maxLength={TASK_LIMITS.nextAction}
-              placeholder={
-                firstFill && !task.nextAction ? "" : "What's the very next concrete step?"
-              }
+              placeholder={nextActionPending ? "" : "What's the very next concrete step?"}
               onChange={(e) =>
                 updateTask(
                   task.id,
@@ -210,7 +211,7 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
               rows={2}
               className="text-[14px] bg-[var(--surface-muted)] border-transparent leading-[1.5]"
             />
-            {firstFill && !task.nextAction && !edited("nextAction") ? (
+            {nextActionPending ? (
               <span
                 aria-hidden
                 className="pointer-events-none absolute inset-x-3.5 top-[14px] flex flex-col gap-2 transition-opacity group-focus-within:opacity-0"
@@ -387,6 +388,9 @@ function useJustFilled(aiStatus: Task["aiStatus"]): boolean {
       const t = setTimeout(() => setJustFilled(false), 1400);
       return () => clearTimeout(t);
     }
+    // Any other transition (e.g. an immediate re-triage) clears the flag so
+    // the animation reliably replays on the next running → ready.
+    setJustFilled(false);
   }, [aiStatus]);
 
   return justFilled;
@@ -416,34 +420,39 @@ const FILE_TARGETS: readonly Lifecycle[] = ["active", "waiting", "someday"];
 
 /**
  * One-click filing for inbox tasks — the "which pile" step of triage.
- * After a move the strip becomes a short confirmation instead of
- * unmounting, so the action visibly landed; it fades away on its own.
+ * After a move the strip becomes a confirmation instead of unmounting, and
+ * stays for the rest of this sheet visit (DetailBody is keyed per task), so
+ * the action visibly landed and "where it lives" stays answered. The
+ * confirmation takes focus (the clicked button just unmounted) and is a
+ * live region so the move is announced to screen readers.
  */
 function FilingStrip({ task }: { task: Task }) {
   const updateTask = useStore((s) => s.updateTask);
   const [filed, setFiled] = React.useState(false);
-  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const confirmationRef = React.useRef<HTMLDivElement>(null);
+
+  const showConfirmation = filed && task.lifecycle !== "inbox";
 
   React.useEffect(() => {
-    return () => {
-      if (timer.current) clearTimeout(timer.current);
-    };
-  }, []);
+    if (showConfirmation) confirmationRef.current?.focus();
+  }, [showConfirmation]);
 
   const file = (to: Lifecycle) => {
     updateTask(task.id, { lifecycle: to });
     setFiled(true);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setFiled(false), 2400);
   };
 
-  const showConfirmation = filed && task.lifecycle !== "inbox";
   if (task.lifecycle !== "inbox" && !showConfirmation) return null;
 
   return (
     <div className="border-t border-[var(--border)] px-4 sm:px-5 py-2.5 bg-[var(--bg-elevated)]">
       {showConfirmation ? (
-        <div className="flex items-center gap-2 py-0.5 text-[12.5px] text-[var(--fg-muted)] animate-fade-in">
+        <div
+          ref={confirmationRef}
+          role="status"
+          tabIndex={-1}
+          className="flex items-center gap-2 py-0.5 text-[12.5px] text-[var(--fg-muted)] animate-fade-in focus:outline-none"
+        >
           <Check size={13} className="text-[var(--done)]" strokeWidth={2.5} />
           <span>
             Moved to <span className="text-[var(--fg)]">{statusLabel(task.lifecycle)}</span>

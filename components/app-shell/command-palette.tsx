@@ -5,7 +5,7 @@ import { useTheme } from "@/components/app-shell/theme-context";
 import { STATUS_ICONS } from "@/components/tasks/status-icon";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
-import { STATUSES_IN_ORDER, STATUS_META } from "@/lib/domain/status";
+import { STATUS_VIEWS } from "@/lib/domain/status";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import { ArrowRight, Brain, CreditCard, Search, Settings, Sparkles, Sun } from "lucide-react";
@@ -56,15 +56,14 @@ export function CommandPalette({
       },
       // Status views, in the same order and words as the sidebar and the
       // Status picker.
-      ...STATUSES_IN_ORDER.filter((s) => STATUS_META[s].href !== null).map((s): CommandItem => {
-        const Icon = STATUS_ICONS[s];
-        const href = STATUS_META[s].href as string;
+      ...STATUS_VIEWS.map((view): CommandItem => {
+        const Icon = STATUS_ICONS[view.status];
         return {
-          id: `go-${s}`,
+          id: `go-${view.status}`,
           group: "navigate",
-          label: `Go to ${STATUS_META[s].label}`,
+          label: `Go to ${view.label}`,
           icon: <Icon size={14} />,
-          run: () => router.push(href),
+          run: () => router.push(view.href),
         };
       }),
       {

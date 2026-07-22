@@ -21,10 +21,17 @@ export function TaskList({
   tasks,
   emptyState,
   onOpen,
+  autoFocus = true,
 }: {
   tasks: Task[];
   emptyState?: React.ReactNode;
   onOpen: (id: string) => void;
+  /**
+   * Focus the listbox once tasks exist so j/k work immediately. On by
+   * default for page-level lists; turn off for embedded lists (e.g. the
+   * Dropped disclosure) where stealing focus would yank the user around.
+   */
+  autoFocus?: boolean;
 }) {
   const labels = useStore((s) => s.labels);
   const [activeIndex, setActiveIndex] = React.useState<number>(-1);
@@ -32,17 +39,17 @@ export function TaskList({
   const rowRefs = React.useRef<(HTMLDivElement | null)[]>([]);
   const didInitialFocus = React.useRef(false);
 
-  const ghosts = useCompletionGhosts(tasks);
+  const { ghosts, dismissGhost } = useCompletionGhosts(tasks);
 
   React.useEffect(() => {
     if (activeIndex >= tasks.length) setActiveIndex(tasks.length - 1);
   }, [tasks.length, activeIndex]);
 
   React.useEffect(() => {
-    if (tasks.length === 0 || didInitialFocus.current) return;
+    if (!autoFocus || tasks.length === 0 || didInitialFocus.current) return;
     didInitialFocus.current = true;
     listRef.current?.focus({ preventScroll: true });
-  }, [tasks.length]);
+  }, [tasks.length, autoFocus]);
 
   React.useEffect(() => {
     if (activeIndex < 0) return;
@@ -102,7 +109,15 @@ export function TaskList({
           i < rows.length - 1 ? <div className="ml-9 h-px bg-[var(--border)] opacity-60" /> : null;
         if (row.kind === "ghost") {
           return (
-            <div key={`ghost-${row.task.id}`} className="ghost-collapse">
+            <div
+              key={`ghost-${row.task.id}`}
+              className="ghost-collapse"
+              onAnimationEnd={(e) => {
+                // Unmount exactly when the collapse finishes, so the CSS
+                // timing is the single source of truth.
+                if (e.animationName === "sifty-ghost-collapse") dismissGhost(row.task.id);
+              }}
+            >
               <div>
                 <TaskRow
                   task={row.task}
@@ -144,13 +159,33 @@ interface CompletionGhost {
   restoreTo: Lifecycle;
 }
 
-/** Visible pause before the collapse animation (see .ghost-collapse). */
-const GHOST_TOTAL_MS = 880;
+/**
+ * Safety net only: ghosts normally unmount on the collapse animation's end
+ * event, so the CSS owns the timing. This just guards environments where
+ * the animation never runs.
+ */
+const GHOST_SAFETY_MS = 4000;
 
-function useCompletionGhosts(tasks: Task[]): CompletionGhost[] {
+function useCompletionGhosts(tasks: Task[]): {
+  ghosts: CompletionGhost[];
+  dismissGhost: (id: string) => void;
+} {
+  const allTasks = useStore((s) => s.tasks);
   const [ghosts, setGhosts] = React.useState<ReadonlyMap<string, CompletionGhost>>(new Map());
   const prevRef = React.useRef(tasks);
   const timersRef = React.useRef(new Map<string, ReturnType<typeof setTimeout>>());
+
+  const dismissGhost = React.useCallback((id: string) => {
+    const timer = timersRef.current.get(id);
+    if (timer) clearTimeout(timer);
+    timersRef.current.delete(id);
+    setGhosts((old) => {
+      if (!old.has(id)) return old;
+      const next = new Map(old);
+      next.delete(id);
+      return next;
+    });
+  }, []);
 
   // Layout effect: the ghost must mount in the same paint as the task's
   // removal, otherwise the row visibly blinks out before lingering.
@@ -191,7 +226,7 @@ function useCompletionGhosts(tasks: Task[]): CompletionGhost[] {
             next.delete(id);
             return next;
           });
-        }, GHOST_TOTAL_MS),
+        }, GHOST_SAFETY_MS),
       );
     }
   }, [tasks]);
@@ -203,9 +238,20 @@ function useCompletionGhosts(tasks: Task[]): CompletionGhost[] {
     };
   }, []);
 
-  // A ghost whose task reappeared in the list (unchecked in time) is done.
-  return React.useMemo(() => {
+  // Invariant at the consumption point: a ghost renders only while its task
+  // is still done in the store and hasn't re-entered this list. Un-completing
+  // from anywhere (row, sheet) removes the ghost instead of leaving a stale
+  // checked snapshot whose checkbox would demote the now-active task.
+  const visibleGhosts = React.useMemo(() => {
     const currentIds = new Set(tasks.map((t) => t.id));
-    return [...ghosts.values()].filter((g) => !currentIds.has(g.task.id));
-  }, [ghosts, tasks]);
+    const liveById = new Map(allTasks.map((t) => [t.id, t]));
+    return [...ghosts.values()].flatMap((g) => {
+      if (currentIds.has(g.task.id)) return [];
+      const live = liveById.get(g.task.id);
+      if (!live || live.lifecycle !== "done") return [];
+      return [{ ...g, task: live }];
+    });
+  }, [ghosts, tasks, allTasks]);
+
+  return { ghosts: visibleGhosts, dismissGhost };
 }
