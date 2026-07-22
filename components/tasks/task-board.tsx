@@ -259,6 +259,25 @@ export function TaskBoard() {
     setFocus({ status, index });
   }, []);
 
+  // A cross-column drop remounts the card in its new column, which drops
+  // DOM focus and leaves the remembered position pointing at the source
+  // column. Once the moved card renders in its new home, retarget the
+  // roving tab stop and DOM focus to it.
+  const pendingFocusId = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const id = pendingFocusId.current;
+    if (!id) return;
+    pendingFocusId.current = null;
+    for (const { view, tasks: columnTasks } of columns) {
+      const index = columnTasks.findIndex((t) => t.id === id);
+      if (index >= 0) {
+        setFocus({ status: view.status, index });
+        boardRef.current?.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(id)}"]`)?.focus();
+        return;
+      }
+    }
+  }, [columns]);
+
   const onBoardKeyDown = (e: React.KeyboardEvent) => {
     if (activeId) return; // a held card's arrows belong to the drag sensor
     if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -331,6 +350,7 @@ export function TaskBoard() {
     const from = (active.data.current as BoardDragData | undefined)?.status;
     const to = over.id as Lifecycle;
     if (!from || from === to) return;
+    pendingFocusId.current = String(active.id);
     updateTask(String(active.id), { lifecycle: to });
   };
 

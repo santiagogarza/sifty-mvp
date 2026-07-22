@@ -22,6 +22,13 @@ describe("middleware", () => {
     expect(location).toContain("next=%2Ftoday");
   });
 
+  it("gates the board route", async () => {
+    const req = new NextRequest("http://localhost/board");
+    const res = await middleware(req);
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location") ?? "").toContain("next=%2Fboard");
+  });
+
   it("redirects when the JWT cookie is invalid", async () => {
     const req = new NextRequest("http://localhost/today", {
       headers: { cookie: "sifty_session=not-a-real-jwt" },
