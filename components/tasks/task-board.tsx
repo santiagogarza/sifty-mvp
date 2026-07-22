@@ -21,6 +21,7 @@ import {
   type DragStartEvent,
   type KeyboardCoordinateGetter,
   KeyboardSensor,
+  MouseSensor,
   PointerSensor,
   closestCenter,
   defaultDropAnimationSideEffects,
@@ -77,6 +78,11 @@ export function TaskBoard() {
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(MouseSensor, {
       activationConstraint: {
         distance: 5,
       },
