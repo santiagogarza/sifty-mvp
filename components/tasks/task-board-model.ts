@@ -16,5 +16,6 @@ export function isTaskBoardLifecycle(lifecycle: Lifecycle): boolean {
 
 export function taskBoardLifecycleAfter(lifecycle: Lifecycle, offset: -1 | 1): Lifecycle | null {
   const index = TASK_BOARD_LIFECYCLES.indexOf(lifecycle);
+  if (index < 0) return null;
   return TASK_BOARD_LIFECYCLES[index + offset] ?? null;
 }

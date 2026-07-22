@@ -3,7 +3,7 @@
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { useTaskCounts } from "@/lib/store/selectors";
 import { cn } from "@/lib/utils/cn";
-import { Brain, Inbox, ListTodo, PauseCircle, Settings, Sun, Target } from "lucide-react";
+import { Brain, Columns3, Inbox, ListTodo, PauseCircle, Settings, Sun, Target } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as React from "react";
@@ -21,6 +21,7 @@ export function Sidebar() {
 
   const items: NavItem[] = [
     { label: "Today", href: "/today", icon: Sun, count: counts.today },
+    { label: "Board", href: "/board", icon: Columns3 },
     { label: "Focus", href: "/focus", icon: Target, count: counts.focus },
     { label: "Inbox", href: "/inbox", icon: Inbox, count: counts.inbox },
     { label: "Waiting", href: "/waiting", icon: PauseCircle, count: counts.waiting },

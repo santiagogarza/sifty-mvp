@@ -25,6 +25,8 @@ describe("task board model", () => {
   it("does not move past board edges or include dropped tasks", () => {
     expect(taskBoardLifecycleAfter("inbox", -1)).toBeNull();
     expect(taskBoardLifecycleAfter("done", 1)).toBeNull();
+    expect(taskBoardLifecycleAfter("dropped", -1)).toBeNull();
+    expect(taskBoardLifecycleAfter("dropped", 1)).toBeNull();
     expect(isTaskBoardLifecycle("dropped")).toBe(false);
   });
 });
