@@ -124,3 +124,22 @@ Follow-up on commit 9fcd145 (Run 3 finding addressed). Delta since Run 3 confirm
 **Fix:** Two lines in the existing toggle test, right after the entry-focus assertion: `await page.locator('[data-column="someday"] [role="listbox"]').click({ position: { x: 4, y: 10 } });` then re-assert `await expect(page.locator('[aria-label="Board columns"]')).toBeFocused();` (x=4 sits in the listbox's 6px `px-1.5` padding strip, left of any card at any y). This asserts the user-visible contract — clicking column whitespace never strands the keyboard — not the implementation, so it also passes under any correct redesign (e.g. attribute-less listboxes with click fall-through). No new test file.
 
 Found 1 issue.
+
+## Run 5 — 2026-07-22 05:15 UTC
+
+Follow-up on commit 17cd57a (Run 4 finding addressed). Delta since Run 4 confirmed limited to `board.spec.ts`, `README.md` (its only change on the branch), and this log. Verification: full re-read of `board.spec.ts` and `task-board.tsx`; README claims traced against `keyboard.tsx`, `view-toggle.ts`, and the board key handler; `pnpm biome check` (136 files) and `pnpm tsc --noEmit` re-run clean here; board spec re-run 3/3 against the running dev server.
+
+**Run 4 fix verified correct, including a mutation probe:**
+
+- The added lines match the prescription: click `[data-column="someday"] [role="listbox"]` at (4, 10), re-assert `[aria-label="Board columns"]` focused. Both selectors are unique (one section per lifecycle, one listbox each; one board container).
+- Geometry holds in every state: x=4 sits inside the `px-1.5` (6px) padding strip left of any card, so parallel-worker tasks landing in Someday can't intercept; the listbox is `flex-1` in a full-height column, so y=10 is inside it even when the column is empty; the `overflow-y-auto` scrollbar is on the right edge. At the default 1280px viewport all five ≥220px columns fit, so the click needs no horizontal scroll (and Playwright auto-scrolls regardless).
+- No interaction side effects: MouseSensor listeners live on cards, so the padding click starts no drag; `openCard` only fires from cards, so no sheet opens; the trailing `v` press falls through the board's `onKeyDown` switch without `preventDefault` and reaches the global handler — the final `/waiting` assertion confirms.
+- Coverage is real, not vacuous — mutation-probed: with the container's focus redirect deleted (the exact cleanup Run 4 predicted), the test fails at the post-click assertion (`board.spec.ts:52`); restored, it passes. It also stays green under the attribute-less redesign (click falls through to the container), so it locks the contract, not the implementation. The Tab-order half stays out of scope as Run 4 accepted (Chromium-version-dependent heuristic).
+- README rows verified against the code: `v` is handled globally with editable/dialog exclusions and `toggleView` falls back to the board from non-list routes (Run 2), so "toggle list ⇄ board layout" is honest; `←/→`/`h`/`l` map to `horizontal(±1)` and exist only on the board; `[`/`]` map to `shiftColumn(-1/+1)`, agreeing with the row's "left / right" ordering.
+
+### The keyboard table's new list/board split misattributes vertical navigation to the list only
+**File:** `README.md` L273-L274
+**What's wrong:** The board handles `ArrowDown`/`j` and `ArrowUp`/`k` as in-column navigation (`task-board.tsx` `vertical(±1)`; its header comment names "arrows / j k h l" as the board model). Before this commit the `↑/↓` (`j`/`k`) row's "Navigate task list" was merely generic; now it sits directly above the new "Navigate board columns" row, and the parallel structure reads as an exclusive split — a user learning the board from this table (the README's only board documentation) is told horizontal navigation exists but vertical does not. The commit's purpose was to document the board's keyboard model; it covered three of the four navigation gestures and turned the fourth's description misleading.
+**Fix:** Reword the existing row to cover both surfaces, e.g. `| \`↑/↓\` (\`j\`/\`k\`) | Navigate task list / cards in a board column |`. One row; keeps the table's terse parallel style.
+
+Found 1 issue.
