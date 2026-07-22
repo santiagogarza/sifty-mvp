@@ -12,6 +12,14 @@ pnpm dev
 
 Visit http://localhost:3000 — it redirects to `/today`.
 
+## Views
+
+- **Today** is the focused daily list.
+- **Board** shows Inbox, Focus, Waiting on, Someday, and Done together. Drag a
+  card between columns to change its lifecycle; column order remains automatic.
+- **Inbox, Focus, Waiting on, Someday, and Done** are dedicated lifecycle lists.
+- **Memory and Settings** hold durable context and preferences.
+
 Useful scripts:
 
 ```bash
@@ -81,12 +89,12 @@ app/
     triage/route.ts            # AI triage: gate → model → durable apply
     agent-brief/route.ts       # "Prepare for agent" handoff brief
     stripe/{checkout,portal,webhook}/route.ts
-middleware.ts                  # gates /today, /focus, /inbox, /waiting,
+middleware.ts                  # gates /today, /board, /focus, /inbox, /waiting,
                                # /someday, /memory, /settings on a JWT cookie
 
 components/
   app-shell/                   # frame, sidebar, top bar, palette, bottom nav
-  tasks/                       # capture, list, row, detail sheet, ai status
+  tasks/                       # capture, list, board, detail sheet, ai status
   auth/auth-form.tsx           # sign-in / sign-up shared form
   billing/billing-panel.tsx    # checkout + portal + tier display
   ui/                          # primitives
@@ -271,6 +279,7 @@ pnpm test:e2e
 | `⌘↵` | Submit capture |
 | `↑/↓` (`j`/`k`) | Navigate task list |
 | `Enter` | Open the highlighted task |
+| `Space`, then `←/→`, `Space` | Pick up, move, and drop a focused board card |
 | `Esc` | Close any overlay |
 
 ## License

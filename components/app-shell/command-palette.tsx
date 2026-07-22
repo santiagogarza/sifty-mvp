@@ -8,7 +8,16 @@ import { Kbd } from "@/components/ui/kbd";
 import { STATUS_VIEWS } from "@/lib/domain/status";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
-import { ArrowRight, Brain, CreditCard, Search, Settings, Sparkles, Sun } from "lucide-react";
+import {
+  ArrowRight,
+  Brain,
+  Columns3,
+  CreditCard,
+  Search,
+  Settings,
+  Sparkles,
+  Sun,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
@@ -53,6 +62,13 @@ export function CommandPalette({
         label: "Go to Today",
         icon: <Sun size={14} />,
         run: () => router.push("/today"),
+      },
+      {
+        id: "open-board",
+        group: "navigate",
+        label: "Open board",
+        icon: <Columns3 size={14} />,
+        run: () => router.push("/board"),
       },
       // Status views, in the same order and words as the sidebar and the
       // Status picker.

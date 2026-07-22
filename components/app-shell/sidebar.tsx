@@ -7,7 +7,7 @@ import type { Lifecycle } from "@/lib/domain/types";
 import { type TaskCounts, useTaskCounts } from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
-import { Brain, Settings, Sun } from "lucide-react";
+import { Brain, Columns3, Settings, Sun } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as React from "react";
@@ -32,10 +32,11 @@ export function Sidebar() {
   const counts = useTaskCounts();
   const hydrated = useStore((s) => s.hydrated);
 
-  // Today first (the smart lens / homepage), then the statuses in pipeline
-  // order — the same order, words, and icons as the Status picker.
+  // Today and Board are the two cross-status views. Status destinations
+  // follow in the same order, words, and icons as the Status picker.
   const items: NavItem[] = [
     { label: "Today", href: "/today", icon: Sun, count: counts.today },
+    { label: "Board", href: "/board", icon: Columns3 },
     ...STATUS_VIEWS.map((view) => {
       const countKey = STATUS_COUNT_KEY[view.status];
       return {
