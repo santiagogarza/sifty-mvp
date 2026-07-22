@@ -27,6 +27,10 @@ export function BoardCard({
     id: task.id,
     disabled: overlay,
   });
+  const { onKeyDown: onDragKeyDown, ...dragListeners } = (listeners ?? {}) as Record<
+    string,
+    ((event: React.SyntheticEvent) => void) | undefined
+  >;
 
   const due = task.due;
   const overdue = isOverdue(due);
@@ -49,9 +53,10 @@ export function BoardCard({
       ref={overlay ? undefined : setNodeRef}
       style={style}
       {...(overlay ? {} : attributes)}
-      {...(overlay ? {} : listeners)}
+      {...(overlay ? {} : dragListeners)}
       onClick={() => onOpen?.(task.id)}
       onKeyDown={(e) => {
+        if (!overlay) onDragKeyDown?.(e);
         if (e.key === "Enter") {
           e.preventDefault();
           onOpen?.(task.id);
