@@ -122,7 +122,7 @@ export function TaskBoard() {
             />
           ))}
         </div>
-        <DragOverlay dropAnimation={{ duration: 180, easing: "var(--ease-product)" }}>
+        <DragOverlay dropAnimation={{ duration: 180, easing: "cubic-bezier(0.32, 0.72, 0.18, 1)" }}>
           {activeTask ? <BoardCardPreview task={activeTask} labels={labels} /> : null}
         </DragOverlay>
       </DndContext>

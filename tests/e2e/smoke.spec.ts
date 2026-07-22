@@ -65,10 +65,19 @@ test("board moves a task between statuses", async ({ page }) => {
 
   await page.getByRole("link", { name: "Board" }).click();
   const card = page.getByTestId("task-board").getByText(marker).locator("..").locator("..");
-  await card
-    .getByRole("button", { name: `Drag ${marker}` })
-    .dragTo(page.getByTestId("board-column-active"));
+  const dragHandle = card.getByRole("button", { name: `Drag ${marker}` });
+  const targetColumn = page.getByTestId("board-column-active");
+  const sourceBox = await dragHandle.boundingBox();
+  const targetBox = await targetColumn.boundingBox();
+  if (!sourceBox || !targetBox) throw new Error("Drag source or target is not visible");
+  await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, {
+    steps: 12,
+  });
+  await page.mouse.up();
   await expect(page.getByTestId("board-column-active").getByText(marker)).toBeVisible();
+  await expect(page.getByRole("heading", { name: marker })).toHaveCount(1);
 
   await page
     .getByTestId("board-column-active")
