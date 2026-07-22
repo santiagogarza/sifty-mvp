@@ -257,16 +257,19 @@ function createColumnKeyboardCoordinates(
     if (!targetStatus) return currentCoordinates;
     keyboardStatusRef.current = targetStatus;
 
+    const currentElement = document.querySelector<HTMLElement>(
+      `[data-board-column-id="${currentStatus}"]`,
+    );
     const targetElement = document.querySelector<HTMLElement>(
       `[data-board-column-id="${targetStatus}"]`,
     );
     targetElement?.scrollIntoView({ block: "nearest", inline: "center" });
+    const currentRect = currentElement?.getBoundingClientRect();
     const targetRect = targetElement?.getBoundingClientRect();
-    const activeRect = context.draggingNodeRect;
-    if (!targetRect || !activeRect) return currentCoordinates;
+    if (!currentRect || !targetRect) return currentCoordinates;
 
     return {
-      x: targetRect.left + targetRect.width / 2 - activeRect.width / 2,
+      x: currentCoordinates.x + targetRect.left - currentRect.left,
       y: currentCoordinates.y,
     };
   };
