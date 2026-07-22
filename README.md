@@ -82,7 +82,8 @@ app/
     agent-brief/route.ts       # "Prepare for agent" handoff brief
     stripe/{checkout,portal,webhook}/route.ts
 middleware.ts                  # gates /today, /focus, /inbox, /waiting,
-                               # /someday, /memory, /settings on a JWT cookie
+                               # /someday, /done, /board, /memory, /settings
+                               # on a JWT cookie
 
 components/
   app-shell/                   # frame, sidebar, top bar, palette, bottom nav
@@ -272,6 +273,11 @@ pnpm test:e2e
 | `↑/↓` (`j`/`k`) | Navigate task list |
 | `Enter` | Open the highlighted task |
 | `Esc` | Close any overlay |
+
+On the Board (`/board`, also in the sidebar and palette): every status is
+a column and dragging a card between columns changes its status. Fully
+keyboard-driven too — focus a card, `Space` picks it up, `←/→` move it
+across columns, `Space` drops, `Esc` cancels, `Enter` opens the card.
 
 ## License
 

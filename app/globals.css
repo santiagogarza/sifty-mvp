@@ -375,6 +375,28 @@ button,
   display: inline-block;
   animation: sifty-count-pulse 600ms var(--ease-product) both;
 }
+/* The lifted board card (DragOverlay): a short rise to a light scale +
+   elevated shadow — the "pickup" beat. Under reduced motion the card
+   still drags, just without the flourish. */
+@keyframes sifty-card-lift {
+  from {
+    transform: none;
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+.board-card-lift {
+  transform: scale(1.03);
+  box-shadow: 0 12px 32px -12px oklch(0% 0 0 / 0.35), 0 4px 12px -8px oklch(0% 0 0 / 0.25);
+  animation: sifty-card-lift 160ms var(--ease-product);
+}
+@media (prefers-reduced-motion: reduce) {
+  .board-card-lift {
+    animation: none;
+    transform: none;
+    box-shadow: 0 2px 8px -2px oklch(0% 0 0 / 0.2);
+  }
+}
+
 /* A just-completed row: stays readable for a beat, then collapses.
    The grid-template-rows trick animates an unknown height to zero. */
 .ghost-collapse {

@@ -8,7 +8,16 @@ import { Kbd } from "@/components/ui/kbd";
 import { STATUS_VIEWS } from "@/lib/domain/status";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
-import { ArrowRight, Brain, CreditCard, Search, Settings, Sparkles, Sun } from "lucide-react";
+import {
+  ArrowRight,
+  Brain,
+  Columns3,
+  CreditCard,
+  Search,
+  Settings,
+  Sparkles,
+  Sun,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
@@ -66,6 +75,13 @@ export function CommandPalette({
           run: () => router.push(view.href),
         };
       }),
+      {
+        id: "go-board",
+        group: "navigate",
+        label: "Open board",
+        icon: <Columns3 size={14} />,
+        run: () => router.push("/board"),
+      },
       {
         id: "go-memory",
         group: "navigate",
