@@ -28,6 +28,8 @@ export function BoardCard({
     disabled: overlay,
   });
 
+  const { onKeyDown: draggableKeyDown, ...restListeners } = listeners ?? {};
+
   const style = overlay
     ? undefined
     : transform
@@ -39,12 +41,14 @@ export function BoardCard({
       ref={overlay ? undefined : setNodeRef}
       style={style}
       {...(overlay ? {} : attributes)}
-      {...(overlay ? {} : listeners)}
+      {...(overlay ? {} : restListeners)}
       onClick={() => {
         if (!isDragging) onOpen(task.id);
       }}
       onKeyDown={(e) => {
-        if (e.key === "Enter") {
+        draggableKeyDown?.(e);
+        if (e.defaultPrevented) return;
+        if (e.key === "Enter" && !isDragging) {
           e.preventDefault();
           onOpen(task.id);
         }
@@ -52,7 +56,8 @@ export function BoardCard({
       className={cn(
         "rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)]",
         "px-3 py-2.5 touch-none select-none",
-        "transition-[opacity,box-shadow,transform] duration-200 ease-[var(--ease-product)]",
+        "transition-[opacity,box-shadow] duration-200 ease-[var(--ease-product)]",
+        isDragging && !overlay && "transition-none",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg)]",
         !overlay && "cursor-grab active:cursor-grabbing",
         isDragging && !overlay && "opacity-40",
