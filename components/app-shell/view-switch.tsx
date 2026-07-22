@@ -43,8 +43,10 @@ export function useViewToggle(): {
   );
 
   const toggleView = React.useCallback(() => {
-    if (current === "list") setView("board");
-    else if (current === "board") setView("list");
+    // Off the task views (settings, memory) `v` still means "to the board",
+    // matching the shortcut the command palette advertises.
+    if (current === "board") setView("list");
+    else setView("board");
   }, [current, setView]);
 
   return { current, setView, toggleView };

@@ -88,11 +88,15 @@ export function BoardCardContent({ task, labels }: { task: Task; labels: Label[]
 
   const isDone = task.lifecycle === "done";
   const dueLabel = formatRelativeDay(task.due);
-  const dueTone: "rose" | "ember" | "neutral" = isOverdue(task.due)
-    ? "rose"
-    : isToday(task.due)
-      ? "ember"
-      : "neutral";
+  // Finished work can't be overdue — done cards keep the date for context
+  // without the alarm tones.
+  const dueTone: "rose" | "ember" | "neutral" = isDone
+    ? "neutral"
+    : isOverdue(task.due)
+      ? "rose"
+      : isToday(task.due)
+        ? "ember"
+        : "neutral";
   const showGlyph = task.priorityBucket !== "unset";
   const showAi =
     task.aiStatus === "pending" || task.aiStatus === "running" || task.aiStatus === "failed";

@@ -120,6 +120,18 @@ export function TaskBoard() {
   const cardNodes = React.useRef(new Map<string, HTMLElement>());
   const pendingFocusId = React.useRef<string | null>(null);
   const lastDropAt = React.useRef(0);
+  const boardRef = React.useRef<HTMLDivElement>(null);
+  const didInitialFocus = React.useRef(false);
+
+  // Same convention as TaskList: focus the container once so the shortcuts
+  // work the moment the board opens, without tabbing into a card first.
+  React.useEffect(() => {
+    if (didInitialFocus.current) return;
+    const el = boardRef.current;
+    if (!el) return;
+    didInitialFocus.current = true;
+    el.focus({ preventScroll: true });
+  });
 
   const reducedMotion = usePrefersReducedMotion();
 
@@ -168,14 +180,16 @@ export function TaskBoard() {
   }, [detailTaskId]);
 
   const moveTask = React.useCallback(
-    (task: Task, target: BoardLifecycle, opts: { refocus: boolean }) => {
+    (task: Task, target: BoardLifecycle, source: "keyboard" | "pointer") => {
       if (task.lifecycle === target) return;
       updateTask(task.id, { lifecycle: target });
-      setAnnouncement(`Moved “${task.title}” to ${lifecycleLabel(target)}.`);
-      if (opts.refocus) {
-        setFocusedId(task.id);
-        pendingFocusId.current = task.id;
+      // Pointer drops are already announced by dnd-kit's live region; a
+      // second voice would double-speak every drag.
+      if (source === "keyboard") {
+        setAnnouncement(`Moved “${task.title}” to ${lifecycleLabel(target)}.`);
       }
+      setFocusedId(task.id);
+      pendingFocusId.current = task.id;
     },
     [updateTask],
   );
@@ -204,7 +218,7 @@ export function TaskBoard() {
       const task = taskById.get(String(e.active.id));
       const target = e.over ? String(e.over.id) : null;
       if (!task || !target || !isBoardLifecycle(target)) return;
-      moveTask(task, target, { refocus: false });
+      moveTask(task, target, "pointer");
     },
     [taskById, moveTask],
   );
@@ -242,7 +256,10 @@ export function TaskBoard() {
 
   const onBoardKeyDown = (e: React.KeyboardEvent) => {
     if (activeTask) return; // a pointer drag owns the interaction
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    // Act on what actually has focus — a card or the board itself — never
+    // on remembered state while e.g. the Done column's button is focused.
+    const target = e.target as HTMLElement;
+    if (target !== e.currentTarget && !target.closest("[data-task-id]")) return;
 
     const pos = focusedId ? findPosition(grid, focusedId) : null;
 
@@ -272,9 +289,19 @@ export function TaskBoard() {
     const shiftColumn = (delta: 1 | -1) => {
       if (!pos) return;
       const task = grid[pos.col]?.[pos.row];
-      const target = BOARD_LIFECYCLES[pos.col + delta];
-      if (task && target) moveTask(task, target, { refocus: true });
+      const targetStage = BOARD_LIFECYCLES[pos.col + delta];
+      if (task && targetStage) moveTask(task, targetStage, "keyboard");
     };
+
+    // Brackets come with AltGr/Option on many layouts, so only Cmd (which
+    // means history back/forward) disqualifies them.
+    if (e.key === "]" || e.key === "[") {
+      if (e.metaKey) return;
+      e.preventDefault();
+      shiftColumn(e.key === "]" ? 1 : -1);
+      return;
+    }
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
 
     switch (e.key) {
       case "ArrowDown":
@@ -296,14 +323,6 @@ export function TaskBoard() {
       case "h":
         e.preventDefault();
         horizontal(-1);
-        break;
-      case "]":
-        e.preventDefault();
-        shiftColumn(1);
-        break;
-      case "[":
-        e.preventDefault();
-        shiftColumn(-1);
         break;
       case "Enter":
       case " ":
@@ -349,8 +368,10 @@ export function TaskBoard() {
         header={boardHeader()}
         body={
           <div
+            ref={boardRef}
             role="group"
             aria-label="Board columns"
+            tabIndex={-1}
             onKeyDown={onBoardKeyDown}
             className={cn(
               "flex flex-1 min-h-0 items-stretch gap-2.5 overflow-x-auto pb-3 focus:outline-none",
@@ -375,7 +396,7 @@ export function TaskBoard() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="mx-1 mb-1 text-[12px] text-[var(--fg-muted)]"
+                      className="mx-1.5 mb-1.5 shrink-0 text-[12px] text-[var(--fg-muted)]"
                       onClick={() => setShowAllDone(true)}
                     >
                       Show all {columns.done.length}
@@ -520,8 +541,8 @@ function BoardColumn({
             registerNode={registerNode}
           />
         ))}
-        {footer}
       </div>
+      {footer}
     </section>
   );
 }
