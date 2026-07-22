@@ -82,7 +82,8 @@ app/
     agent-brief/route.ts       # "Prepare for agent" handoff brief
     stripe/{checkout,portal,webhook}/route.ts
 middleware.ts                  # gates /today, /focus, /inbox, /waiting,
-                               # /someday, /memory, /settings on a JWT cookie
+                               # /someday, /done, /board, /memory, /settings
+                               # on a JWT cookie
 
 components/
   app-shell/                   # frame, sidebar, top bar, palette, bottom nav
@@ -261,6 +262,19 @@ pnpm build
 pnpm test:e2e
 ```
 
+## Views
+
+Two ways to look at the same tasks, toggled from the segmented control in
+the Board header (List ↔ Board):
+
+- **List** — Today (a smart lens) plus one page per status (Inbox, Focus,
+  Waiting on, Someday, Done), reachable from the sidebar and command palette.
+- **Board** (`/board`) — a Kanban of the five routed statuses. Drag a card
+  to another column to change its status; the move syncs like any edit and
+  moving to/from Done toggles completion. Cross-column only — order within a
+  column stays computed. Fully keyboard-drivable (see below) with
+  screen-reader announcements for pickup/move/drop.
+
 ## Keyboard
 
 | Key | Action |
@@ -271,7 +285,9 @@ pnpm test:e2e
 | `⌘↵` | Submit capture |
 | `↑/↓` (`j`/`k`) | Navigate task list |
 | `Enter` | Open the highlighted task |
-| `Esc` | Close any overlay |
+| `Space` | Board: pick up / drop the focused card |
+| `←/→` | Board: move a picked-up card between columns |
+| `Esc` | Close any overlay / cancel a board drag |
 
 ## License
 
