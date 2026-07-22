@@ -43,6 +43,14 @@ test("layout switch round-trips between the list and the board", async ({ page }
   await page.keyboard.press("v");
   await expect(page).toHaveURL(/\/board/);
   await expect(page.locator('[aria-label="Board columns"]')).toBeFocused();
+
+  // Clicking a column's whitespace must hand focus back to the board, never
+  // strand it on the scroll container where keys go dead.
+  await page
+    .locator('[data-column="someday"] [role="listbox"]')
+    .click({ position: { x: 4, y: 10 } });
+  await expect(page.locator('[aria-label="Board columns"]')).toBeFocused();
+
   await page.keyboard.press("v");
   await expect(page).toHaveURL(/\/waiting/);
 });
