@@ -1,16 +1,19 @@
 "use client";
 
+import { STATUS_ICONS } from "@/components/tasks/status-icon";
+import { STATUS_META } from "@/lib/domain/status";
 import { useTaskCounts } from "@/lib/store/selectors";
 import { cn } from "@/lib/utils/cn";
-import { Inbox, Plus, Settings, Sun, Target } from "lucide-react";
+import { Plus, Settings, Sun } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as React from "react";
 
 /**
- * Mobile bottom navigation. Five slots: Today, Focus, Capture, Inbox, Settings.
- * The Capture slot is visually distinct — a single warm pill — because it's
- * the most-used action.
+ * Mobile bottom navigation. Five slots: Today, Focus, Capture, Inbox,
+ * Settings. The Capture slot is visually distinct — a single warm pill —
+ * because it's the most-used action. Waiting on / Someday / Done are
+ * reachable on phones through the command palette in the top bar.
  */
 export function BottomNav({ onCapture }: { onCapture: () => void }) {
   const pathname = usePathname();
@@ -18,9 +21,19 @@ export function BottomNav({ onCapture }: { onCapture: () => void }) {
 
   const items = [
     { href: "/today", label: "Today", icon: Sun, count: counts.today },
-    { href: "/focus", label: "Focus", icon: Target, count: counts.focus },
+    {
+      href: "/focus",
+      label: STATUS_META.active.label,
+      icon: STATUS_ICONS.active,
+      count: counts.focus,
+    },
     null,
-    { href: "/inbox", label: "Inbox", icon: Inbox, count: counts.inbox },
+    {
+      href: "/inbox",
+      label: STATUS_META.inbox.label,
+      icon: STATUS_ICONS.inbox,
+      count: counts.inbox,
+    },
     { href: "/settings", label: "Settings", icon: Settings, count: 0 },
   ] as const;
 

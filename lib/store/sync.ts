@@ -1,6 +1,7 @@
 "use client";
 
 import { isTriageInFlight, runTriage } from "@/lib/ai/run-triage";
+import { normalizeAssigneeName } from "@/lib/domain/assignee";
 import { LABEL_LIMITS, MEMORY_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
 import type { Label, Memory, Task } from "@/lib/domain/types";
 import * as React from "react";
@@ -262,6 +263,7 @@ function taskPatchBody(task: Task): Record<string, unknown> {
     effort: task.effort,
     due: task.due,
     delegationCandidate: task.delegationCandidate,
+    assigneeName: normalizeAssigneeName(clipOrNull(task.assigneeName, TASK_LIMITS.assigneeName)),
     confidence: task.confidence,
     clarifyingQuestion: clipOrNull(task.clarifyingQuestion, TASK_LIMITS.clarifyingQuestion),
     rationale: clipOrNull(task.rationale, TASK_LIMITS.rationale),

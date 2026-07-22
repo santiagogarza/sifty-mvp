@@ -201,6 +201,7 @@ export function createMemoryRepos(): MemoryReposHandle {
         effort: "small",
         due: null,
         delegationCandidate: "unsure",
+        assigneeName: null,
         confidence: 0,
         clarifyingQuestion: null,
         rationale: null,

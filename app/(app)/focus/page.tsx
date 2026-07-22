@@ -9,9 +9,9 @@ export default function FocusPage() {
     <PageShell title="Focus">
       <TaskView
         title="Focus"
-        description="Active work, sorted by Sifty's read on what to do next. Sliding the priority moves things; letting AI re-triage rebalances."
+        description="Work you've committed to, sorted by Sifty's read on what to do next. Sliding the priority moves things; letting AI re-triage rebalances."
         selector={selectFocusTasks}
-        emptyTitle="No active work."
+        emptyTitle="Nothing in Focus."
         emptyDescription="Move tasks here from Inbox when you're ready to commit to them."
       />
     </PageShell>

@@ -46,10 +46,12 @@ export function TopBar({
 
       <div className="flex items-center gap-2">
         {rightSlot}
+        {/* Visible on phones too: with no sidebar there, the palette is the
+            route to Waiting on / Someday / Done. */}
         <button
           type="button"
           onClick={onCommand}
-          className="hidden sm:flex h-9 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-strong)] bg-[var(--surface)] px-3 text-[13px] text-[var(--fg-muted)] hover:bg-[var(--surface-hover)] transition-colors"
+          className="flex h-9 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-strong)] bg-[var(--surface)] px-3 text-[13px] text-[var(--fg-muted)] hover:bg-[var(--surface-hover)] transition-colors"
           aria-label="Open command palette"
         >
           <Search size={13} />

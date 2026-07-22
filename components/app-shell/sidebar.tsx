@@ -1,9 +1,13 @@
 "use client";
 
+import { STATUS_ICONS } from "@/components/tasks/status-icon";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
-import { useTaskCounts } from "@/lib/store/selectors";
+import { STATUS_VIEWS } from "@/lib/domain/status";
+import type { Lifecycle } from "@/lib/domain/types";
+import { type TaskCounts, useTaskCounts } from "@/lib/store/selectors";
+import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
-import { Brain, Inbox, ListTodo, PauseCircle, Settings, Sun, Target } from "lucide-react";
+import { Brain, Settings, Sun } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as React from "react";
@@ -15,16 +19,32 @@ interface NavItem {
   count?: number;
 }
 
+/** Which count backs each status view. Done deliberately shows no badge. */
+const STATUS_COUNT_KEY: Partial<Record<Lifecycle, keyof TaskCounts>> = {
+  inbox: "inbox",
+  active: "focus",
+  waiting: "waiting",
+  someday: "someday",
+};
+
 export function Sidebar() {
   const pathname = usePathname();
   const counts = useTaskCounts();
+  const hydrated = useStore((s) => s.hydrated);
 
+  // Today first (the smart lens / homepage), then the statuses in pipeline
+  // order — the same order, words, and icons as the Status picker.
   const items: NavItem[] = [
     { label: "Today", href: "/today", icon: Sun, count: counts.today },
-    { label: "Focus", href: "/focus", icon: Target, count: counts.focus },
-    { label: "Inbox", href: "/inbox", icon: Inbox, count: counts.inbox },
-    { label: "Waiting", href: "/waiting", icon: PauseCircle, count: counts.waiting },
-    { label: "Someday", href: "/someday", icon: ListTodo, count: counts.someday },
+    ...STATUS_VIEWS.map((view) => {
+      const countKey = STATUS_COUNT_KEY[view.status];
+      return {
+        label: view.label,
+        href: view.href,
+        icon: STATUS_ICONS[view.status],
+        count: countKey ? counts[countKey] : undefined,
+      };
+    }),
   ];
 
   return (
@@ -57,11 +77,7 @@ export function Sidebar() {
               >
                 <Icon size={14} className="opacity-80" />
                 <span className="flex-1">{item.label}</span>
-                {item.count && item.count > 0 ? (
-                  <span className="text-num text-[11.5px] tabular-nums text-[var(--fg-subtle)]">
-                    {item.count}
-                  </span>
-                ) : null}
+                {item.count !== undefined ? <NavCount value={item.count} live={hydrated} /> : null}
               </Link>
             );
           })}
@@ -109,6 +125,40 @@ export function Sidebar() {
         </div>
       </aside>
     </TooltipProvider>
+  );
+}
+
+/**
+ * Count badge that pulses once when the number goes up — the landing cue
+ * after a capture or a filing lands in this view.
+ *
+ * Every increment bumps `pulseKey`, and the key change remounts the span so
+ * the CSS animation restarts by construction — no timer flag that can get
+ * stuck. `live` gates observation until the store has rehydrated so the
+ * initial 0 → N jump on page load doesn't pulse every badge.
+ */
+function NavCount({ value, live }: { value: number; live: boolean }) {
+  const prevRef = React.useRef<number | null>(null);
+  const [pulseKey, setPulseKey] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!live) return;
+    const prev = prevRef.current;
+    prevRef.current = value;
+    if (prev !== null && value > prev) setPulseKey((k) => k + 1);
+  }, [value, live]);
+
+  if (value <= 0) return null;
+  return (
+    <span
+      key={pulseKey}
+      className={cn(
+        "text-num text-[11.5px] tabular-nums text-[var(--fg-subtle)]",
+        pulseKey > 0 && "animate-count-pulse",
+      )}
+    >
+      {value}
+    </span>
   );
 }
 

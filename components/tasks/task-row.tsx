@@ -1,7 +1,8 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import type { Label, Task } from "@/lib/domain/types";
+import { assigneeDisplayValue } from "@/lib/domain/assignee";
+import type { Label, Lifecycle, Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import { formatRelativeDay, isOverdue, isToday } from "@/lib/utils/dates";
@@ -28,8 +29,14 @@ export const TaskRow = React.forwardRef<
     active?: boolean;
     labels: Label[];
     tabIndex?: number;
+    /**
+     * Status to restore when un-completing. Completion ghosts pass the
+     * status the task had before it was checked off, so a quick uncheck
+     * puts it back exactly where it was.
+     */
+    uncompleteTo?: Lifecycle;
   }
->(function TaskRow({ task, onOpen, active, labels, tabIndex = -1 }, ref) {
+>(function TaskRow({ task, onOpen, active, labels, tabIndex = -1, uncompleteTo = "active" }, ref) {
   const updateTask = useStore((s) => s.updateTask);
 
   const labelMap = React.useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels]);
@@ -38,6 +45,7 @@ export const TaskRow = React.forwardRef<
   const due = task.due;
   const overdue = isOverdue(due);
   const dueLabel = formatRelativeDay(due);
+  const assignee = task.delegationCandidate === "person" ? assigneeDisplayValue(task) : null;
   const dueTone: "rose" | "ember" | "neutral" = overdue
     ? "rose"
     : isToday(due)
@@ -47,7 +55,7 @@ export const TaskRow = React.forwardRef<
   const onComplete = (e: React.MouseEvent) => {
     e.stopPropagation();
     updateTask(task.id, {
-      lifecycle: task.lifecycle === "done" ? "active" : "done",
+      lifecycle: task.lifecycle === "done" ? uncompleteTo : "done",
     });
   };
 
@@ -80,9 +88,13 @@ export const TaskRow = React.forwardRef<
         onClick={onComplete}
         aria-label={isDone ? "Mark as not done" : "Mark as done"}
         className={cn(
-          "size-5 rounded-full border flex items-center justify-center",
+          // The visible circle is 20px; the ::after pseudo pads the hit
+          // target to ~32px (Fitts) without changing the layout.
+          "relative size-5 rounded-full border flex items-center justify-center",
+          "after:absolute after:-inset-1.5 after:content-['']",
           "transition-all duration-150 ease-[var(--ease-product)]",
-          "border-[var(--border-strong)] hover:border-[var(--accent)]",
+          !isDone &&
+            "bg-[var(--surface-muted)] border-[var(--fg-muted)]/40 hover:bg-[var(--surface-hover)] hover:border-[var(--accent)]",
           isDone && "bg-[var(--done)] border-[var(--done)]",
         )}
       >
@@ -124,6 +136,11 @@ export const TaskRow = React.forwardRef<
       </div>
 
       <div className="flex items-center gap-2 justify-end">
+        {assignee ? (
+          <Badge tone="neutral" variant="outline" className="hidden sm:inline-flex max-w-[120px]">
+            <span className="truncate">{assignee}</span>
+          </Badge>
+        ) : null}
         {dueLabel ? (
           <Badge tone={dueTone} variant={dueTone === "neutral" ? "outline" : "soft"}>
             {dueLabel}
