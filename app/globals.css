@@ -375,6 +375,30 @@ button,
   display: inline-block;
   animation: sifty-count-pulse 600ms var(--ease-product) both;
 }
+/* Board drag "lift": the DragOverlay clone scales up with an elevated
+   shadow — a satisfying pickup peak. The scale is the resting state (held by
+   `both`) so the card stays lifted for the whole drag. Under reduced motion
+   the flourish is dropped entirely; the drag still functions. */
+@keyframes sifty-board-lift {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.03);
+  }
+}
+.board-card-overlay {
+  animation: sifty-board-lift 160ms var(--ease-product) both;
+  box-shadow: 0 8px 24px oklch(0% 0 0 / 0.16), 0 2px 6px oklch(0% 0 0 / 0.12);
+}
+@media (prefers-reduced-motion: reduce) {
+  .board-card-overlay {
+    animation-name: none;
+    transform: none;
+    box-shadow: 0 4px 12px oklch(0% 0 0 / 0.12);
+  }
+}
+
 /* A just-completed row: stays readable for a beat, then collapses.
    The grid-template-rows trick animates an unknown height to zero. */
 .ghost-collapse {
