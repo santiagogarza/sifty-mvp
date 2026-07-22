@@ -6,6 +6,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetClose, SheetContent } from "@/components/ui/sheet";
 import { runTriage } from "@/lib/ai/run-triage";
+import { lifecycleLabel } from "@/lib/domain/lifecycle";
 import { LABEL_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
 import { bucketLabel } from "@/lib/domain/priority";
 import {
@@ -873,14 +874,4 @@ function effortHint(e: Effort): string {
 }
 function delegationLabel(d: DelegationCandidate): string {
   return { self: "Me", ai: "AI agent", person: "A person", unsure: "Unsure" }[d];
-}
-function lifecycleLabel(l: Lifecycle): string {
-  return {
-    inbox: "Inbox",
-    active: "Active",
-    waiting: "Waiting",
-    someday: "Someday",
-    done: "Done",
-    dropped: "Dropped",
-  }[l];
 }

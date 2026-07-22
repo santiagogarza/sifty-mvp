@@ -55,15 +55,20 @@ export function getSyncHooks(): SyncHooks | null {
   return syncHooks;
 }
 
+export type TasksViewMode = "list" | "board";
+
 interface SiftyState {
   hydrated: boolean;
   tasks: Task[];
   labels: Label[];
   memories: Memory[];
   preferredModelId: string;
+  /** List vs kanban board. Persisted locally — not synced to the server. */
+  tasksViewMode: TasksViewMode;
 
   setHydrated: (v: boolean) => void;
   setPreferredModelId: (modelId: string) => void;
+  setTasksViewMode: (mode: TasksViewMode) => void;
 
   createTask: (input: { sourceText: string; sourceContext?: string | null }) => Task;
   updateTask: (
@@ -125,7 +130,7 @@ interface SiftyState {
   ensureLabel: (name: string) => Label;
 }
 
-const VERSION = 2;
+const VERSION = 3;
 
 export const useStore = create<SiftyState>()(
   persist(
@@ -141,9 +146,11 @@ export const useStore = create<SiftyState>()(
         labels: [],
         memories: [],
         preferredModelId: DEFAULT_MODEL_ID,
+        tasksViewMode: "list" as TasksViewMode,
 
         setHydrated: (v) => set({ hydrated: v }),
         setPreferredModelId: (modelId) => set({ preferredModelId: modelId }),
+        setTasksViewMode: (mode) => set({ tasksViewMode: mode }),
 
         createTask: ({ sourceText, sourceContext }) => {
           const now = new Date().toISOString();
@@ -394,11 +401,15 @@ export const useStore = create<SiftyState>()(
         labels: s.labels,
         memories: s.memories,
         preferredModelId: s.preferredModelId,
+        tasksViewMode: s.tasksViewMode,
       }),
       migrate: (persisted, version) => {
         const state = persisted as Partial<SiftyState>;
         if (version < 2 && state.tasks) {
           state.tasks = state.tasks.map((t) => ({ ...t, agentBrief: t.agentBrief ?? null }));
+        }
+        if (version < 3) {
+          state.tasksViewMode = state.tasksViewMode ?? "list";
         }
         return state as SiftyState;
       },
