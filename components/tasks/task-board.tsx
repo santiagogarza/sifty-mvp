@@ -4,7 +4,7 @@ import { useFrame } from "@/components/app-shell/app-frame";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { STATUS_VIEWS, statusLabel } from "@/lib/domain/status";
-import type { Label, Lifecycle, Task } from "@/lib/domain/types";
+import type { Lifecycle, Task } from "@/lib/domain/types";
 import {
   selectByLifecycle,
   selectDoneTasks,
@@ -259,6 +259,20 @@ export function TaskBoard() {
     setFocus({ status, index });
   }, []);
 
+  // Match TaskList: land keyboard focus on the first card once so j/k and
+  // arrows work without an extra Tab from the chrome.
+  const didInitialFocus = React.useRef(false);
+  React.useEffect(() => {
+    if (!hydrated || didInitialFocus.current || !focusTarget) return;
+    didInitialFocus.current = true;
+    const id = columns.find((c) => c.view.status === focusTarget.status)?.tasks[focusTarget.index]
+      ?.id;
+    if (!id) return;
+    boardRef.current
+      ?.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(id)}"]`)
+      ?.focus({ preventScroll: true });
+  }, [hydrated, focusTarget, columns]);
+
   const onBoardKeyDown = (e: React.KeyboardEvent) => {
     if (activeId) return; // a held card's arrows belong to the drag sensor
     if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -309,6 +323,9 @@ export function TaskBoard() {
     useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
     useSensor(KeyboardSensor, {
       coordinateGetter: boardKeyboardCoordinates,
+      // Instant scroll under reduced motion — dnd-kit's default `smooth`
+      // bypasses the CSS prefers-reduced-motion kill switch.
+      scrollBehavior: reducedMotion ? "instant" : "smooth",
       // Space only for pickup — Enter keeps opening the task, as in lists.
       keyboardCodes: {
         start: [KeyboardCode.Space],
@@ -331,7 +348,14 @@ export function TaskBoard() {
     const from = (active.data.current as BoardDragData | undefined)?.status;
     const to = over.id as Lifecycle;
     if (!from || from === to) return;
-    updateTask(String(active.id), { lifecycle: to });
+    const id = String(active.id);
+    updateTask(id, { lifecycle: to });
+    // Roving tabindex tracks (status, index). After a cross-column move the
+    // card's DOM node relocates but focus state would still point at the old
+    // slot — arrows would navigate the wrong column while tabIndex=0 sits on
+    // a different card. Re-home onto the moved card in its new column.
+    const index = COLUMN_SELECTORS[to](useStore.getState().tasks).findIndex((t) => t.id === id);
+    if (index >= 0) setFocus({ status: to, index });
   };
 
   const onDragCancel = () => {

@@ -67,6 +67,7 @@ export function BoardCard({
       }}
       className={cn(
         "select-none touch-manipulation rounded-[var(--radius-md)]",
+        "cursor-grab active:cursor-grabbing",
         isDragging && "opacity-40",
       )}
     >
