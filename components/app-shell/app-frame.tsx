@@ -10,6 +10,7 @@ import { CommandPalette } from "./command-palette";
 import { GlobalKeyboard } from "./keyboard";
 import { Sidebar } from "./sidebar";
 import { ThemeProvider } from "./theme-context";
+import { useViewToggle } from "./view-switch";
 
 /**
  * Top-level client frame. Owns the global overlays (capture, command,
@@ -45,6 +46,7 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
 
   const openCapture = React.useCallback(() => setCaptureOpen(true), []);
   const openCommand = React.useCallback(() => setCommandOpen(true), []);
+  const { toggleView } = useViewToggle();
 
   const openDetail = React.useCallback(
     (id: string) => {
@@ -79,7 +81,7 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
       <CaptureDialog open={captureOpen} onOpenChange={setCaptureOpen} />
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} onCapture={openCapture} />
       <TaskDetailSheet taskId={detailTaskId} onClose={closeDetail} />
-      <GlobalKeyboard onCapture={openCapture} onCommand={openCommand} />
+      <GlobalKeyboard onCapture={openCapture} onCommand={openCommand} onToggleView={toggleView} />
       {sync.hydrated && sync.error ? (
         <div
           role="status"

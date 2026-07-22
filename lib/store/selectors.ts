@@ -1,5 +1,6 @@
 "use client";
 
+import { BOARD_LIFECYCLES, type BoardLifecycle } from "@/lib/domain/lifecycle";
 import { focusScore } from "@/lib/domain/priority";
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import { dayDelta, isOverdue } from "@/lib/utils/dates";
@@ -104,6 +105,44 @@ export function selectByLifecycle(
   return applyCommonFilters(tasks, args)
     .filter((t) => t.lifecycle === lifecycle)
     .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+}
+
+/**
+ * Group tasks into board columns, one per pipeline stage. Each column keeps
+ * the sort its list view uses, so the two layouts always agree: inbox is
+ * newest-captured first, active follows the focus ordering, waiting/someday
+ * are most-recently-touched first, and done is most-recently-completed first.
+ * `dropped` tasks stay off the board — it's an archive, not a stage.
+ */
+export function selectBoardColumns(tasks: Task[]): Record<BoardLifecycle, Task[]> {
+  const now = new Date();
+  const columns: Record<BoardLifecycle, Task[]> = {
+    inbox: [],
+    active: [],
+    waiting: [],
+    someday: [],
+    done: [],
+  };
+  for (const task of tasks) {
+    if (task.lifecycle === "dropped") continue;
+    columns[task.lifecycle].push(task);
+  }
+  const byFocus = (t: Task) =>
+    focusScore({
+      bucket: t.priorityBucket,
+      importance: t.importance,
+      urgency: t.urgency,
+      due: t.due,
+      now,
+    });
+  columns.inbox.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  columns.active.sort((a, b) => byFocus(a) - byFocus(b));
+  columns.waiting.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  columns.someday.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  columns.done.sort((a, b) =>
+    (a.completedAt ?? a.updatedAt) < (b.completedAt ?? b.updatedAt) ? 1 : -1,
+  );
+  return columns;
 }
 
 export function useTaskCounts() {

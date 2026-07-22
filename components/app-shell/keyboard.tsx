@@ -9,9 +9,11 @@ import * as React from "react";
 export function GlobalKeyboard({
   onCapture,
   onCommand,
+  onToggleView,
 }: {
   onCapture: () => void;
   onCommand: () => void;
+  onToggleView: () => void;
 }) {
   React.useEffect(() => {
     const isEditableTarget = (target: EventTarget | null): boolean => {
@@ -39,12 +41,18 @@ export function GlobalKeyboard({
       } else if (e.key === "/") {
         e.preventDefault();
         onCommand();
+      } else if (e.key === "v") {
+        // Navigating while a dialog is open would yank the page out from
+        // under it — layout switching is a page-level gesture only.
+        if (e.target instanceof HTMLElement && e.target.closest('[role="dialog"]')) return;
+        e.preventDefault();
+        onToggleView();
       }
     };
 
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onCapture, onCommand]);
+  }, [onCapture, onCommand, onToggleView]);
 
   return null;
 }
