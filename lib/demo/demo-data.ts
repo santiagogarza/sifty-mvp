@@ -36,6 +36,7 @@ export interface DemoTask {
     effort: Task["effort"];
     due: string | null;
     delegationCandidate: Task["delegationCandidate"];
+    assigneeName?: string | null;
     confidence: number;
     clarifyingQuestion: string | null;
     rationale: string | null;
@@ -302,6 +303,7 @@ export function demoTasks(): DemoTask[] {
         effort: "quick",
         due: isoDaysFromNow(3),
         delegationCandidate: "person",
+        assigneeName: "Contractor",
         confidence: 0.81,
         clarifyingQuestion: null,
         rationale:
@@ -326,6 +328,7 @@ export function demoTasks(): DemoTask[] {
         effort: "quick",
         due: isoDaysFromNow(5),
         delegationCandidate: "person",
+        assigneeName: "Counsel",
         confidence: 0.79,
         clarifyingQuestion: null,
         rationale:

@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { assigneeDisplayValue } from "@/lib/domain/assignee";
 import type { Label, Lifecycle, Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
@@ -44,6 +45,7 @@ export const TaskRow = React.forwardRef<
   const due = task.due;
   const overdue = isOverdue(due);
   const dueLabel = formatRelativeDay(due);
+  const assignee = task.delegationCandidate === "person" ? assigneeDisplayValue(task) : null;
   const dueTone: "rose" | "ember" | "neutral" = overdue
     ? "rose"
     : isToday(due)
@@ -91,7 +93,8 @@ export const TaskRow = React.forwardRef<
           "relative size-5 rounded-full border flex items-center justify-center",
           "after:absolute after:-inset-1.5 after:content-['']",
           "transition-all duration-150 ease-[var(--ease-product)]",
-          "border-[var(--border-strong)] hover:border-[var(--accent)]",
+          !isDone &&
+            "bg-[var(--surface-muted)] border-[var(--fg-muted)]/40 hover:bg-[var(--surface-hover)] hover:border-[var(--accent)]",
           isDone && "bg-[var(--done)] border-[var(--done)]",
         )}
       >
@@ -133,6 +136,11 @@ export const TaskRow = React.forwardRef<
       </div>
 
       <div className="flex items-center gap-2 justify-end">
+        {assignee ? (
+          <Badge tone="neutral" variant="outline" className="hidden sm:inline-flex max-w-[120px]">
+            <span className="truncate">{assignee}</span>
+          </Badge>
+        ) : null}
         {dueLabel ? (
           <Badge tone={dueTone} variant={dueTone === "neutral" ? "outline" : "soft"}>
             {dueLabel}

@@ -98,6 +98,7 @@ export const tasks = pgTable(
     })
       .notNull()
       .default("unsure"),
+    assigneeName: text("assignee_name"),
     confidence: integer("confidence_x100").notNull().default(0),
     clarifyingQuestion: text("clarifying_question"),
     rationale: text("rationale"),

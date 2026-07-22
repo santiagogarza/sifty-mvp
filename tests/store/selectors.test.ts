@@ -40,6 +40,7 @@ function makeTask(patch: Partial<Task>): Task {
     effort: "small",
     due: null,
     delegationCandidate: "self",
+    assigneeName: null,
     confidence: 0.8,
     clarifyingQuestion: null,
     rationale: null,

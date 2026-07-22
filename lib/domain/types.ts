@@ -105,6 +105,8 @@ export interface Task {
   due: ISODate | null;
 
   delegationCandidate: DelegationCandidate;
+  /** User-assigned person; independent of AI delegation recommendation. */
+  assigneeName: string | null;
 
   /** AI's self-reported confidence in this triage, 0..1. */
   confidence: number;
@@ -146,6 +148,7 @@ export const TASK_EDITABLE_FIELDS = [
   "effort",
   "due",
   "delegationCandidate",
+  "assigneeName",
   "labelIds",
   "subtasks",
 ] as const;

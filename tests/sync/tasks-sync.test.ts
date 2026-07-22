@@ -131,6 +131,7 @@ describe("task sync contract", () => {
       effort: "small",
       due: null,
       delegationCandidate: "self",
+      assigneeName: null,
       confidence: 0.7,
       clarifyingQuestion: null,
       rationale: "r",

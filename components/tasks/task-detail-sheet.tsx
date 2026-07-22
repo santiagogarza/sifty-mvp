@@ -6,6 +6,13 @@ import { Input, Textarea } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { isTriageInFlight, runTriage } from "@/lib/ai/run-triage";
+import {
+  assigneeDisplayValue,
+  delegationLabel,
+  delegationMetaLabel,
+  delegationValueMuted,
+  normalizeAssigneeName,
+} from "@/lib/domain/assignee";
 import { LABEL_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
 import { bucketLabel } from "@/lib/domain/priority";
 import { STATUSES_IN_ORDER, STATUS_META, statusLabel } from "@/lib/domain/status";
@@ -169,7 +176,8 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
               "relative mt-1 size-5 rounded-full border flex items-center justify-center shrink-0",
               "after:absolute after:-inset-1.5 after:content-['']",
               "transition-all duration-150 ease-[var(--ease-product)]",
-              "border-[var(--border-strong)] hover:border-[var(--accent)]",
+              !isDone &&
+                "bg-[var(--surface-muted)] border-[var(--fg-muted)]/40 hover:bg-[var(--surface-hover)] hover:border-[var(--accent)]",
               isDone && "bg-[var(--done)] border-[var(--done)]",
             )}
           >
@@ -243,7 +251,8 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
           </MetaCell>
           <MetaCell
             label="Delegate"
-            value={delegationLabel(task.delegationCandidate)}
+            value={delegationMetaLabel(task)}
+            valueMuted={delegationValueMuted(task)}
             pending={firstFill && !edited("delegationCandidate")}
           >
             <DelegationPicker task={task} />
@@ -666,6 +675,7 @@ function MetaCell({
   value,
   icon,
   tone = "neutral",
+  valueMuted = false,
   pending = false,
   children,
 }: {
@@ -673,6 +683,7 @@ function MetaCell({
   value: string;
   icon?: React.ReactNode;
   tone?: "neutral" | "warn";
+  valueMuted?: boolean;
   /** While Sifty is deciding this value, show a shimmer instead of it. */
   pending?: boolean;
   children?: React.ReactNode;
@@ -697,8 +708,10 @@ function MetaCell({
           ) : (
             <span
               className={cn(
-                "text-[13px] text-[var(--fg)]",
+                "text-[13px] truncate",
                 tone === "warn" && "text-[var(--warn)]",
+                tone !== "warn" && valueMuted && "text-[var(--fg-subtle)]",
+                tone !== "warn" && !valueMuted && "text-[var(--fg)]",
               )}
             >
               {value}
@@ -791,27 +804,86 @@ function EffortPicker({ task }: { task: Task }) {
 function DelegationPicker({ task }: { task: Task }) {
   const updateTask = useStore((s) => s.updateTask);
   const options: DelegationCandidate[] = ["self", "ai", "person", "unsure"];
+  const [draft, setDraft] = React.useState(task.assigneeName ?? "");
+
+  React.useEffect(() => {
+    setDraft(task.assigneeName ?? "");
+  }, [task.assigneeName]);
+
+  const selectOption = (opt: DelegationCandidate) => {
+    const patch: Partial<Task> = { delegationCandidate: opt };
+    const editedFields: TaskEditableField[] = ["delegationCandidate"];
+    if (opt !== "person" && task.assigneeName) {
+      patch.assigneeName = null;
+      editedFields.push("assigneeName");
+    }
+    updateTask(task.id, patch, { editedFields });
+  };
+
+  const commitName = () => {
+    const trimmed = normalizeAssigneeName(draft);
+    const current = normalizeAssigneeName(task.assigneeName);
+    if (trimmed === current) return;
+    updateTask(task.id, { assigneeName: trimmed }, { editedFields: ["assigneeName"] });
+  };
+
+  const clearName = () => {
+    setDraft("");
+    updateTask(task.id, { assigneeName: null }, { editedFields: ["assigneeName"] });
+  };
+
   return (
-    <div className="flex flex-col min-w-[180px]">
+    <div className="flex flex-col min-w-[220px]">
       {options.map((opt) => (
         <button
           key={opt}
           type="button"
-          onClick={() =>
-            updateTask(
-              task.id,
-              { delegationCandidate: opt },
-              { editedFields: ["delegationCandidate"] },
-            )
-          }
+          onClick={() => selectOption(opt)}
           className={cn(
-            "flex items-center justify-between rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] hover:bg-[var(--surface-hover)]",
+            "flex min-h-9 items-center justify-between rounded-[var(--radius-sm)] px-2.5 py-2 text-left text-[13px] hover:bg-[var(--surface-hover)]",
             task.delegationCandidate === opt && "bg-[var(--surface-hover)]",
           )}
         >
           <span>{delegationLabel(opt)}</span>
+          {task.delegationCandidate === opt ? (
+            <Check size={13} className="text-[var(--fg-muted)]" />
+          ) : null}
         </button>
       ))}
+      {task.delegationCandidate === "person" ? (
+        <>
+          <div className="my-1 h-px bg-[var(--border)]" />
+          <Input
+            autoFocus
+            type="text"
+            inputMode="text"
+            autoComplete="name"
+            enterKeyHint="done"
+            value={draft}
+            maxLength={TASK_LIMITS.assigneeName}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitName();
+              }
+            }}
+            onBlur={commitName}
+            placeholder="Type a name"
+            aria-label="Person name"
+            className="h-9 text-[13px]"
+          />
+          {assigneeDisplayValue(task) ? (
+            <button
+              type="button"
+              onClick={clearName}
+              className="min-h-9 rounded-[var(--radius-sm)] px-2.5 py-2 text-left text-[12.5px] text-[var(--fg-muted)] hover:bg-[var(--surface-hover)]"
+            >
+              Clear name
+            </button>
+          ) : null}
+        </>
+      ) : null}
     </div>
   );
 }
@@ -897,6 +969,8 @@ function Slider({
   );
 }
 
+const labelChipClass = "h-6 min-h-6 inline-flex items-center text-[11.5px] leading-none";
+
 function LabelEditor({
   task,
   labels,
@@ -937,8 +1011,8 @@ function LabelEditor({
     <div className="flex flex-wrap items-center gap-1.5">
       {pending ? (
         <>
-          <AiFillSlot className="h-[18px] w-14 !rounded-full" />
-          <AiFillSlot className="h-[18px] w-10 !rounded-full" />
+          <AiFillSlot className="h-6 w-14 !rounded-full" />
+          <AiFillSlot className="h-6 w-10 !rounded-full" />
         </>
       ) : null}
       {taskLabels.map((l) => (
@@ -952,10 +1026,10 @@ function LabelEditor({
               { editedFields: ["labelIds"] },
             )
           }
-          className="group"
+          className="group inline-flex items-center"
           aria-label={`Remove ${l.name}`}
         >
-          <Badge tone={l.tone}>
+          <Badge tone={l.tone} className={labelChipClass}>
             {l.name}
             <X size={10} className="opacity-50 group-hover:opacity-100 transition-opacity" />
           </Badge>
@@ -988,7 +1062,10 @@ function LabelEditor({
           <PopoverTrigger asChild>
             <button
               type="button"
-              className="inline-flex items-center gap-1 rounded-full border border-dashed border-[var(--border-strong)] px-2 py-0.5 text-[11.5px] text-[var(--fg-muted)] hover:bg-[var(--surface-hover)]"
+              className={cn(
+                labelChipClass,
+                "gap-1 rounded-full border border-dashed border-[var(--border-strong)] px-2 text-[var(--fg-muted)] hover:bg-[var(--surface-hover)]",
+              )}
             >
               <Plus size={10} /> Add label
             </button>
@@ -1120,7 +1197,4 @@ function effortLabel(e: Effort): string {
 }
 function effortHint(e: Effort): string {
   return { quick: "<10 min", small: "<30 min", medium: "1–3 hr", deep: "Multi-session" }[e];
-}
-function delegationLabel(d: DelegationCandidate): string {
-  return { self: "Me", ai: "AI agent", person: "A person", unsure: "Unsure" }[d];
 }

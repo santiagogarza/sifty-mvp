@@ -11,6 +11,7 @@ export const TASK_LIMITS = {
   title: 280,
   description: 4000,
   nextAction: 280,
+  assigneeName: 80,
   aiError: 2000,
   rationale: 2000,
   clarifyingQuestion: 500,
