@@ -1,15 +1,15 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { assigneeDisplayValue } from "@/lib/domain/assignee";
+import { displayedAssigneeName } from "@/lib/domain/assignee";
 import type { Label, Lifecycle, Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
-import { formatRelativeDay, isOverdue, isToday } from "@/lib/utils/dates";
 import { Check } from "lucide-react";
 import * as React from "react";
 import { AiStatusInline } from "./ai-status";
 import { PriorityGlyph } from "./priority-glyph";
+import { DueBadge, TaskLabelBadges, resolveTaskLabels } from "./task-meta";
 
 /**
  * Single task row.
@@ -40,17 +40,8 @@ export const TaskRow = React.forwardRef<
   const updateTask = useStore((s) => s.updateTask);
 
   const labelMap = React.useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels]);
-  const taskLabels = task.labelIds.map((id) => labelMap.get(id)).filter(Boolean) as Label[];
-
-  const due = task.due;
-  const overdue = isOverdue(due);
-  const dueLabel = formatRelativeDay(due);
-  const assignee = task.delegationCandidate === "person" ? assigneeDisplayValue(task) : null;
-  const dueTone: "rose" | "ember" | "neutral" = overdue
-    ? "rose"
-    : isToday(due)
-      ? "ember"
-      : "neutral";
+  const taskLabels = resolveTaskLabels(task.labelIds, labelMap);
+  const assignee = displayedAssigneeName(task);
 
   const onComplete = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -125,14 +116,7 @@ export const TaskRow = React.forwardRef<
       </div>
 
       <div className="hidden sm:flex items-center gap-1.5 max-w-[220px] overflow-hidden">
-        {taskLabels.slice(0, 2).map((label) => (
-          <Badge key={label.id} tone={label.tone}>
-            {label.name}
-          </Badge>
-        ))}
-        {taskLabels.length > 2 ? (
-          <span className="text-[11px] text-[var(--fg-subtle)]">+{taskLabels.length - 2}</span>
-        ) : null}
+        <TaskLabelBadges labels={taskLabels} />
       </div>
 
       <div className="flex items-center gap-2 justify-end">
@@ -141,11 +125,7 @@ export const TaskRow = React.forwardRef<
             <span className="truncate">{assignee}</span>
           </Badge>
         ) : null}
-        {dueLabel ? (
-          <Badge tone={dueTone} variant={dueTone === "neutral" ? "outline" : "soft"}>
-            {dueLabel}
-          </Badge>
-        ) : null}
+        <DueBadge due={task.due} />
       </div>
     </div>
   );

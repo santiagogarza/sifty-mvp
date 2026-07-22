@@ -271,7 +271,8 @@ pnpm test:e2e
 | `⌘↵` | Submit capture |
 | `↑/↓` (`j`/`k`) | Navigate task list |
 | `Enter` | Open the highlighted task |
-| `Space` then `←/→` | On the Board: pick up a card, move it across columns, drop with `Space` |
+| `←/→` `↑/↓` (`j`/`k`) | Move between Board cards |
+| `Space` | Pick up a Board card; `←/→` choose a column, `Space` drops |
 | `Esc` | Close any overlay (or cancel a Board drag) |
 
 ## License

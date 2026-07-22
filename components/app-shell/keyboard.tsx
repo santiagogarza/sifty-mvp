@@ -25,7 +25,15 @@ export function GlobalKeyboard({
       );
     };
 
+    // A card held mid-drag (dnd-kit sets aria-pressed on the source) owns
+    // the keyboard: opening capture or the palette over a live drag would
+    // leave arrow keys steering the card behind the dialog.
+    const isActiveDragSource = (target: EventTarget | null): boolean =>
+      target instanceof Element &&
+      target.closest('[aria-roledescription="draggable"][aria-pressed="true"]') !== null;
+
     const onKey = (e: KeyboardEvent) => {
+      if (isActiveDragSource(e.target)) return;
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         onCommand();

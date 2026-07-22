@@ -1,14 +1,14 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { assigneeDisplayValue } from "@/lib/domain/assignee";
+import { displayedAssigneeName } from "@/lib/domain/assignee";
 import type { Label, Lifecycle, Task } from "@/lib/domain/types";
 import { cn } from "@/lib/utils/cn";
-import { formatRelativeDay, isOverdue, isToday } from "@/lib/utils/dates";
 import { useDraggable } from "@dnd-kit/core";
 import * as React from "react";
 import { AiStatusInline } from "./ai-status";
 import { PriorityGlyph } from "./priority-glyph";
+import { DueBadge, TaskLabelBadges, resolveTaskLabels } from "./task-meta";
 
 /**
  * Payload carried on the active draggable so drop handling and screen-reader
@@ -24,15 +24,22 @@ export interface BoardDragData {
  * no grip chrome); a plain click or Enter opens the detail sheet, exactly
  * like a list row. While dragging, the source card stays in place as a
  * dimmed placeholder and a lifted copy follows the pointer via DragOverlay.
+ *
+ * Focus is roving: the board keeps a single tab stop and moves DOM focus
+ * with the arrow keys, so `tabbable` is true for exactly one card.
  */
 export function BoardCard({
   task,
   labelMap,
+  tabbable,
   onOpen,
+  onFocus,
 }: {
   task: Task;
   labelMap: Map<string, Label>;
+  tabbable: boolean;
   onOpen: (id: string) => void;
+  onFocus: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: task.id,
@@ -45,6 +52,9 @@ export function BoardCard({
       ref={setNodeRef}
       {...attributes}
       {...dragListeners}
+      tabIndex={tabbable ? 0 : -1}
+      data-task-id={task.id}
+      onFocus={onFocus}
       onClick={() => onOpen(task.id)}
       onKeyDown={(e) => {
         // The keyboard sensor owns Space (pick up / drop) and prevents
@@ -81,21 +91,14 @@ export function BoardCardContent({
   lifted?: boolean;
 }) {
   const isDone = task.lifecycle === "done";
-  const taskLabels = task.labelIds.map((id) => labelMap.get(id)).filter(Boolean) as Label[];
-
-  const dueLabel = formatRelativeDay(task.due);
-  const dueTone: "rose" | "ember" | "neutral" = isOverdue(task.due)
-    ? "rose"
-    : isToday(task.due)
-      ? "ember"
-      : "neutral";
-  const assignee = task.delegationCandidate === "person" ? assigneeDisplayValue(task) : null;
+  const taskLabels = resolveTaskLabels(task.labelIds, labelMap);
+  const assignee = displayedAssigneeName(task);
 
   return (
     <div
       className={cn(
         "rounded-[var(--radius-md)] border bg-[var(--surface)] px-3 py-2.5",
-        "shadow-[0_1px_2px_oklch(0%_0_0/0.04)]",
+        "shadow-[var(--board-card-shadow)]",
         lifted
           ? "board-card-lifted cursor-grabbing border-[var(--border-strong)]"
           : "border-[var(--border)] transition-colors duration-150 ease-[var(--ease-product)] hover:border-[var(--border-strong)]",
@@ -114,24 +117,13 @@ export function BoardCardContent({
       ) : null}
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <PriorityGlyph bucket={task.priorityBucket} />
-        {dueLabel ? (
-          <Badge tone={dueTone} variant={dueTone === "neutral" ? "outline" : "soft"}>
-            {dueLabel}
-          </Badge>
-        ) : null}
+        <DueBadge due={task.due} />
         {assignee ? (
           <Badge tone="neutral" variant="outline" className="max-w-[120px]">
             <span className="truncate">{assignee}</span>
           </Badge>
         ) : null}
-        {taskLabels.slice(0, 2).map((label) => (
-          <Badge key={label.id} tone={label.tone}>
-            {label.name}
-          </Badge>
-        ))}
-        {taskLabels.length > 2 ? (
-          <span className="text-[11px] text-[var(--fg-subtle)]">+{taskLabels.length - 2}</span>
-        ) : null}
+        <TaskLabelBadges labels={taskLabels} />
         <AiStatusInline status={task.aiStatus} />
       </div>
     </div>

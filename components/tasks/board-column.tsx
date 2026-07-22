@@ -19,13 +19,18 @@ export function BoardColumn({
   label,
   tasks,
   labelMap,
+  focusIndex,
   onOpen,
+  onCardFocus,
 }: {
   status: Lifecycle;
   label: string;
   tasks: Task[];
   labelMap: Map<string, Label>;
+  /** Index of this column's roving tab stop, or -1 when it lives elsewhere. */
+  focusIndex: number;
   onOpen: (id: string) => void;
+  onCardFocus: (status: Lifecycle, index: number) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
@@ -33,7 +38,9 @@ export function BoardColumn({
     <section
       ref={setNodeRef}
       aria-label={`${label} column`}
-      className="flex min-h-0 min-w-[224px] flex-1 flex-col"
+      // min-w keeps all five columns inside a 1440px viewport: 213px
+      // sidebar + 2×64px padding + 5×220px + 4×12px gaps = 1213px.
+      className="flex min-h-0 min-w-[220px] flex-1 flex-col"
     >
       <header className="flex items-center gap-2 px-2 pb-2">
         <StatusIcon status={status} size={13} className="text-[var(--fg-muted)]" />
@@ -51,8 +58,15 @@ export function BoardColumn({
             : "bg-[var(--surface-muted)]/50",
         )}
       >
-        {tasks.map((task) => (
-          <BoardCard key={task.id} task={task} labelMap={labelMap} onOpen={onOpen} />
+        {tasks.map((task, index) => (
+          <BoardCard
+            key={task.id}
+            task={task}
+            labelMap={labelMap}
+            tabbable={index === focusIndex}
+            onOpen={onOpen}
+            onFocus={() => onCardFocus(status, index)}
+          />
         ))}
       </div>
     </section>

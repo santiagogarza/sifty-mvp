@@ -62,15 +62,13 @@ const COLUMN_SELECTORS: Record<Lifecycle, (tasks: Task[]) => Task[]> = {
 
 /** `--ease-product` — WAAPI can't resolve CSS variables in easing strings. */
 const EASE_PRODUCT = "cubic-bezier(0.32, 0.72, 0.18, 1)";
-/** Must mirror the `.board-card-lifted` end state in globals.css. */
-const LIFTED_SHADOW = "0 12px 28px -10px oklch(0% 0 0 / 0.28), 0 2px 8px oklch(0% 0 0 / 0.1)";
-/** Must mirror the resting card shadow in board-card.tsx. */
-const RESTING_SHADOW = "0 1px 2px oklch(0% 0 0 / 0.04)";
 
 /**
  * Release: dnd-kit translates the overlay to the card's landing slot while
  * the card itself settles — scale and shadow relax back down in the same
- * beat, so the drop ends the gesture on a calm note.
+ * beat, so the drop ends the gesture on a calm note. The lift values live
+ * in globals.css custom properties; WAAPI resolves var() in keyframe
+ * values (only easing strings can't).
  */
 const dropAnimation: DropAnimation = {
   duration: 220,
@@ -83,8 +81,11 @@ const dropAnimation: DropAnimation = {
     if (card instanceof HTMLElement) {
       card.animate(
         [
-          { transform: "scale(1.03)", boxShadow: LIFTED_SHADOW },
-          { transform: "scale(1)", boxShadow: RESTING_SHADOW },
+          {
+            transform: "scale(var(--board-card-lift-scale))",
+            boxShadow: "var(--board-card-shadow-lifted)",
+          },
+          { transform: "scale(1)", boxShadow: "var(--board-card-shadow)" },
         ],
         { duration: 220, easing: EASE_PRODUCT, fill: "forwards" },
       );
@@ -179,9 +180,14 @@ const announcements: Announcements = {
     return `${title} is over ${statusLabel(over.id as Lifecycle)}.`;
   },
   onDragEnd({ active, over }) {
-    const title = dragTitle(active.data.current as BoardDragData | undefined);
+    const data = active.data.current as BoardDragData | undefined;
+    const title = dragTitle(data);
     if (!over) return `${title} was dropped.`;
-    return `${title} moved to ${statusLabel(over.id as Lifecycle)}.`;
+    const destination = statusLabel(over.id as Lifecycle);
+    // A same-column drop changes nothing; don't announce a move that
+    // didn't happen.
+    if (data?.status === over.id) return `${title} returned to ${destination}.`;
+    return `${title} moved to ${destination}.`;
   },
   onDragCancel({ active }) {
     return `Moving ${dragTitle(active.data.current as BoardDragData | undefined)} was cancelled.`;
@@ -217,15 +223,84 @@ export function TaskBoard() {
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const activeTask = activeId ? (tasks.find((t) => t.id === activeId) ?? null) : null;
 
-  // A click that lands right after a drop is the drag's residue, not intent.
+  // Open requests that arrive mid-drag (Enter while a card is held) or
+  // right after a drop (the residual click) are the drag's mechanics, not
+  // intent. One guard here covers every card and input modality.
+  const draggingRef = React.useRef(false);
   const dragEndedAt = React.useRef(0);
   const openTask = React.useCallback(
     (id: string) => {
-      if (Date.now() - dragEndedAt.current < 250) return;
+      if (draggingRef.current || Date.now() - dragEndedAt.current < 250) return;
       openDetail(id);
     },
     [openDetail],
   );
+
+  /**
+   * Roving focus: the board is one tab stop, like the task lists. Exactly
+   * one card is tabbable; arrows (and j/k) move DOM focus between cards
+   * while no drag is active. Falls back to the first card of the first
+   * non-empty column when the remembered position no longer exists.
+   */
+  const boardRef = React.useRef<HTMLDivElement>(null);
+  const [focus, setFocus] = React.useState<{ status: Lifecycle; index: number } | null>(null);
+  const focusTarget = React.useMemo(() => {
+    if (focus) {
+      const column = columns.find((c) => c.view.status === focus.status);
+      if (column && column.tasks.length > 0) {
+        return { status: focus.status, index: Math.min(focus.index, column.tasks.length - 1) };
+      }
+    }
+    const firstNonEmpty = columns.find((c) => c.tasks.length > 0);
+    return firstNonEmpty ? { status: firstNonEmpty.view.status, index: 0 } : null;
+  }, [focus, columns]);
+
+  const onCardFocus = React.useCallback((status: Lifecycle, index: number) => {
+    setFocus({ status, index });
+  }, []);
+
+  const onBoardKeyDown = (e: React.KeyboardEvent) => {
+    if (activeId) return; // a held card's arrows belong to the drag sensor
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!focusTarget) return;
+    if (!(e.target instanceof HTMLElement) || !e.target.closest("[data-task-id]")) return;
+
+    const vertical =
+      e.key === "ArrowDown" || e.key === "j" ? 1 : e.key === "ArrowUp" || e.key === "k" ? -1 : 0;
+    const horizontal = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+    if (vertical === 0 && horizontal === 0) return;
+    e.preventDefault();
+
+    const columnIndex = columns.findIndex((c) => c.view.status === focusTarget.status);
+    const currentColumn = columns[columnIndex];
+    if (!currentColumn) return;
+    let next = focusTarget;
+    if (vertical !== 0) {
+      const length = currentColumn.tasks.length;
+      next = {
+        status: focusTarget.status,
+        index: Math.max(0, Math.min(length - 1, focusTarget.index + vertical)),
+      };
+    } else {
+      for (let i = columnIndex + horizontal; i >= 0 && i < columns.length; i += horizontal) {
+        const candidate = columns[i];
+        if (candidate && candidate.tasks.length > 0) {
+          next = {
+            status: candidate.view.status,
+            index: Math.min(focusTarget.index, candidate.tasks.length - 1),
+          };
+          break;
+        }
+      }
+    }
+    if (next.status === focusTarget.status && next.index === focusTarget.index) return;
+
+    setFocus(next);
+    const id = columns.find((c) => c.view.status === next.status)?.tasks[next.index]?.id;
+    if (id) {
+      boardRef.current?.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(id)}"]`)?.focus();
+    }
+  };
 
   const sensors = useSensors(
     // 4px of travel before lift: a plain click still opens the card.
@@ -243,9 +318,13 @@ export function TaskBoard() {
     }),
   );
 
-  const onDragStart = ({ active }: DragStartEvent) => setActiveId(String(active.id));
+  const onDragStart = ({ active }: DragStartEvent) => {
+    draggingRef.current = true;
+    setActiveId(String(active.id));
+  };
 
   const onDragEnd = ({ active, over }: DragEndEvent) => {
+    draggingRef.current = false;
     setActiveId(null);
     dragEndedAt.current = Date.now();
     if (!over) return;
@@ -256,12 +335,13 @@ export function TaskBoard() {
   };
 
   const onDragCancel = () => {
+    draggingRef.current = false;
     setActiveId(null);
     dragEndedAt.current = Date.now();
   };
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem-80px)] flex-col md:h-[calc(100dvh-3.5rem)]">
+    <div className="flex h-[calc(100dvh-var(--topbar-height)-var(--bottomnav-clearance))] flex-col md:h-[calc(100dvh-var(--topbar-height))]">
       <PageHeader
         title="Board"
         description="Drag a card between columns to change its status."
@@ -278,7 +358,11 @@ export function TaskBoard() {
           onDragEnd={onDragEnd}
           onDragCancel={onDragCancel}
         >
-          <div className="-mx-4 flex min-h-0 flex-1 gap-3 overflow-x-auto px-4 pb-3 sm:-mx-6 sm:px-6 md:-mx-8 md:px-8">
+          <div
+            ref={boardRef}
+            onKeyDown={onBoardKeyDown}
+            className="-mx-4 flex min-h-0 flex-1 gap-3 overflow-x-auto px-4 pb-3 sm:-mx-6 sm:px-6 md:-mx-8 md:px-8"
+          >
             {columns.map(({ view, tasks: columnTasks }) => (
               <BoardColumn
                 key={view.status}
@@ -286,7 +370,9 @@ export function TaskBoard() {
                 label={view.label}
                 tasks={columnTasks}
                 labelMap={labelMap}
+                focusIndex={focusTarget?.status === view.status ? focusTarget.index : -1}
                 onOpen={openTask}
+                onCardFocus={onCardFocus}
               />
             ))}
           </div>
@@ -303,7 +389,7 @@ function BoardSkeleton() {
   return (
     <div className="-mx-4 flex min-h-0 flex-1 gap-3 overflow-x-hidden px-4 pb-3 sm:-mx-6 sm:px-6 md:-mx-8 md:px-8">
       {STATUS_VIEWS.map((view) => (
-        <div key={view.status} className="flex min-w-[224px] flex-1 flex-col">
+        <div key={view.status} className="flex min-w-[220px] flex-1 flex-col">
           <div className="flex items-center gap-2 px-2 pb-2">
             <Skeleton className="size-3.5 rounded" />
             <Skeleton className="h-3.5 w-16" />

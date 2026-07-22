@@ -110,6 +110,19 @@
 
   /* A faint top-down light wash. Optical only, never above content. */
   --page-light: radial-gradient(120% 60% at 50% -10%, oklch(99% 0.01 70 / 0.7), transparent 60%);
+
+  /* Shell layout constants, shared by the top bar, the app frame's
+     bottom-nav clearance, and any surface that sizes against the viewport
+     (the Board's columns). Theme-independent. */
+  --topbar-height: 3.5rem;
+  --bottomnav-clearance: 80px;
+
+  /* Board card elevation — resting and held. The lift keyframes below,
+     the card's resting shadow, and the drop-settle animation in
+     task-board.tsx all read these. */
+  --board-card-shadow: 0 1px 2px oklch(0% 0 0 / 0.04);
+  --board-card-shadow-lifted: 0 12px 28px -10px oklch(0% 0 0 / 0.28), 0 2px 8px oklch(0% 0 0 / 0.1);
+  --board-card-lift-scale: 1.03;
 }
 
 [data-theme="dark"] {
@@ -377,15 +390,15 @@ button,
 }
 /* A board card while held: one short lift on pickup, then it stays
    raised for the whole drag. The settle-back-down half runs in the drop
-   animation (task-board.tsx), which mirrors these end values. */
+   animation (task-board.tsx); both read the shared elevation tokens. */
 @keyframes sifty-card-lift {
   from {
     transform: scale(1);
-    box-shadow: 0 1px 2px oklch(0% 0 0 / 0.04);
+    box-shadow: var(--board-card-shadow);
   }
   to {
-    transform: scale(1.03);
-    box-shadow: 0 12px 28px -10px oklch(0% 0 0 / 0.28), 0 2px 8px oklch(0% 0 0 / 0.1);
+    transform: scale(var(--board-card-lift-scale));
+    box-shadow: var(--board-card-shadow-lifted);
   }
 }
 .board-card-lifted {

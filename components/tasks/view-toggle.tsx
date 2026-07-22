@@ -7,10 +7,13 @@ import Link from "next/link";
 import * as React from "react";
 
 /**
- * Subtle list ↔ board switcher, rendered beside the page title on the two
- * surfaces that are alternate lenses over the same tasks: Today (list) and
- * Board (columns). Links rather than buttons — the views are routes, so
- * middle-click, cmd+click, and the back button all stay honest.
+ * Subtle switcher between the two working surfaces, rendered beside the
+ * page title on each: Today (the day's list) and Board (the whole
+ * pipeline). The segments are named by surface, not by presentation —
+ * Today is a filtered lens while Board shows everything, so "list/board"
+ * would wrongly promise the same items in two layouts. Links rather than
+ * buttons — the views are routes, so middle-click, cmd+click, and the
+ * back button all stay honest.
  */
 export function ViewToggle({ active }: { active: "list" | "board" }) {
   return (
@@ -22,7 +25,7 @@ export function ViewToggle({ active }: { active: "list" | "board" }) {
       >
         <Segment
           href="/today"
-          label="List"
+          label="Today"
           active={active === "list"}
           icon={<LayoutList size={13} />}
         />

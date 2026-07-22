@@ -10,6 +10,16 @@ export function assigneeDisplayValue(task: Pick<Task, "assigneeName">): string |
   return normalizeAssigneeName(task.assigneeName);
 }
 
+/**
+ * Assignee shown on rows and cards: only when the task is delegated to a
+ * person and a name is set — a delegation *recommendation* is not a person.
+ */
+export function displayedAssigneeName(
+  task: Pick<Task, "delegationCandidate" | "assigneeName">,
+): string | null {
+  return task.delegationCandidate === "person" ? assigneeDisplayValue(task) : null;
+}
+
 export function delegationLabel(d: DelegationCandidate): string {
   return { self: "Me", ai: "AI agent", person: "Person", unsure: "Unsure" }[d];
 }
