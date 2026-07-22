@@ -4,7 +4,7 @@ import { useFrame } from "@/components/app-shell/app-frame";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { STATUS_VIEWS, statusLabel } from "@/lib/domain/status";
-import type { Label, Lifecycle, Task } from "@/lib/domain/types";
+import type { Lifecycle, Task } from "@/lib/domain/types";
 import {
   selectByLifecycle,
   selectDoneTasks,
@@ -17,6 +17,7 @@ import {
   type Announcements,
   type CollisionDetection,
   DndContext,
+  type DragCancelEvent,
   type DragEndEvent,
   DragOverlay,
   type DragStartEvent,
@@ -26,6 +27,7 @@ import {
   MouseSensor,
   type ScreenReaderInstructions,
   TouchSensor,
+  type UniqueIdentifier,
   pointerWithin,
   rectIntersection,
   useSensor,
@@ -59,6 +61,7 @@ export function TaskBoard() {
   // the card.
   const dragActive = React.useRef(false);
   const settleTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const settleAbort = React.useRef<AbortController | null>(null);
   const handleOpen = React.useCallback(
     (id: string) => {
       if (dragActive.current) return;
@@ -74,9 +77,26 @@ export function TaskBoard() {
       dragActive.current = false;
     }, 0);
   }, []);
+  const settleDragAfterRelease = React.useCallback(() => {
+    // Escape can cancel a pointer drag while the button is still held;
+    // the trailing click only fires once the pointer releases, so hold
+    // the guard until then.
+    settleAbort.current?.abort();
+    const controller = new AbortController();
+    settleAbort.current = controller;
+    window.addEventListener(
+      "pointerup",
+      () => {
+        settleAbort.current = null;
+        settleDrag();
+      },
+      { once: true, capture: true, signal: controller.signal },
+    );
+  }, [settleDrag]);
   React.useEffect(
     () => () => {
       if (settleTimer.current) clearTimeout(settleTimer.current);
+      settleAbort.current?.abort();
     },
     [],
   );
@@ -118,19 +138,29 @@ export function TaskBoard() {
       setActiveTask(null);
       settleDrag();
       const task = taskOf(event.active);
-      const target = event.over?.id as Lifecycle | undefined;
+      const target = event.over ? columnOf(event.over.id) : null;
       if (!task || !target || target === task.lifecycle) return;
       updateTask(task.id, { lifecycle: target });
     },
     [updateTask, settleDrag],
   );
 
-  const onDragCancel = React.useCallback(() => {
-    setActiveTask(null);
-    settleDrag();
-  }, [settleDrag]);
+  const onDragCancel = React.useCallback(
+    (event: DragCancelEvent) => {
+      setActiveTask(null);
+      if (event.activatorEvent instanceof KeyboardEvent) {
+        settleDrag();
+      } else {
+        settleDragAfterRelease();
+      }
+    },
+    [settleDrag, settleDragAfterRelease],
+  );
 
   return (
+    // Pins the board to the viewport so columns scroll internally instead
+    // of the page. 3.5rem is the top bar (h-14 in top-bar.tsx); 80px is
+    // the mobile bottom-nav padding (pb-[80px] on <main> in app-frame.tsx).
     <div className="flex h-[calc(100dvh-3.5rem-80px)] flex-col md:h-[calc(100dvh-3.5rem)]">
       <PageHeader
         title="Board"
@@ -190,6 +220,17 @@ function selectColumnTasks(tasks: Task[], status: Lifecycle): Task[] {
 
 function taskOf(active: { data: { current?: { task?: unknown } | undefined } }): Task | undefined {
   return active.data.current?.task as Task | undefined;
+}
+
+const COLUMN_IDS = new Set<UniqueIdentifier>(STATUS_VIEWS.map((view) => view.status));
+
+/**
+ * Droppable id → status. Columns are the only droppables today, but this
+ * keeps a future non-column droppable (e.g. sortable cards) from being
+ * written into `lifecycle` silently.
+ */
+function columnOf(id: UniqueIdentifier): Lifecycle | null {
+  return COLUMN_IDS.has(id) ? (id as Lifecycle) : null;
 }
 
 /**
@@ -257,15 +298,17 @@ const announcements: Announcements = {
   onDragOver({ active, over }) {
     const task = taskOf(active);
     if (!task) return;
-    return over
-      ? `"${task.title}" is over ${statusLabel(over.id as Lifecycle)}.`
+    const column = over ? columnOf(over.id) : null;
+    return column
+      ? `"${task.title}" is over ${statusLabel(column)}.`
       : `"${task.title}" is not over a column.`;
   },
   onDragEnd({ active, over }) {
     const task = taskOf(active);
     if (!task) return;
-    return over
-      ? `"${task.title}" moved to ${statusLabel(over.id as Lifecycle)}.`
+    const column = over ? columnOf(over.id) : null;
+    return column
+      ? `"${task.title}" moved to ${statusLabel(column)}.`
       : `"${task.title}" was dropped back in ${statusLabel(task.lifecycle)}.`;
   },
   onDragCancel({ active }) {
