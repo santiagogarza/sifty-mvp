@@ -52,16 +52,29 @@ const boardKeyboardCoordinates: KeyboardCoordinateGetter = (
   if (!targetStatus) return;
 
   const targetRect = context.droppableRects.get(targetStatus);
+  const targetNode = context.droppableContainers.get(targetStatus)?.node.current;
   const activeRect = context.collisionRect;
-  if (!targetRect || !activeRect) return;
+  if (!targetRect || !targetNode || !activeRect) return;
+
+  const board = targetNode.closest<HTMLElement>('[aria-label="Task lifecycle board"]');
+  if (board) {
+    const boardRect = board.getBoundingClientRect();
+    if (targetRect.right > boardRect.right) {
+      board.scrollLeft += targetRect.right - boardRect.right + 12;
+    } else if (targetRect.left < boardRect.left) {
+      board.scrollLeft -= boardRect.left - targetRect.left + 12;
+    }
+  }
+
+  const visibleTargetRect = targetNode.getBoundingClientRect();
 
   const y = Math.min(
-    Math.max(currentCoordinates.y, targetRect.top + 44),
-    targetRect.bottom - activeRect.height,
+    Math.max(currentCoordinates.y, visibleTargetRect.top + 44),
+    visibleTargetRect.bottom - activeRect.height,
   );
 
   return {
-    x: targetRect.left + (targetRect.width - activeRect.width) / 2,
+    x: visibleTargetRect.left + (visibleTargetRect.width - activeRect.width) / 2,
     y,
   };
 };
