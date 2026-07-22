@@ -113,7 +113,9 @@ export function TaskBoard({
       {/* Break out of the 820px reading column: the board is centered and
           sized against the <main> container (100cqw), capped for very wide
           screens. Browsers without cqw fall back to the reading column. */}
-      <div className="w-[min(1360px,100cqw)] ml-[calc(50%-min(1360px,100cqw)/2)]">
+      {/* select-none: a drag that starts a few px off a card must not start
+          highlighting text; card text is readable in the detail sheet. */}
+      <div className="w-[min(1360px,100cqw)] ml-[calc(50%-min(1360px,100cqw)/2)] select-none">
         <div className="flex gap-3 overflow-x-auto px-4 sm:px-6 md:px-8 pb-10 snap-x snap-proximity">
           {columns.map((column) => (
             <BoardColumnView
