@@ -95,7 +95,7 @@ function BoardCardContent({
           </div>
           <AiStatusInline status={task.aiStatus} className="mt-1" />
         </div>
-        <span className="mt-0.5 shrink-0 touch-none text-[var(--fg-subtle)] opacity-45 transition-opacity group-hover:opacity-80">
+        <span className="-mr-2 -mt-2 flex size-8 shrink-0 touch-none items-center justify-center text-[var(--fg-subtle)] opacity-45 transition-opacity group-hover:opacity-80">
           <GripVertical size={14} aria-hidden="true" />
         </span>
       </div>
