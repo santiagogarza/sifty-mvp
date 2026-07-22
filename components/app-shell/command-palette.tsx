@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils/cn";
 import {
   ArrowRight,
   Brain,
+  Columns3,
   CreditCard,
   Inbox,
   ListTodo,
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
+import { useViewToggle } from "./view-switch";
 
 interface CommandItem {
   id: string;
@@ -43,6 +45,7 @@ export function CommandPalette({
   const router = useRouter();
   const openDetail = useOpenDetail();
   const { toggle } = useTheme();
+  const { setView } = useViewToggle();
   const tasks = useStore((s) => s.tasks);
 
   const [query, setQuery] = React.useState("");
@@ -91,6 +94,14 @@ export function CommandPalette({
         label: "Go to Someday",
         icon: <ListTodo size={14} />,
         run: () => router.push("/someday"),
+      },
+      {
+        id: "go-board",
+        group: "navigate",
+        label: "Go to Board",
+        hint: "V",
+        icon: <Columns3 size={14} />,
+        run: () => setView("board"),
       },
       {
         id: "go-memory",
@@ -148,7 +159,7 @@ export function CommandPalette({
     ];
 
     return [...taskItems, ...taskMatches, ...nav, ...sys];
-  }, [tasks, router, openDetail, onCapture, toggle]);
+  }, [tasks, router, openDetail, onCapture, toggle, setView]);
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();

@@ -1,5 +1,6 @@
 "use client";
 
+import { ViewSwitch } from "@/components/app-shell/view-switch";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils/cn";
@@ -46,6 +47,7 @@ export function TopBar({
 
       <div className="flex items-center gap-2">
         {rightSlot}
+        <ViewSwitch />
         <button
           type="button"
           onClick={onCommand}
