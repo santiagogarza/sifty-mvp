@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils/cn";
 import {
   ArrowRight,
   Brain,
+  Columns3,
   CreditCard,
   Inbox,
   ListTodo,
@@ -91,6 +92,13 @@ export function CommandPalette({
         label: "Go to Someday",
         icon: <ListTodo size={14} />,
         run: () => router.push("/someday"),
+      },
+      {
+        id: "go-board",
+        group: "navigate",
+        label: "Switch to Board view",
+        icon: <Columns3 size={14} />,
+        run: () => router.push("/board"),
       },
       {
         id: "go-memory",
