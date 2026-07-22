@@ -106,6 +106,63 @@ export function selectByLifecycle(
     .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
 }
 
+/**
+ * Board columns, left to right, mirroring the sidebar's pipeline order.
+ * `dropped` is deliberately absent — the board is for live work, and
+ * dropping stays an explicit action in the detail sheet.
+ */
+export const BOARD_LIFECYCLES = ["inbox", "active", "waiting", "someday", "done"] as const;
+export type BoardLifecycle = (typeof BOARD_LIFECYCLES)[number];
+
+export interface BoardColumn {
+  lifecycle: BoardLifecycle;
+  tasks: Task[];
+}
+
+/**
+ * Group tasks into kanban columns. Each column keeps the sort its list
+ * counterpart uses (inbox by capture time, active by focus score, done by
+ * completion time) so switching views never reshuffles unexpectedly.
+ */
+export function selectBoardColumns(
+  tasks: Task[],
+  args: ViewArgs = {},
+  now: Date = new Date(),
+): BoardColumn[] {
+  const filtered = applyCommonFilters(tasks, args);
+  return BOARD_LIFECYCLES.map((lifecycle) => {
+    const columnTasks = filtered.filter((t) => t.lifecycle === lifecycle);
+    if (lifecycle === "inbox") {
+      columnTasks.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    } else if (lifecycle === "active") {
+      columnTasks.sort(
+        (a, b) =>
+          focusScore({
+            bucket: a.priorityBucket,
+            importance: a.importance,
+            urgency: a.urgency,
+            due: a.due,
+            now,
+          }) -
+          focusScore({
+            bucket: b.priorityBucket,
+            importance: b.importance,
+            urgency: b.urgency,
+            due: b.due,
+            now,
+          }),
+      );
+    } else if (lifecycle === "done") {
+      columnTasks.sort((a, b) =>
+        (a.completedAt ?? a.updatedAt) < (b.completedAt ?? b.updatedAt) ? 1 : -1,
+      );
+    } else {
+      columnTasks.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+    }
+    return { lifecycle, tasks: columnTasks };
+  });
+}
+
 export function useTaskCounts() {
   const tasks = useStore((s) => s.tasks);
   return useMemo(() => {
