@@ -89,6 +89,11 @@ export function TaskBoard() {
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: keyboardCoordinates,
+      keyboardCodes: {
+        start: ["Space"],
+        cancel: ["Escape"],
+        end: ["Space"],
+      },
     }),
   );
 
