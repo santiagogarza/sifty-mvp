@@ -97,3 +97,16 @@ Fix verification (all 11 original findings):
 **Fix:** Prune instead of filter: add an effect over `allTasks` that calls `dismissGhost(id)` for any ghost whose live task is missing or not `done`, keeping the memo filter as defense in depth. Entries then cannot outlive their validity, and the comment becomes structurally true.
 
 Found 2 issues.
+
+## Run 3 — 2026-07-22T03:52Z — No issues found.
+
+Final confirmation pass on `896704f` (scope: the two Run-2 fixes plus anything new in that commit). Checks re-run independently: `pnpm biome check` clean, `pnpm tsc --noEmit` clean, `pnpm test` 71/71.
+
+Fix verification:
+
+- **Run-2 finding 1 (FilingStrip focus steal)** — fixed. Traced: `focusPending` is set only in `file()` and consumed exactly once when `showConfirmation` flips true, so picker-driven transitions can never trigger the focus effect; the reset effect (`lifecycle === "inbox"` → `setFiled(false)`) means an inbox round-trip re-arms the buttons instead of replaying the confirmation. The intermediate render (lifecycle back to inbox, `filed` not yet reset) is covered by the derived `showConfirmation` condition, and a dangling `focusPending` after a remote revert is harmless because `showConfirmation` can only become true again via `file()`, which sets the ref anyway. Runtime-verified against a pristine dev server: strip filing still focuses the `role="status"` confirmation (Run-1 contract); picker → Inbox keeps the popover open and reverts the strip to buttons; a subsequent non-inbox pick from the still-open picker leaves the popover open, steals no focus, and shows no strip confirmation.
+- **Run-2 finding 2 (ghost resurrection with stale `restoreTo`)** — fixed. Traced: the pruning effect over `ghosts` + `allTasks` deletes (via `dismissGhost`, which also clears the safety timer) any entry whose task is missing or not `done`; it is idempotent, self-settling (re-run after deletion finds nothing to prune), StrictMode-safe, and cannot race the layout effect (a freshly added ghost is `done`, so never pruned in the same cycle). The memo filter remains same-render defense in depth, and the comment now matches behavior. Runtime-verified: complete-from-row → un-complete-from-sheet removes the ghost; re-completing within the old 4s window materializes nothing in the list; the task lands on `/done` exactly once with no demotion.
+
+Nothing new introduced: the commit touches only the two components plus this log; full 13-check e2e flow suite re-run against a pristine server on a separate port, 13/13 pass, confirming no regression to capture, ghost lifecycle, restore, filing, view membership, or the Dropped disclosure.
+
+Review closed.
