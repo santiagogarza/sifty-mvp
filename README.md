@@ -81,12 +81,12 @@ app/
     triage/route.ts            # AI triage: gate → model → durable apply
     agent-brief/route.ts       # "Prepare for agent" handoff brief
     stripe/{checkout,portal,webhook}/route.ts
-middleware.ts                  # gates /today, /focus, /inbox, /waiting,
+middleware.ts                  # gates /today, /board, /focus, /inbox, /waiting,
                                # /someday, /memory, /settings on a JWT cookie
 
 components/
   app-shell/                   # frame, sidebar, top bar, palette, bottom nav
-  tasks/                       # capture, list, row, detail sheet, ai status
+  tasks/                       # capture, list, board, row, detail sheet, ai status
   auth/auth-form.tsx           # sign-in / sign-up shared form
   billing/billing-panel.tsx    # checkout + portal + tier display
   ui/                          # primitives
@@ -272,6 +272,9 @@ pnpm test:e2e
 | `↑/↓` (`j`/`k`) | Navigate task list |
 | `Enter` | Open the highlighted task |
 | `Esc` | Close any overlay |
+
+On `/board`, focus a card and press `Space` to pick it up, arrow keys to move
+between lifecycle columns, `Space` to drop, or `Esc` to cancel.
 
 ## License
 
