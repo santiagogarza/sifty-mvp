@@ -23,8 +23,9 @@ import {
   KeyboardCode,
   type KeyboardCoordinateGetter,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
   type ScreenReaderInstructions,
+  TouchSensor,
   pointerWithin,
   rectIntersection,
   useSensor,
@@ -90,9 +91,11 @@ export function TaskBoard() {
   );
 
   const sensors = useSensors(
-    // 5px of travel before a drag starts, so a plain click still opens
-    // the card.
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    // 5px of travel before a mouse drag starts, so a plain click still
+    // opens the card; on touch, a long-press lifts the card so swipes
+    // keep scrolling the columns.
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
     useSensor(KeyboardSensor, {
       coordinateGetter: boardKeyboardCoordinates,
       // Space picks up and drops; Enter is reserved for opening the card

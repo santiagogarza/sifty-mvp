@@ -81,9 +81,10 @@ export function BoardCardFace({
 }
 
 /**
- * Draggable wrapper. Pointer drags start after a 5px move (see TaskBoard's
- * sensor config) so a plain click still opens the detail sheet; keyboard
- * users pick the card up with Space and open it with Enter.
+ * Draggable wrapper. Mouse drags start after a 5px move and touch drags
+ * after a long-press (see TaskBoard's sensor config) so a plain click
+ * still opens the detail sheet and swipes still scroll; keyboard users
+ * pick the card up with Space and open it with Enter.
  */
 export function BoardCard({
   task,
@@ -119,7 +120,7 @@ export function BoardCard({
       onClick={() => onOpen(task.id)}
       aria-roledescription="Draggable task card"
       className={cn(
-        "cursor-grab touch-none select-none",
+        "cursor-grab touch-manipulation select-none",
         "transition-opacity duration-150 ease-[var(--ease-product)]",
         // The origin dims to a placeholder while the overlay carries the
         // lifted card, so where it came from stays legible.
