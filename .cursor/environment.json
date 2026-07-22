@@ -1,0 +1,9 @@
+{
+  "install": "corepack enable && pnpm install && pnpm test:e2e:install",
+  "terminals": [
+    {
+      "name": "dev",
+      "command": "SIFTY_DISABLE_AUTH=1 SIFTY_AI_OFFLINE=1 SIFTY_DEMO_SEED=1 AUTH_SECRET=demo-vm-placeholder-not-a-secret pnpm dev"
+    }
+  ]
+}
