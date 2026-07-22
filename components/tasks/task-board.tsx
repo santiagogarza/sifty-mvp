@@ -93,17 +93,26 @@ const dropAnimation: DropAnimation = {
   },
 };
 
+const ARROW_CODES: string[] = [
+  KeyboardCode.Left,
+  KeyboardCode.Right,
+  KeyboardCode.Up,
+  KeyboardCode.Down,
+];
+
 /**
  * Keyboard drags hop whole columns: ← and → move the card to the center
  * of the nearest column on that side. Up/down don't apply — a column is
- * one drop target — so they deliberately do nothing.
+ * one drop target — so they're swallowed rather than left to scroll the
+ * board underneath a held card.
  */
 const boardKeyboardCoordinates: KeyboardCoordinateGetter = (
   event,
   { context: { active, collisionRect, droppableRects, droppableContainers } },
 ) => {
-  if (event.code !== KeyboardCode.Left && event.code !== KeyboardCode.Right) return undefined;
+  if (!ARROW_CODES.includes(event.code)) return undefined;
   event.preventDefault();
+  if (event.code !== KeyboardCode.Left && event.code !== KeyboardCode.Right) return undefined;
   if (!active || !collisionRect) return undefined;
 
   const candidates: DroppableContainer[] = [];
@@ -294,7 +303,7 @@ function BoardSkeleton() {
   return (
     <div className="-mx-4 flex min-h-0 flex-1 gap-3 overflow-x-hidden px-4 pb-3 sm:-mx-6 sm:px-6 md:-mx-8 md:px-8">
       {STATUS_VIEWS.map((view) => (
-        <div key={view.status} className="flex min-w-[252px] flex-1 flex-col">
+        <div key={view.status} className="flex min-w-[224px] flex-1 flex-col">
           <div className="flex items-center gap-2 px-2 pb-2">
             <Skeleton className="size-3.5 rounded" />
             <Skeleton className="h-3.5 w-16" />

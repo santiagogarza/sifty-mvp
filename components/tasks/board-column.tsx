@@ -33,7 +33,7 @@ export function BoardColumn({
     <section
       ref={setNodeRef}
       aria-label={`${label} column`}
-      className="flex min-h-0 min-w-[252px] flex-1 flex-col"
+      className="flex min-h-0 min-w-[224px] flex-1 flex-col"
     >
       <header className="flex items-center gap-2 px-2 pb-2">
         <StatusIcon status={status} size={13} className="text-[var(--fg-muted)]" />
