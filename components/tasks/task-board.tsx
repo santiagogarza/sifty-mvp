@@ -84,8 +84,10 @@ export function TaskBoard({
   const cardRefs = React.useRef(new Map<string, HTMLDivElement | null>());
   const dragRef = React.useRef<DragSession | null>(null);
   const suppressClickRef = React.useRef(false);
+  const suppressClearTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [drag, setDrag] = React.useState<DragSession | null>(null);
   const [activeTaskId, setActiveTaskId] = React.useState<string | null>(null);
+  const didInitialFocus = React.useRef(false);
   const reducedMotion = usePrefersReducedMotion();
 
   const columns = React.useMemo(() => {
@@ -123,6 +125,56 @@ export function TaskBoard({
     }
   }, [highlightColumn, reducedMotion]);
 
+  const pendingRefocusRef = React.useRef<string | null>(null);
+  const focusTask = React.useCallback(
+    (taskId: string, opts?: { preventScroll?: boolean }) => {
+      setActiveTaskId(taskId);
+      const node = cardRefs.current.get(taskId);
+      if (!node) return;
+      node.focus({ preventScroll: opts?.preventScroll ?? false });
+      if (!opts?.preventScroll) {
+        node.scrollIntoView({
+          inline: "nearest",
+          block: "nearest",
+          behavior: reducedMotion ? "auto" : "smooth",
+        });
+      }
+    },
+    [reducedMotion],
+  );
+
+  React.useEffect(() => {
+    if (flatIds.length === 0 || didInitialFocus.current) return;
+    didInitialFocus.current = true;
+    const first = flatIds[0];
+    if (first) focusTask(first, { preventScroll: true });
+  }, [flatIds, focusTask]);
+
+  // Refocus only after board-driven lifecycle moves remount the card.
+  React.useEffect(() => {
+    const id = pendingRefocusRef.current;
+    if (!id || !flatIds.includes(id)) return;
+    pendingRefocusRef.current = null;
+    focusTask(id);
+  }, [flatIds, focusTask]);
+
+  React.useEffect(() => {
+    return () => {
+      if (suppressClearTimerRef.current) clearTimeout(suppressClearTimerRef.current);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, []);
+
+  const armClickSuppression = React.useCallback(() => {
+    suppressClickRef.current = true;
+    if (suppressClearTimerRef.current) clearTimeout(suppressClearTimerRef.current);
+    suppressClearTimerRef.current = setTimeout(() => {
+      suppressClickRef.current = false;
+      suppressClearTimerRef.current = null;
+    }, 0);
+  }, []);
+
   const updateDrag = React.useCallback((patch: Partial<DragSession>) => {
     const current = dragRef.current;
     if (!current) return;
@@ -136,15 +188,18 @@ export function TaskBoard({
       const session = dragRef.current;
       if (!session) return;
       const over = session.over;
+      const wasActive = session.active;
       dragRef.current = null;
       setDrag(null);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
-      if (commit && session.active && over && over !== session.from) {
+      if (wasActive) armClickSuppression();
+      if (commit && wasActive && over && over !== session.from) {
         setLifecycle(session.taskId, over);
+        setActiveTaskId(session.taskId);
       }
     },
-    [setLifecycle],
+    [armClickSuppression, setLifecycle],
   );
 
   React.useEffect(() => {
@@ -156,7 +211,6 @@ export function TaskBoard({
       const dy = e.clientY - session.startY;
       if (!session.active) {
         if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
-        suppressClickRef.current = true;
         document.body.style.cursor = "grabbing";
         document.body.style.userSelect = "none";
         updateDrag({
@@ -220,21 +274,34 @@ export function TaskBoard({
     e.currentTarget.setPointerCapture?.(e.pointerId);
   };
 
-  const focusTask = (taskId: string) => {
-    setActiveTaskId(taskId);
-    cardRefs.current.get(taskId)?.focus({ preventScroll: true });
-  };
+  const openTask = React.useCallback(
+    (id: string) => {
+      if (suppressClickRef.current) {
+        suppressClickRef.current = false;
+        if (suppressClearTimerRef.current) {
+          clearTimeout(suppressClearTimerRef.current);
+          suppressClearTimerRef.current = null;
+        }
+        return;
+      }
+      onOpen(id);
+    },
+    [onOpen],
+  );
 
   const onCardKeyDown = (task: Task, e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      onOpen(task.id);
+      openTask(task.id);
       return;
     }
     if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
       e.preventDefault();
       const next = adjacentBoardColumn(task.lifecycle, e.key === "ArrowLeft" ? -1 : 1);
-      if (next) setLifecycle(task.id, next);
+      if (!next) return;
+      pendingRefocusRef.current = task.id;
+      setLifecycle(task.id, next);
+      setActiveTaskId(task.id);
       return;
     }
     if (e.key === "ArrowDown" || e.key === "j" || e.key === "ArrowUp" || e.key === "k") {
@@ -242,7 +309,7 @@ export function TaskBoard({
       const index = flatIds.indexOf(task.id);
       if (index < 0) return;
       const delta = e.key === "ArrowDown" || e.key === "j" ? 1 : -1;
-      const nextId = flatIds[index + delta];
+      const nextId = flatIds[Math.max(0, Math.min(flatIds.length - 1, index + delta))];
       if (nextId) focusTask(nextId);
     }
   };
@@ -253,14 +320,12 @@ export function TaskBoard({
     <div className="relative -mx-4 sm:-mx-6 md:-mx-8">
       <div
         ref={boardRef}
-        role="listbox"
-        tabIndex={0}
         aria-label="Task board"
-        aria-orientation="horizontal"
         className={cn(
           "flex gap-3 overflow-x-auto px-4 sm:px-6 md:px-8 pb-4",
           "snap-x snap-mandatory md:snap-none",
-          "[scrollbar-width:thin] focus:outline-none",
+          "[scrollbar-width:thin]",
+          drag?.active && "touch-none",
         )}
       >
         {BOARD_COLUMNS.map((column) => {
@@ -273,7 +338,7 @@ export function TaskBoard({
             <section
               key={column}
               data-board-column={column}
-              aria-label={`${lifecycleLabel(column)} column`}
+              aria-label={`${lifecycleLabel(column)}, ${columnTasks.length} tasks`}
               className={cn(
                 "flex w-[272px] shrink-0 snap-start flex-col rounded-[var(--radius-lg)]",
                 "bg-[var(--bg-sunken)]/55 border border-transparent",
@@ -292,6 +357,8 @@ export function TaskBoard({
               </header>
 
               <div
+                role="list"
+                aria-label={`${lifecycleLabel(column)} tasks`}
                 className={cn(
                   "flex min-h-[120px] flex-1 flex-col gap-2 px-2 pb-3",
                   isOver && "rounded-[var(--radius-md)]",
@@ -311,15 +378,10 @@ export function TaskBoard({
                     tabIndex={
                       activeTaskId === task.id || (!activeTaskId && task.id === flatIds[0]) ? 0 : -1
                     }
-                    onOpen={(id) => {
-                      if (suppressClickRef.current) {
-                        suppressClickRef.current = false;
-                        return;
-                      }
-                      onOpen(id);
-                    }}
+                    onOpen={openTask}
                     onPointerDownDrag={(e) => beginDrag(task, e)}
                     onKeyDown={(e) => onCardKeyDown(task, e)}
+                    onFocus={() => setActiveTaskId(task.id)}
                   />
                 ))}
               </div>

@@ -21,9 +21,10 @@ export const TaskBoardCard = React.forwardRef<
     onOpen: (id: string) => void;
     onPointerDownDrag?: (e: React.PointerEvent<HTMLDivElement>) => void;
     onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
+    onFocus?: () => void;
   }
 >(function TaskBoardCard(
-  { task, labels, active, dragging, tabIndex = -1, onOpen, onPointerDownDrag, onKeyDown },
+  { task, labels, active, dragging, tabIndex = -1, onOpen, onPointerDownDrag, onKeyDown, onFocus },
   ref,
 ) {
   const updateTask = useStore((s) => s.updateTask);
@@ -50,25 +51,23 @@ export const TaskBoardCard = React.forwardRef<
   return (
     <div
       ref={ref}
-      role="option"
-      aria-selected={active}
+      role="listitem"
       tabIndex={tabIndex}
       data-task-id={task.id}
-      onClick={() => {
-        if (dragging) return;
-        onOpen(task.id);
-      }}
+      aria-label={task.title}
+      onClick={() => onOpen(task.id)}
       onKeyDown={onKeyDown}
+      onFocus={onFocus}
       onPointerDown={onPointerDownDrag}
       className={cn(
-        "group relative flex cursor-grab touch-none flex-col gap-1.5 rounded-[var(--radius-md)]",
+        "group relative flex cursor-grab flex-col gap-1.5 rounded-[var(--radius-md)]",
         "border border-[var(--border)] bg-[var(--surface)] px-2.5 py-2.5",
         "shadow-[0_1px_0_oklch(0%_0_0/0.03)]",
         "transition-[background,border-color,box-shadow,opacity,transform] duration-150 ease-[var(--ease-product)]",
         "hover:border-[var(--border-strong)] hover:bg-[var(--bg-elevated)]",
         "active:cursor-grabbing",
         active && "border-[var(--border-strong)] bg-[var(--surface-muted)]",
-        dragging && "opacity-40",
+        dragging && "opacity-40 touch-none",
         isDone && "opacity-75",
       )}
     >
@@ -80,7 +79,7 @@ export const TaskBoardCard = React.forwardRef<
           aria-label={isDone ? "Mark as not done" : "Mark as done"}
           className={cn(
             "mt-0.5 size-4 shrink-0 rounded-full border flex items-center justify-center",
-            "transition-all duration-150 ease-[var(--ease-product)]",
+            "transition-[background,border-color] duration-150 ease-[var(--ease-product)]",
             "border-[var(--border-strong)] hover:border-[var(--accent)]",
             isDone && "bg-[var(--done)] border-[var(--done)]",
           )}

@@ -50,16 +50,23 @@ export function TaskView({
   const actions = (
     <div className="flex items-center gap-2">
       {rightSlot}
-      <ViewModeToggle />
+      <ViewModeToggle disabled={!hydrated} />
     </div>
   );
 
-  // Wait for persistence before choosing list vs board so a stored board
-  // preference never flashes the list chrome first.
+  // Stay mode-agnostic until persistence rehydrates so a stored board
+  // preference never flashes list chrome (or a wrong pressed toggle).
   if (!hydrated) {
     return (
       <>
-        <PageHeader eyebrow={eyebrow} title={title} description={description} actions={actions} />
+        <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between mt-6 mb-5">
+          <div className="min-w-0 space-y-2">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-9 w-48" />
+            <Skeleton className="h-4 w-72 max-w-full" />
+          </div>
+          {actions}
+        </header>
         <TaskListSkeleton />
       </>
     );
