@@ -143,3 +143,19 @@ Follow-up on commit 17cd57a (Run 4 finding addressed). Delta since Run 4 confirm
 **Fix:** Reword the existing row to cover both surfaces, e.g. `| \`↑/↓\` (\`j\`/\`k\`) | Navigate task list / cards in a board column |`. One row; keeps the table's terse parallel style.
 
 Found 1 issue.
+
+## Run 6 — 2026-07-22 05:13 UTC
+
+Closing check on commit 219f194 (claimed fix for the Run 5 finding). Delta since Run 5's verified commit (17cd57a) confirmed via `git diff --stat 17cd57a..HEAD`: the only committed change is this review log (+19 lines, the Run 5 section). No executable code changed since Run 5's clean biome/tsc/e2e state, so checks were not re-run.
+
+**Fix content verified, commit contents not:**
+
+- The working-tree README row matches the Run 5 prescription exactly (`| \`↑/↓\` (\`j\`/\`k\`) | Navigate task list / cards in a board column |`) and remains accurate against the code (`task-board.tsx` `vertical(±1)` handles `ArrowUp/Down` and `j`/`k` in-column; unchanged since Run 5's trace).
+- `git diff README.md` confirms the row edit is the sole working-tree change — no other hunks.
+
+### The Run 5 fix was never committed — commit 219f194 ships the review log, not the README change
+**File:** `README.md` L273 (committed state at HEAD = 219f194)
+**What's wrong:** Commit 219f194's message ("docs: vertical navigation covers both list and board cards") describes the README fix, but its content is only `.cursor/reviews/review-kanban-board-4b9d.md`. The corrected row exists solely as an uncommitted working-tree modification (`git status`: ` M README.md`); `git show HEAD:README.md` still reads `| \`↑/↓\` (\`j\`/\`k\`) | Navigate task list |`. Pushing the branch now ships the misleading row Run 5 flagged, with a commit message that falsely claims it was fixed.
+**Fix:** Stage and commit the pending `README.md` change (e.g. amend-free follow-up commit; the working-tree content is already exactly right — no edit needed). Before declaring any review finding fixed, verify the fix landed with `git show <commit> --stat` rather than trusting the commit message.
+
+Found 1 issue.
