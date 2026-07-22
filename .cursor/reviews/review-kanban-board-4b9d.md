@@ -56,3 +56,34 @@ Traced and intentionally NOT flagged:
 **Fix:** Either drop the hint (v is a layout *toggle*, not a global go-to-board key), or make the gesture match the promise: in `toggleView`, fall back to `setView("board")` when `current` is null so `v` means "to the board" from anywhere and "back to your list" from the board. The second reads better for a keyboard-forward app; pick one and make hint and behavior agree.
 
 Found 7 issues.
+
+## Run 2 — 2026-07-22 04:40 UTC
+
+Follow-up on commit 1b0ea56 (all 7 Run 1 findings addressed). Verification: full re-read of `task-board.tsx`, `board-card.tsx`, `view-switch.tsx` plus load-bearing context (`task-list.tsx`, `keyboard.tsx`, `command-palette.tsx`, `app-frame.tsx`, `capture-dialog.tsx`, `view-toggle.ts`, `board.spec.ts`, `globals.css`), plus live Playwright probes against the running dev server.
+
+**All 7 fixes verified correct:**
+
+1. Footer renders after the `role="listbox"` div (valid ARIA); the target guard blocks remembered-state key handling on the button, and Enter activates it natively (probe: 37 done cards render after Enter).
+2. Initial focus live-confirmed: container focused after `v`, ArrowDown enters the first card. The no-dep-array effect is a cheap two-ref-check no-op after first success; capture closes on submit and the detail sheet renders after `{children}` in `AppFrame`, so neither is focus-stolen; matches the `TaskList` convention.
+3. Pointer drops refocus via `pendingFocusId`; dnd-kit's `useRestoreFocus` early-returns for non-keyboard activator events (confirmed in `@dnd-kit/core` 6.3.1 source, `core.cjs.development.js` L2704), so nothing fights the refocus.
+4. `dueTone` forced neutral when done; shared `BoardCardContent` covers the drag overlay too.
+5. Keyboard moves speak through the custom region only; pointer drops through dnd-kit only. No path double-announces (no KeyboardSensor, so dnd-kit never sees keyboard moves).
+6. Brackets handled before the modifier guard, rejecting only `metaKey`: AltGr (ctrl+alt) and Option layouts work; Cmd+[ history nav preserved; no native ctrl/alt bracket shortcut exists to steal.
+7. `toggleView` falls back to `setView("board")` when `current` is null; the palette's `V` hint is now honest on /memory and /settings.
+
+### Clicking column whitespace focuses the listbox and kills every board key
+**File:** `components/tasks/task-board.tsx` L257-L262 (target guard), L524-L530 (listbox `tabIndex={-1}`)
+**What's wrong:** The column listbox div carries `tabIndex={-1}`, which makes it click-focusable. Clicking a column's empty area (below the cards, between-card gaps, an empty column's body) focuses the listbox, and the new target guard then rejects every key — live-probed: after clicking the Someday column's whitespace, `document.activeElement` is the listbox and ArrowDown, `j`, and `]` all do nothing until the user clicks a card or Tabs away. Before the guard existed, keys from this state still worked (bubbled to the container and acted on `focusedId`), so this is a regression introduced by the fix. Nothing in the codebase focuses the listbox programmatically, and a div without tabindex is not in the Tab order anyway, so the attribute's stated rationale ("only programmatically focusable so it never adds a Tab stop") buys nothing — it only creates this dead state.
+**Fix:** Delete `tabIndex={-1}` (and its comment) from the listbox div. Clicks on non-card board chrome then fall through to the nearest focusable ancestor — the board container, which the guard already allows — live-probed via a header click: focus lands on the container and ArrowDown immediately enters the first card. With no focusable intermediate between cards and container, the dead state becomes unrepresentable rather than guarded against.
+
+### "Show all N" strands keyboard focus on `<body>` after expanding Done
+**File:** `components/tasks/task-board.tsx` L394-L405 (footer onClick)
+**What's wrong:** Activating "Show all N" sets `showAllDone`, which drops `hiddenDone` to 0 and unmounts the button the user is focused on. Live-probed: after Enter on the button, `document.activeElement` is `<body>` and `j` does nothing — the keyboard flow the board is built around ends dead, and Tab restarts from the top of the page. Run 1's finding 1 called this out ("Consider also moving focus to the first newly revealed card"); the fix took the guard and footer placement but dropped this part.
+**Fix:** In the button's onClick, queue focus onto the first newly revealed card through the machinery that already exists for moves: `const next = columns.done[DONE_PREVIEW_COUNT]; if (next) { setFocusedId(next.id); pendingFocusId.current = next.id; } setShowAllDone(true);`. The `pendingFocusId` effect focuses it after the re-render and scrolls it into view; pointer activations get the same continuation without a focus ring (`:focus-visible` heuristics).
+
+### Initial-focus contract has no regression coverage — the e2e test bypasses the entry flow
+**File:** `tests/e2e/board.spec.ts` L96-L114
+**What's wrong:** The bracket test still enters the board with an explicit `await card.focus()`, so the exact bug fixed by Run 1 finding 2 (board opens, every key dead until Tab/click) would pass CI if it regressed — and it did ship once, in the original feature commit. The fix is an every-render effect that a well-meaning cleanup (adding a dep array, reordering the early returns) can silently break while the UI looks identical.
+**Fix:** One assertion in the existing test, right after `page.keyboard.press("v")` resolves to /board: `await expect(page.locator('[aria-label="Board columns"]')).toBeFocused()`. Keep the explicit `card.focus()` for the bracket portion — parallel workers seed tasks concurrently, so "first card = marker" is not deterministic. No new test file.
+
+Found 3 issues.

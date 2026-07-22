@@ -38,9 +38,11 @@ test("layout switch round-trips between the list and the board", async ({ page }
   await page.getByRole("button", { name: "List view" }).click();
   await expect(page).toHaveURL(/\/waiting/);
 
-  // `v` flips the layout from the keyboard.
+  // `v` flips the layout from the keyboard, and the board takes focus on
+  // entry so shortcuts work immediately.
   await page.keyboard.press("v");
   await expect(page).toHaveURL(/\/board/);
+  await expect(page.locator('[aria-label="Board columns"]')).toBeFocused();
   await page.keyboard.press("v");
   await expect(page).toHaveURL(/\/waiting/);
 });

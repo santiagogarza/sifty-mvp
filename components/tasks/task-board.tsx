@@ -397,7 +397,17 @@ export function TaskBoard() {
                       variant="ghost"
                       size="sm"
                       className="mx-1.5 mb-1.5 shrink-0 text-[12px] text-[var(--fg-muted)]"
-                      onClick={() => setShowAllDone(true)}
+                      onClick={() => {
+                        // The button unmounts once everything is shown; move
+                        // focus onto the first newly revealed card so a
+                        // keyboard flow keeps its place.
+                        const next = columns.done[DONE_PREVIEW_COUNT];
+                        if (next) {
+                          setFocusedId(next.id);
+                          pendingFocusId.current = next.id;
+                        }
+                        setShowAllDone(true);
+                      }}
                     >
                       Show all {columns.done.length}
                     </Button>
@@ -521,13 +531,11 @@ function BoardColumn({
           </span>
         ) : null}
       </header>
+      {/* biome-ignore lint/a11y/useFocusableInteractive: options carry a roving tabindex (ARIA listbox pattern); a focusable container would add a state where clicks on column whitespace strand keyboard handling. */}
       <div
         role="listbox"
         aria-label={`${label} tasks`}
-        // Options carry a roving tabindex; the listbox itself is only
-        // programmatically focusable so it never adds a Tab stop.
-        tabIndex={-1}
-        className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-1.5 pb-1.5 focus:outline-none"
+        className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-1.5 pb-1.5"
       >
         {tasks.map((task) => (
           <BoardCard
