@@ -1,0 +1,17 @@
+---
+alwaysApply: true
+---
+
+# Linear workspace for this repo
+
+All Linear work for Sifty lives in the **sifty-demo** workspace
+(https://linear.app/sifty-demo), team **SIF**.
+
+- Always use the **`linear-sifty`** MCP server for Linear reads and writes in
+  this repo. It is API-key-bound to the sifty-demo workspace and cannot drift.
+- Never use a server named plain `linear` here: that is the shared demo
+  team's connector and other field engineers re-point it to their own
+  workspaces (tldraw-santi, Anyspherefff, ...) daily. Tickets it returns for
+  this repo are the wrong project's tickets.
+- If `linear-sifty` is unavailable, say so and continue without Linear rather
+  than falling back to the shared server.
