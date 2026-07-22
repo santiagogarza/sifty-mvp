@@ -251,9 +251,11 @@ function createColumnKeyboardCoordinates(
     if (!targetStatus) return currentCoordinates;
     keyboardStatusRef.current = targetStatus;
 
-    const targetRect = document
-      .querySelector<HTMLElement>(`[data-board-column-id="${targetStatus}"]`)
-      ?.getBoundingClientRect();
+    const targetElement = document.querySelector<HTMLElement>(
+      `[data-board-column-id="${targetStatus}"]`,
+    );
+    targetElement?.scrollIntoView({ block: "nearest", inline: "center" });
+    const targetRect = targetElement?.getBoundingClientRect();
     const activeRect = context.draggingNodeRect;
     if (!targetRect || !activeRect) return currentCoordinates;
 
