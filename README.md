@@ -43,7 +43,7 @@ SIFTY_DISABLE_AUTH=1 SIFTY_AI_OFFLINE=1 SIFTY_DEMO_SEED=1 pnpm dev
 ```
 
 `SIFTY_DEMO_SEED=1` populates every new account (or the auth-bypass user)
-with a fully-triaged workspace: a dozen tasks across Today/Inbox/Focus/
+with a fully-triaged workspace: a dozen tasks across Today/Board/Inbox/Focus/
 Waiting on/Someday/Done — labeled, prioritized, with subtasks, rationale,
 confidence, one clarifying question, and one prepared agent brief — plus
 pinned memories. Seeding is first-run only: an account with any existing
@@ -271,7 +271,9 @@ pnpm test:e2e
 | `⌘↵` | Submit capture |
 | `↑/↓` (`j`/`k`) | Navigate task list |
 | `Enter` | Open the highlighted task |
-| `Esc` | Close any overlay |
+| `←/→` `↑/↓` (`j`/`k`) | Move between Board cards |
+| `Space` | Pick up a Board card; `←/→` choose a column, `Space` drops |
+| `Esc` | Close any overlay (or cancel a Board drag) |
 
 ## License
 

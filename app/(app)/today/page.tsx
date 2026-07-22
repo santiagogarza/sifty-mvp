@@ -2,6 +2,7 @@
 
 import { PageShell } from "@/components/app-shell/page-shell";
 import { TaskView } from "@/components/tasks/task-view";
+import { ViewToggle } from "@/components/tasks/view-toggle";
 import { selectTodayTasks } from "@/lib/store/selectors";
 import * as React from "react";
 
@@ -41,6 +42,7 @@ export default function TodayPage() {
         selector={selectTodayTasks}
         emptyTitle="Nothing pressing today."
         emptyDescription="When something needs your attention, it'll show up here. Until then, enjoy the quiet."
+        rightSlot={<ViewToggle active="today" />}
       />
     </PageShell>
   );

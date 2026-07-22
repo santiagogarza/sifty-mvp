@@ -28,7 +28,7 @@ export function TopBar({
       className={cn(
         "sticky top-0 z-20",
         "flex items-center justify-between gap-3 px-4 sm:px-6 md:px-8",
-        "h-14 border-b border-[var(--border)] bg-[var(--bg)]/85 backdrop-blur",
+        "h-[var(--topbar-height)] border-b border-[var(--border)] bg-[var(--bg)]/85 backdrop-blur",
       )}
     >
       <div className="flex min-w-0 items-baseline gap-3">

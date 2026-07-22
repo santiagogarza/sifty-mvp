@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/utils/cn";
 import * as React from "react";
 import { useFrame } from "./app-frame";
 import { TopBar } from "./top-bar";
@@ -8,17 +9,20 @@ import { TopBar } from "./top-bar";
  * Page wrapper: top bar + content container.
  *
  * The top-bar buttons read the global frame so they're identical on every
- * page without per-page wiring.
+ * page without per-page wiring. `wide` relaxes the reading-width column
+ * for surfaces that are horizontal by nature (the Board).
  */
 export function PageShell({
   title,
   subtitle,
   rightSlot,
+  wide,
   children,
 }: {
   title?: string;
   subtitle?: string;
   rightSlot?: React.ReactNode;
+  wide?: boolean;
   children: React.ReactNode;
 }) {
   const { openCapture, openCommand } = useFrame();
@@ -31,7 +35,14 @@ export function PageShell({
         onCapture={openCapture}
         onCommand={openCommand}
       />
-      <div className="flex-1 px-4 sm:px-6 md:px-8 max-w-[820px] w-full mx-auto">{children}</div>
+      <div
+        className={cn(
+          "flex-1 px-4 sm:px-6 md:px-8 w-full mx-auto",
+          wide ? "max-w-[1600px]" : "max-w-[820px]",
+        )}
+      >
+        {children}
+      </div>
     </>
   );
 }
