@@ -230,7 +230,7 @@ function createColumnKeyboardCoordinates(tasksById: Map<string, Task>): Keyboard
 
     const task = tasksById.get(String(active));
     const currentStatus =
-      statusFromOver(context.current.over?.id) ??
+      statusFromOver(context.over?.id) ??
       (task?.lifecycle && isBoardStatus(task.lifecycle) ? task.lifecycle : null);
     if (!currentStatus) return;
 
@@ -241,7 +241,7 @@ function createColumnKeyboardCoordinates(tasksById: Map<string, Task>): Keyboard
     const targetRect = document
       .querySelector<HTMLElement>(`[data-board-column-id="${targetStatus}"]`)
       ?.getBoundingClientRect();
-    const activeRect = context.current.draggingNodeRect;
+    const activeRect = context.draggingNodeRect;
     if (!targetRect || !activeRect) return currentCoordinates;
 
     return {
