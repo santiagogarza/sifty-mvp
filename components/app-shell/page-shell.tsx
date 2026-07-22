@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/utils/cn";
 import * as React from "react";
 import { useFrame } from "./app-frame";
 import { TopBar } from "./top-bar";
@@ -14,11 +15,14 @@ export function PageShell({
   title,
   subtitle,
   rightSlot,
+  wide = false,
   children,
 }: {
   title?: string;
   subtitle?: string;
   rightSlot?: React.ReactNode;
+  /** Wider content column for surfaces like the Kanban board. */
+  wide?: boolean;
   children: React.ReactNode;
 }) {
   const { openCapture, openCommand } = useFrame();
@@ -31,7 +35,14 @@ export function PageShell({
         onCapture={openCapture}
         onCommand={openCommand}
       />
-      <div className="flex-1 px-4 sm:px-6 md:px-8 max-w-[820px] w-full mx-auto">{children}</div>
+      <div
+        className={cn(
+          "flex-1 px-4 sm:px-6 md:px-8 w-full mx-auto",
+          wide ? "max-w-[min(100%,1440px)]" : "max-w-[820px]",
+        )}
+      >
+        {children}
+      </div>
     </>
   );
 }

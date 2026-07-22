@@ -261,6 +261,15 @@ pnpm build
 pnpm test:e2e
 ```
 
+## Views
+
+- **Today** (`/today`) — smart lens over what needs attention now.
+- **Board** (`/board`) — Kanban across Inbox, Focus, Waiting on, Someday,
+  and Done. Drag a card between columns to change its status; use the
+  List/Board toggle in the header to jump back to Today.
+- **Status lists** (`/inbox`, `/focus`, `/waiting`, `/someday`, `/done`) —
+  one list per lifecycle stage.
+
 ## Keyboard
 
 | Key | Action |
@@ -272,6 +281,8 @@ pnpm test:e2e
 | `↑/↓` (`j`/`k`) | Navigate task list |
 | `Enter` | Open the highlighted task |
 | `Esc` | Close any overlay |
+| `Space` (board) | Pick up / drop a focused card |
+| Arrow keys (board) | Move a picked-up card between columns |
 
 ## License
 

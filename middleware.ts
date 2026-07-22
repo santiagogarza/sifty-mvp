@@ -24,6 +24,7 @@ const AUDIENCE = "sifty-app";
 
 const PROTECTED_PREFIXES = [
   "/today",
+  "/board",
   "/focus",
   "/inbox",
   "/waiting",
