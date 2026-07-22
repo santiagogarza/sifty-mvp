@@ -393,8 +393,10 @@ function boardHeader(): React.ReactNode {
       title="Board"
       description={
         <>
-          Every task by stage, left to right. Drag a card to move it — or focus one and press{" "}
-          <Kbd>[</Kbd> <Kbd>]</Kbd>.
+          Every task by stage, left to right. Drag a card to move it — or focus one and{" "}
+          <span className="whitespace-nowrap">
+            press <Kbd>[</Kbd> <Kbd>]</Kbd>.
+          </span>
         </>
       }
     />
@@ -451,7 +453,9 @@ function BoardColumn({
       data-column={lifecycle}
       className={cn(
         "flex min-h-0 w-[min(78vw,272px)] shrink-0 snap-start flex-col",
-        "md:w-auto md:min-w-[232px] md:flex-1 md:basis-0",
+        // 220px lets all five columns share a 1440px display; below that the
+        // row scrolls horizontally rather than crushing the cards.
+        "md:w-auto md:min-w-[220px] md:flex-1 md:basis-0",
         "rounded-[var(--radius-lg)] border bg-[var(--surface-muted)]/50",
         "transition-colors duration-150 ease-[var(--ease-product)]",
         isOver
@@ -506,7 +510,7 @@ function BoardSkeleton() {
       {BOARD_LIFECYCLES.map((lifecycle, col) => (
         <div
           key={lifecycle}
-          className="flex w-[min(78vw,272px)] shrink-0 flex-col gap-1.5 rounded-[var(--radius-lg)] bg-[var(--surface-muted)]/50 p-1.5 md:w-auto md:min-w-[232px] md:flex-1 md:basis-0"
+          className="flex w-[min(78vw,272px)] shrink-0 flex-col gap-1.5 rounded-[var(--radius-lg)] bg-[var(--surface-muted)]/50 p-1.5 md:w-auto md:min-w-[220px] md:flex-1 md:basis-0"
         >
           <div className="flex items-center gap-2 px-1.5 pt-1 pb-1.5">
             <Skeleton className="size-3.5 rounded" />
