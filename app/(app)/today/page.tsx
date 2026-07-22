@@ -42,7 +42,7 @@ export default function TodayPage() {
         selector={selectTodayTasks}
         emptyTitle="Nothing pressing today."
         emptyDescription="When something needs your attention, it'll show up here. Until then, enjoy the quiet."
-        rightSlot={<ViewToggle active="list" />}
+        rightSlot={<ViewToggle active="today" />}
       />
     </PageShell>
   );

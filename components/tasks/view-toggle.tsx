@@ -15,7 +15,7 @@ import * as React from "react";
  * buttons — the views are routes, so middle-click, cmd+click, and the
  * back button all stay honest.
  */
-export function ViewToggle({ active }: { active: "list" | "board" }) {
+export function ViewToggle({ active }: { active: "today" | "board" }) {
   return (
     <TooltipProvider>
       <div
@@ -26,7 +26,7 @@ export function ViewToggle({ active }: { active: "list" | "board" }) {
         <Segment
           href="/today"
           label="Today"
-          active={active === "list"}
+          active={active === "today"}
           icon={<LayoutList size={13} />}
         />
         <Segment

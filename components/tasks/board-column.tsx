@@ -38,8 +38,9 @@ export function BoardColumn({
     <section
       ref={setNodeRef}
       aria-label={`${label} column`}
-      // min-w keeps all five columns inside a 1440px viewport: 213px
-      // sidebar + 2×64px padding + 5×220px + 4×12px gaps = 1213px.
+      // min-w keeps five columns inside 1440px: 1440 − 212px sidebar =
+      // 1228px scroller; 64px scroller padding + 5×220px + 4×12px gaps
+      // = 1212px (16px slack).
       className="flex min-h-0 min-w-[220px] flex-1 flex-col"
     >
       <header className="flex items-center gap-2 px-2 pb-2">
