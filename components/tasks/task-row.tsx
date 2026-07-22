@@ -86,7 +86,10 @@ export const TaskRow = React.forwardRef<
         onClick={onComplete}
         aria-label={isDone ? "Mark as not done" : "Mark as done"}
         className={cn(
-          "size-5 rounded-full border flex items-center justify-center",
+          // The visible circle is 20px; the ::after pseudo pads the hit
+          // target to ~32px (Fitts) without changing the layout.
+          "relative size-5 rounded-full border flex items-center justify-center",
+          "after:absolute after:-inset-1.5 after:content-['']",
           "transition-all duration-150 ease-[var(--ease-product)]",
           "border-[var(--border-strong)] hover:border-[var(--accent)]",
           isDone && "bg-[var(--done)] border-[var(--done)]",

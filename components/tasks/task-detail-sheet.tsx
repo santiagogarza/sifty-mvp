@@ -163,7 +163,8 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
             }
             aria-label={isDone ? "Mark as not done" : "Mark as done"}
             className={cn(
-              "mt-1 size-5 rounded-full border flex items-center justify-center shrink-0",
+              "relative mt-1 size-5 rounded-full border flex items-center justify-center shrink-0",
+              "after:absolute after:-inset-1.5 after:content-['']",
               "transition-all duration-150 ease-[var(--ease-product)]",
               "border-[var(--border-strong)] hover:border-[var(--accent)]",
               isDone && "bg-[var(--done)] border-[var(--done)]",
