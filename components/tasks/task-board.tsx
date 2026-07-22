@@ -87,6 +87,7 @@ export function TaskBoard() {
   });
   const keyboardSensor = useSensor(KeyboardSensor, {
     coordinateGetter: boardKeyboardCoordinates,
+    scrollBehavior: reducedMotion ? "auto" : "smooth",
     keyboardCodes: {
       start: [KeyboardCode.Space],
       cancel: [KeyboardCode.Esc],
@@ -121,6 +122,7 @@ export function TaskBoard() {
         const task = tasks.find((candidate) => candidate.id === active.id);
         if (!task) return "Task dropped.";
         if (!over || !isBoardStatus(over.id)) return `${task.title} returned to its column.`;
+        if (task.lifecycle === over.id) return `${task.title} stayed in ${statusLabel(over.id)}.`;
         return `${task.title} moved to ${statusLabel(over.id)}.`;
       },
       onDragCancel({ active }) {

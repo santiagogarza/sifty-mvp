@@ -30,7 +30,7 @@ export function BoardCard({ task, labels, onOpen }: BoardCardProps) {
       {...listeners}
       onClick={() => onOpen(task.id)}
       className={cn(
-        "block w-full cursor-grab touch-none rounded-[var(--radius-md)] text-left active:cursor-grabbing",
+        "block w-full cursor-grab rounded-[var(--radius-md)] text-left active:cursor-grabbing",
         "transition-opacity duration-150 ease-[var(--ease-product)]",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]",
         isDragging && "opacity-40",
@@ -95,11 +95,9 @@ function BoardCardContent({
           </div>
           <AiStatusInline status={task.aiStatus} className="mt-1" />
         </div>
-        <GripVertical
-          size={14}
-          aria-hidden="true"
-          className="mt-0.5 shrink-0 text-[var(--fg-subtle)] opacity-45 transition-opacity group-hover:opacity-80"
-        />
+        <span className="mt-0.5 shrink-0 touch-none text-[var(--fg-subtle)] opacity-45 transition-opacity group-hover:opacity-80">
+          <GripVertical size={14} aria-hidden="true" />
+        </span>
       </div>
 
       {taskLabels.length > 0 || dueLabel ? (
