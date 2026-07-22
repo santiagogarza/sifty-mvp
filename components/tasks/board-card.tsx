@@ -27,10 +27,13 @@ export function BoardCard({
     id: task.id,
     disabled: overlay,
   });
-  const { onKeyDown: onDragKeyDown, ...dragListeners } = (listeners ?? {}) as Record<
-    string,
-    ((event: React.SyntheticEvent) => void) | undefined
-  >;
+  const {
+    onKeyDown: onDragKeyDown,
+    onPointerDown: onDragPointerDown,
+    onMouseDown: onDragMouseDown,
+    ...dragListeners
+  } = (listeners ?? {}) as Record<string, ((event: React.SyntheticEvent) => void) | undefined>;
+  const pressStartRef = React.useRef<{ x: number; y: number } | null>(null);
 
   const due = task.due;
   const overdue = isOverdue(due);
@@ -54,7 +57,26 @@ export function BoardCard({
       style={style}
       {...(overlay ? {} : attributes)}
       {...(overlay ? {} : dragListeners)}
-      onClick={() => onOpen?.(task.id)}
+      onPointerDown={(e) => {
+        pressStartRef.current = { x: e.clientX, y: e.clientY };
+        if (!overlay) onDragPointerDown?.(e);
+      }}
+      onMouseDown={(e) => {
+        pressStartRef.current = { x: e.clientX, y: e.clientY };
+        if (!overlay) onDragMouseDown?.(e);
+      }}
+      onClick={(e) => {
+        const pressStart = pressStartRef.current;
+        pressStartRef.current = null;
+        if (pressStart) {
+          const distance = Math.hypot(e.clientX - pressStart.x, e.clientY - pressStart.y);
+          if (distance >= 5) {
+            e.preventDefault();
+            return;
+          }
+        }
+        onOpen?.(task.id);
+      }}
       onKeyDown={(e) => {
         if (!overlay) onDragKeyDown?.(e);
         if (e.key === "Enter") {
