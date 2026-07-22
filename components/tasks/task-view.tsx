@@ -8,6 +8,7 @@ import { useStore } from "@/lib/store/store";
 import * as React from "react";
 import { TaskEmptyState } from "./empty-state";
 import { TaskList } from "./task-list";
+import { ViewSwitcher } from "./view-switcher";
 
 /**
  * Reusable view that renders the standard structure for Today/Inbox/Focus/etc.
@@ -39,7 +40,17 @@ export function TaskView({
 
   return (
     <>
-      <PageHeader eyebrow={eyebrow} title={title} description={description} actions={rightSlot} />
+      <PageHeader
+        eyebrow={eyebrow}
+        title={title}
+        description={description}
+        actions={
+          <>
+            {rightSlot}
+            <ViewSwitcher />
+          </>
+        }
+      />
       {!hydrated ? (
         <TaskListSkeleton />
       ) : (

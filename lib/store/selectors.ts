@@ -19,6 +19,9 @@ export interface ViewArgs {
   search?: string;
 }
 
+export const BOARD_LIFECYCLES = ["inbox", "active", "waiting", "someday", "done"] as const;
+export type BoardLifecycle = (typeof BOARD_LIFECYCLES)[number];
+
 function applyCommonFilters(tasks: Task[], args: ViewArgs): Task[] {
   let out = tasks;
   if (args.labelId) {
@@ -104,6 +107,12 @@ export function selectByLifecycle(
   return applyCommonFilters(tasks, args)
     .filter((t) => t.lifecycle === lifecycle)
     .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+}
+
+export function selectBoardTasks(tasks: Task[]): Record<BoardLifecycle, Task[]> {
+  return Object.fromEntries(
+    BOARD_LIFECYCLES.map((lifecycle) => [lifecycle, selectByLifecycle(tasks, lifecycle)]),
+  ) as Record<BoardLifecycle, Task[]>;
 }
 
 export function useTaskCounts() {

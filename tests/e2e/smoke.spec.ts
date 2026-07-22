@@ -54,6 +54,43 @@ test("captured task syncs to the server and survives cleared local state", async
   await expect(page.getByText(marker.slice(0, 30)).first()).toBeVisible({ timeout: 10_000 });
 });
 
+test("board moves a task between statuses", async ({ page }) => {
+  await page.goto("/inbox", { waitUntil: "networkidle" });
+
+  const marker = `Board move ${Date.now()}`;
+  await page.keyboard.press("c");
+  await page.getByPlaceholder("What do you need to do?").fill(marker);
+  await page.keyboard.press("ControlOrMeta+Enter");
+  await expect(page.getByText(marker).first()).toBeVisible();
+
+  await page.getByRole("link", { name: "Board" }).click();
+  const card = page.getByTestId("task-board").getByText(marker).locator("..").locator("..");
+  await card
+    .getByRole("button", { name: `Drag ${marker}` })
+    .dragTo(page.getByTestId("board-column-active"));
+  await expect(page.getByTestId("board-column-active").getByText(marker)).toBeVisible();
+
+  await page
+    .getByTestId("board-column-active")
+    .getByText(marker)
+    .locator("..")
+    .locator("..")
+    .getByRole("button", { name: "Move task right" })
+    .click();
+  await expect(page.getByTestId("board-column-waiting").getByText(marker)).toBeVisible();
+
+  await expect
+    .poll(async () => {
+      const res = await page.request.get("/api/tasks");
+      if (!res.ok()) return null;
+      const { tasks } = (await res.json()) as {
+        tasks: Array<{ sourceText: string; lifecycle: string }>;
+      };
+      return tasks.find((task) => task.sourceText === marker)?.lifecycle ?? null;
+    })
+    .toBe("waiting");
+});
+
 test("rate limit returns 429 with Retry-After when bursting the triage route", async ({
   request,
 }) => {
