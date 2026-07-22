@@ -24,6 +24,9 @@ function column(page: Page, lifecycle: string) {
 
 test("layout switch round-trips between the list and the board", async ({ page }) => {
   await page.goto("/waiting", { waitUntil: "networkidle" });
+  // Columns only render once the board has work; an empty board shows the
+  // capture empty-state instead.
+  await capture(page, `Board toggle ${Date.now()}`);
 
   await page.getByRole("button", { name: "Board view" }).click();
   await expect(page).toHaveURL(/\/board/);
