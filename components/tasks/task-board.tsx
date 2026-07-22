@@ -52,6 +52,7 @@ export function TaskBoard() {
   const [activeTaskId, setActiveTaskId] = React.useState<string | null>(null);
   const [overStatus, setOverStatus] = React.useState<Lifecycle | null>(null);
   const prefersReducedMotion = usePrefersReducedMotion();
+  const dropEasing = useCssVariable("--ease-product", "cubic-bezier(0.32, 0.72, 0.18, 1)");
 
   const labelsById = React.useMemo(
     () => new Map(labels.map((label) => [label.id, label])),
@@ -164,7 +165,7 @@ export function TaskBoard() {
               ? null
               : {
                   duration: 200,
-                  easing: "var(--ease-product)",
+                  easing: dropEasing,
                   sideEffects: defaultDropAnimationSideEffects({
                     styles: {
                       active: {
@@ -295,4 +296,18 @@ function usePrefersReducedMotion(): boolean {
   }, []);
 
   return reduced;
+}
+
+function useCssVariable(name: string, fallback: string): string {
+  const [value, setValue] = React.useState(fallback);
+
+  React.useEffect(() => {
+    const resolved = window
+      .getComputedStyle(document.documentElement)
+      .getPropertyValue(name)
+      .trim();
+    setValue(resolved || fallback);
+  }, [name, fallback]);
+
+  return value;
 }
