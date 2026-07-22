@@ -375,6 +375,22 @@ button,
   display: inline-block;
   animation: sifty-count-pulse 600ms var(--ease-product) both;
 }
+/* A board card while held: one short lift on pickup, then it stays
+   raised for the whole drag. The settle-back-down half runs in the drop
+   animation (task-board.tsx), which mirrors these end values. */
+@keyframes sifty-card-lift {
+  from {
+    transform: scale(1);
+    box-shadow: 0 1px 2px oklch(0% 0 0 / 0.04);
+  }
+  to {
+    transform: scale(1.03);
+    box-shadow: 0 12px 28px -10px oklch(0% 0 0 / 0.28), 0 2px 8px oklch(0% 0 0 / 0.1);
+  }
+}
+.board-card-lifted {
+  animation: sifty-card-lift 160ms var(--ease-product) both;
+}
 /* A just-completed row: stays readable for a beat, then collapses.
    The grid-template-rows trick animates an unknown height to zero. */
 .ghost-collapse {
