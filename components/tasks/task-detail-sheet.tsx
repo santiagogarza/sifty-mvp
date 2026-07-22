@@ -4,10 +4,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Sheet, SheetClose, SheetContent } from "@/components/ui/sheet";
-import { runTriage } from "@/lib/ai/run-triage";
+import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { isTriageInFlight, runTriage } from "@/lib/ai/run-triage";
 import { LABEL_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
 import { bucketLabel } from "@/lib/domain/priority";
+import { STATUSES_IN_ORDER, STATUS_META, statusLabel } from "@/lib/domain/status";
 import {
   type DelegationCandidate,
   type Effort,
@@ -15,10 +16,12 @@ import {
   type Lifecycle,
   type Subtask,
   type Task,
+  type TaskEditableField,
 } from "@/lib/domain/types";
 import { getSyncHooks, useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import { formatExactTime, formatRelativeDay, isOverdue } from "@/lib/utils/dates";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import {
   ArrowRight,
   Bot,
@@ -36,6 +39,7 @@ import {
 import * as React from "react";
 import { AiThinking } from "./ai-status";
 import { PriorityGlyph } from "./priority-glyph";
+import { StatusIcon } from "./status-icon";
 
 /**
  * The detail sheet is where the AI's work becomes user-visible and editable.
@@ -43,10 +47,16 @@ import { PriorityGlyph } from "./priority-glyph";
  * Information architecture:
  *   1. Title + completion (the act, never hidden)
  *   2. Next action (the most actionable line)
- *   3. Meta strip: due, effort, delegation, labels
+ *   3. Meta strip: due, effort, delegation, status
  *   4. Subtasks (collapsible if absent)
  *   5. AI rationale + clarifying question (progressive disclosure)
- *   6. Footer: source text, retry, delete
+ *   6. Filing strip (inbox only) + footer: source text, retry, delete
+ *
+ * Capture feedback: right after capture the sheet opens on the new task.
+ * While Sifty organizes it, empty AI-populated slots show a quiet shimmer;
+ * everything stays a live input the whole time (user edits win via
+ * `editedFields`). When the result lands, the filled sections settle in
+ * with a short stagger.
  */
 export function TaskDetailSheet({
   taskId,
@@ -60,7 +70,18 @@ export function TaskDetailSheet({
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
-      <SheetContent>{task ? <DetailBody task={task} onClose={onClose} /> : null}</SheetContent>
+      <SheetContent aria-describedby={undefined}>
+        {task ? (
+          <>
+            <VisuallyHidden>
+              <SheetTitle>{task.title || "Task details"}</SheetTitle>
+            </VisuallyHidden>
+            {/* Keyed so switching tasks resets local UI state (disclosures,
+                fill animation tracking) instead of leaking across tasks. */}
+            <DetailBody key={task.id} task={task} onClose={onClose} />
+          </>
+        ) : null}
+      </SheetContent>
     </Sheet>
   );
 }
@@ -80,25 +101,46 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
   const [showRationale, setShowRationale] = React.useState(false);
   const [showSource, setShowSource] = React.useState(false);
 
+  // Organizing = triage genuinely in flight. The `isTriageInFlight` guard
+  // keeps a stale "pending" row (e.g. restored from another device) from
+  // shimmering forever; reactivity still comes from aiStatus updates.
+  const organizing =
+    task.aiStatus === "running" || (task.aiStatus === "pending" && isTriageInFlight(task.id));
+  // First fill = the capture moment: nothing triaged yet, slots are blank.
+  const firstFill = organizing && task.aiAttempts === 0;
+  const edited = (f: TaskEditableField) => task.editedFields.includes(f);
+
+  const justFilled = useJustFilled(task.aiStatus);
+  const fillProps = (order: number, base: string) => ({
+    className: cn(base, justFilled && "animate-fill-in"),
+    style: justFilled ? { animationDelay: `${order * 45}ms` } : undefined,
+  });
+
   return (
     <div className="flex h-full flex-col">
       <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-elevated)]/95 backdrop-blur px-4 sm:px-5 py-3">
         <div className="flex items-center gap-2 text-[12px] text-[var(--fg-subtle)]">
-          <PriorityGlyph bucket={task.priorityBucket} size={11} />
-          <span>{bucketLabel(task.priorityBucket)}</span>
-          {task.aiStatus === "running" || task.aiStatus === "pending" ? (
-            <span className="ml-2">
-              <AiThinking />
-            </span>
-          ) : null}
+          {organizing && task.priorityBucket === "unset" ? (
+            <AiThinking />
+          ) : (
+            <>
+              <PriorityGlyph bucket={task.priorityBucket} size={11} />
+              <span>{bucketLabel(task.priorityBucket)}</span>
+              {organizing ? (
+                <span className="ml-2">
+                  <AiThinking />
+                </span>
+              ) : null}
+            </>
+          )}
         </div>
         <div className="flex items-center gap-1.5">
           <Button
             variant="ghost"
             size="iconSm"
             onClick={() => runTriage(task.id)}
-            aria-label="Re-run triage"
-            title="Re-run triage"
+            aria-label="Reorganize with Sifty"
+            title="Reorganize with Sifty"
           >
             <RotateCw size={13} />
           </Button>
@@ -145,55 +187,92 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
           />
         </div>
 
+        {task.aiStatus === "failed" ? <OrganizeFailed task={task} /> : null}
         {task.clarifyingQuestion ? <ClarifyingQuestion task={task} /> : null}
 
-        <section className="mt-5">
+        <section {...fillProps(0, "mt-5")}>
           <div className="text-eyebrow mb-1.5">Next action</div>
-          <Textarea
-            value={task.nextAction ?? ""}
-            maxLength={TASK_LIMITS.nextAction}
-            placeholder="What's the very next concrete step?"
-            onChange={(e) =>
-              updateTask(task.id, { nextAction: e.target.value }, { editedFields: ["nextAction"] })
-            }
-            rows={2}
-            className="text-[14px] bg-[var(--surface-muted)] border-transparent leading-[1.5]"
-          />
+          <div className="group relative">
+            <Textarea
+              value={task.nextAction ?? ""}
+              maxLength={TASK_LIMITS.nextAction}
+              placeholder={
+                firstFill && !task.nextAction ? "" : "What's the very next concrete step?"
+              }
+              onChange={(e) =>
+                updateTask(
+                  task.id,
+                  { nextAction: e.target.value },
+                  { editedFields: ["nextAction"] },
+                )
+              }
+              rows={2}
+              className="text-[14px] bg-[var(--surface-muted)] border-transparent leading-[1.5]"
+            />
+            {firstFill && !task.nextAction && !edited("nextAction") ? (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-x-3.5 top-[14px] flex flex-col gap-2 transition-opacity group-focus-within:opacity-0"
+              >
+                <AiFillSlot className="w-3/4" />
+                <AiFillSlot className="w-2/5" />
+              </span>
+            ) : null}
+          </div>
         </section>
 
-        <section className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <section {...fillProps(1, "mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4")}>
           <MetaCell
             label="Due"
             value={formatRelativeDay(task.due) ?? "Unset"}
+            pending={firstFill && !task.due && !edited("due")}
             tone={overdue ? "warn" : "neutral"}
             icon={<CalendarDays size={12} />}
           >
             <DueEditor task={task} />
           </MetaCell>
-          <MetaCell label="Effort" value={effortLabel(task.effort)} icon={<Clock size={12} />}>
+          <MetaCell
+            label="Effort"
+            value={effortLabel(task.effort)}
+            pending={firstFill && !edited("effort")}
+            icon={<Clock size={12} />}
+          >
             <EffortPicker task={task} />
           </MetaCell>
-          <MetaCell label="Delegate" value={delegationLabel(task.delegationCandidate)}>
+          <MetaCell
+            label="Delegate"
+            value={delegationLabel(task.delegationCandidate)}
+            pending={firstFill && !edited("delegationCandidate")}
+          >
             <DelegationPicker task={task} />
           </MetaCell>
-          <MetaCell label="Lifecycle" value={lifecycleLabel(task.lifecycle)}>
-            <LifecyclePicker task={task} />
+          <MetaCell
+            label="Status"
+            value={statusLabel(task.lifecycle)}
+            icon={<StatusIcon status={task.lifecycle} size={12} />}
+          >
+            <StatusPicker task={task} />
           </MetaCell>
         </section>
 
-        <section className="mt-5">
+        <section {...fillProps(2, "mt-5")}>
           <div className="text-eyebrow mb-2">Priority</div>
           <PriorityEditors task={task} />
         </section>
 
-        <section className="mt-5">
+        <section {...fillProps(3, "mt-5")}>
           <div className="flex items-center justify-between mb-2">
             <div className="text-eyebrow">Labels</div>
           </div>
-          <LabelEditor task={task} labels={labels} ensureLabel={ensureLabel} />
+          <LabelEditor
+            task={task}
+            labels={labels}
+            ensureLabel={ensureLabel}
+            pending={firstFill && task.labelIds.length === 0 && !edited("labelIds")}
+          />
         </section>
 
-        <section className="mt-5">
+        <section {...fillProps(4, "mt-5")}>
           <div className="flex items-center justify-between mb-2">
             <div className="text-eyebrow">Subtasks</div>
             <span className="text-[11px] text-[var(--fg-subtle)] text-num">
@@ -202,6 +281,7 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
           </div>
           <SubtaskList
             subtasks={task.subtasks}
+            pending={firstFill && task.subtasks.length === 0 && !edited("subtasks")}
             onToggle={(id) => toggleSubtask(task.id, id)}
             onRemove={(id) => removeSubtask(task.id, id)}
             onAdd={(title) => addSubtask(task.id, title)}
@@ -266,6 +346,8 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
         </section>
       </div>
 
+      <FilingStrip task={task} />
+
       <div className="flex items-center justify-between gap-2 border-t border-[var(--border)] px-4 sm:px-5 py-3 bg-[var(--surface-muted)]">
         <span className="text-[11.5px] text-[var(--fg-subtle)]">
           Updated {formatExactTime(task.updatedAt)}
@@ -287,6 +369,106 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** True for a moment after triage lands, driving the staggered settle-in. */
+function useJustFilled(aiStatus: Task["aiStatus"]): boolean {
+  const prevRef = React.useRef(aiStatus);
+  const [justFilled, setJustFilled] = React.useState(false);
+
+  React.useEffect(() => {
+    const prev = prevRef.current;
+    prevRef.current = aiStatus;
+    if ((prev === "running" || prev === "pending") && aiStatus === "ready") {
+      setJustFilled(true);
+      const t = setTimeout(() => setJustFilled(false), 1400);
+      return () => clearTimeout(t);
+    }
+  }, [aiStatus]);
+
+  return justFilled;
+}
+
+/** Quiet shimmer placeholder for a slot Sifty is about to fill. */
+function AiFillSlot({ className }: { className?: string }) {
+  return (
+    <span aria-hidden className={cn("ai-fill-shimmer block h-[9px] rounded-full", className)} />
+  );
+}
+
+function OrganizeFailed({ task }: { task: Task }) {
+  return (
+    <div className="mt-4 flex items-center justify-between gap-3 rounded-[var(--radius-md)] bg-[var(--surface-muted)] px-3.5 py-2">
+      <span className="text-[12.5px] text-[var(--fg-muted)]">Sifty couldn't organize this.</span>
+      <Button variant="ghost" size="sm" onClick={() => runTriage(task.id)}>
+        <RotateCw size={12} />
+        Retry
+      </Button>
+    </div>
+  );
+}
+
+/** Statuses a reviewed inbox task most often moves to. */
+const FILE_TARGETS: readonly Lifecycle[] = ["active", "waiting", "someday"];
+
+/**
+ * One-click filing for inbox tasks — the "which pile" step of triage.
+ * After a move the strip becomes a short confirmation instead of
+ * unmounting, so the action visibly landed; it fades away on its own.
+ */
+function FilingStrip({ task }: { task: Task }) {
+  const updateTask = useStore((s) => s.updateTask);
+  const [filed, setFiled] = React.useState(false);
+  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, []);
+
+  const file = (to: Lifecycle) => {
+    updateTask(task.id, { lifecycle: to });
+    setFiled(true);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setFiled(false), 2400);
+  };
+
+  const showConfirmation = filed && task.lifecycle !== "inbox";
+  if (task.lifecycle !== "inbox" && !showConfirmation) return null;
+
+  return (
+    <div className="border-t border-[var(--border)] px-4 sm:px-5 py-2.5 bg-[var(--bg-elevated)]">
+      {showConfirmation ? (
+        <div className="flex items-center gap-2 py-0.5 text-[12.5px] text-[var(--fg-muted)] animate-fade-in">
+          <Check size={13} className="text-[var(--done)]" strokeWidth={2.5} />
+          <span>
+            Moved to <span className="text-[var(--fg)]">{statusLabel(task.lifecycle)}</span>
+          </span>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-eyebrow mr-1">Move to</span>
+          {FILE_TARGETS.map((to) => (
+            <button
+              key={to}
+              type="button"
+              onClick={() => file(to)}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full border border-[var(--border-strong)]",
+                "px-2.5 py-1 text-[12px] text-[var(--fg-muted)]",
+                "transition-colors duration-150 ease-[var(--ease-product)]",
+                "hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]",
+              )}
+            >
+              <StatusIcon status={to} size={12} className="opacity-80" />
+              {statusLabel(to)}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -460,12 +642,15 @@ function MetaCell({
   value,
   icon,
   tone = "neutral",
+  pending = false,
   children,
 }: {
   label: string;
   value: string;
   icon?: React.ReactNode;
   tone?: "neutral" | "warn";
+  /** While Sifty is deciding this value, show a shimmer instead of it. */
+  pending?: boolean;
   children?: React.ReactNode;
 }) {
   return (
@@ -483,11 +668,18 @@ function MetaCell({
             {icon}
             {label}
           </span>
-          <span
-            className={cn("text-[13px] text-[var(--fg)]", tone === "warn" && "text-[var(--warn)]")}
-          >
-            {value}
-          </span>
+          {pending ? (
+            <AiFillSlot className="my-[5px] w-12" />
+          ) : (
+            <span
+              className={cn(
+                "text-[13px] text-[var(--fg)]",
+                tone === "warn" && "text-[var(--warn)]",
+              )}
+            >
+              {value}
+            </span>
+          )}
         </button>
       </PopoverTrigger>
       <PopoverContent>{children}</PopoverContent>
@@ -600,22 +792,34 @@ function DelegationPicker({ task }: { task: Task }) {
   );
 }
 
-function LifecyclePicker({ task }: { task: Task }) {
+/**
+ * Status picker — mirrors the sidebar exactly: same order, same words,
+ * same icons, so moving a task here visibly lands it in that view.
+ */
+function StatusPicker({ task }: { task: Task }) {
   const updateTask = useStore((s) => s.updateTask);
-  const options: Lifecycle[] = ["inbox", "active", "waiting", "someday", "done", "dropped"];
   return (
-    <div className="flex flex-col min-w-[180px]">
-      {options.map((opt) => (
+    <div className="flex flex-col min-w-[240px]">
+      {STATUSES_IN_ORDER.map((opt) => (
         <button
           key={opt}
           type="button"
           onClick={() => updateTask(task.id, { lifecycle: opt })}
           className={cn(
-            "flex items-center justify-between rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] hover:bg-[var(--surface-hover)]",
+            "flex items-start gap-2.5 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left hover:bg-[var(--surface-hover)]",
             task.lifecycle === opt && "bg-[var(--surface-hover)]",
           )}
         >
-          <span>{lifecycleLabel(opt)}</span>
+          <StatusIcon status={opt} size={13} className="mt-[3px] text-[var(--fg-muted)]" />
+          <span className="flex-1 min-w-0">
+            <span className="block text-[13px] text-[var(--fg)]">{STATUS_META[opt].label}</span>
+            <span className="block text-[11.5px] text-[var(--fg-subtle)] leading-[1.4]">
+              {STATUS_META[opt].description}
+            </span>
+          </span>
+          {task.lifecycle === opt ? (
+            <Check size={13} className="mt-[3px] text-[var(--fg-muted)]" />
+          ) : null}
         </button>
       ))}
     </div>
@@ -673,10 +877,12 @@ function LabelEditor({
   task,
   labels,
   ensureLabel,
+  pending = false,
 }: {
   task: Task;
   labels: Label[];
   ensureLabel: (name: string) => Label;
+  pending?: boolean;
 }) {
   const updateTask = useStore((s) => s.updateTask);
   const [adding, setAdding] = React.useState(false);
@@ -705,6 +911,12 @@ function LabelEditor({
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
+      {pending ? (
+        <>
+          <AiFillSlot className="h-[18px] w-14 !rounded-full" />
+          <AiFillSlot className="h-[18px] w-10 !rounded-full" />
+        </>
+      ) : null}
       {taskLabels.map((l) => (
         <button
           key={l.id}
@@ -787,11 +999,13 @@ function LabelEditor({
 
 function SubtaskList({
   subtasks,
+  pending = false,
   onToggle,
   onRemove,
   onAdd,
 }: {
   subtasks: Subtask[];
+  pending?: boolean;
   onToggle: (id: string) => void;
   onRemove: (id: string) => void;
   onAdd: (title: string) => void;
@@ -799,6 +1013,18 @@ function SubtaskList({
   const [draft, setDraft] = React.useState("");
   return (
     <div className="flex flex-col gap-1">
+      {pending ? (
+        <div className="flex flex-col gap-2.5 px-1.5 py-1" aria-hidden>
+          <div className="flex items-center gap-2">
+            <span className="size-[14px] rounded-full border border-[var(--border)]" />
+            <AiFillSlot className="w-2/3" />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="size-[14px] rounded-full border border-[var(--border)]" />
+            <AiFillSlot className="w-1/2" />
+          </div>
+        </div>
+      ) : null}
       {subtasks.map((st) => (
         <div
           key={st.id}
@@ -873,14 +1099,4 @@ function effortHint(e: Effort): string {
 }
 function delegationLabel(d: DelegationCandidate): string {
   return { self: "Me", ai: "AI agent", person: "A person", unsure: "Unsure" }[d];
-}
-function lifecycleLabel(l: Lifecycle): string {
-  return {
-    inbox: "Inbox",
-    active: "Active",
-    waiting: "Waiting",
-    someday: "Someday",
-    done: "Done",
-    dropped: "Dropped",
-  }[l];
 }

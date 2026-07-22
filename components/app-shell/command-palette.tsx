@@ -2,23 +2,13 @@
 
 import { useOpenDetail } from "@/components/app-shell/app-frame";
 import { useTheme } from "@/components/app-shell/theme-context";
+import { STATUS_ICONS } from "@/components/tasks/status-icon";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
+import { STATUSES_IN_ORDER, STATUS_META } from "@/lib/domain/status";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
-import {
-  ArrowRight,
-  Brain,
-  CreditCard,
-  Inbox,
-  ListTodo,
-  PauseCircle,
-  Search,
-  Settings,
-  Sparkles,
-  Sun,
-  Target,
-} from "lucide-react";
+import { ArrowRight, Brain, CreditCard, Search, Settings, Sparkles, Sun } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
@@ -64,34 +54,19 @@ export function CommandPalette({
         icon: <Sun size={14} />,
         run: () => router.push("/today"),
       },
-      {
-        id: "go-focus",
-        group: "navigate",
-        label: "Go to Focus",
-        icon: <Target size={14} />,
-        run: () => router.push("/focus"),
-      },
-      {
-        id: "go-inbox",
-        group: "navigate",
-        label: "Go to Inbox",
-        icon: <Inbox size={14} />,
-        run: () => router.push("/inbox"),
-      },
-      {
-        id: "go-waiting",
-        group: "navigate",
-        label: "Go to Waiting",
-        icon: <PauseCircle size={14} />,
-        run: () => router.push("/waiting"),
-      },
-      {
-        id: "go-someday",
-        group: "navigate",
-        label: "Go to Someday",
-        icon: <ListTodo size={14} />,
-        run: () => router.push("/someday"),
-      },
+      // Status views, in the same order and words as the sidebar and the
+      // Status picker.
+      ...STATUSES_IN_ORDER.filter((s) => STATUS_META[s].href !== null).map((s): CommandItem => {
+        const Icon = STATUS_ICONS[s];
+        const href = STATUS_META[s].href as string;
+        return {
+          id: `go-${s}`,
+          group: "navigate",
+          label: `Go to ${STATUS_META[s].label}`,
+          icon: <Icon size={14} />,
+          run: () => router.push(href),
+        };
+      }),
       {
         id: "go-memory",
         group: "navigate",

@@ -30,7 +30,7 @@ export function AiStatusInline({
         )}
       >
         <Sparkles size={11} />
-        Triaging
+        Organizing
       </span>
     );
   }
@@ -38,7 +38,7 @@ export function AiStatusInline({
     <span
       className={cn("inline-flex items-center gap-1.5 text-[11.5px] text-[var(--warn)]", className)}
     >
-      Triage failed
+      Couldn't organize
     </span>
   );
 }

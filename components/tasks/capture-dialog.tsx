@@ -1,5 +1,6 @@
 "use client";
 
+import { useFrame } from "@/components/app-shell/app-frame";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/input";
@@ -18,7 +19,10 @@ import * as React from "react";
  *      Cmd+Enter submits.
  *   2. Instant return: the task is created synchronously and the dialog
  *      closes on submit. AI enrichment happens in the background.
- *   3. Optional context, never required: a separate "Add context" affordance
+ *   3. Visible landing: the task sheet opens on the new task so the user
+ *      watches Sifty organize it — and can edit or file it right away.
+ *      Never blocking: Esc dismisses, triage continues in the background.
+ *   4. Optional context, never required: a separate "Add context" affordance
  *      reveals a second textarea so the empty state stays calm.
  */
 
@@ -29,6 +33,7 @@ export function CaptureDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  const { openDetail } = useFrame();
   const createTask = useStore((s) => s.createTask);
   const [text, setText] = React.useState("");
   const [context, setContext] = React.useState("");
@@ -45,13 +50,16 @@ export function CaptureDialog({
     }
   }, [open]);
 
-  const submit = async () => {
+  const submit = () => {
     if (!text.trim()) return;
     const task = createTask({
       sourceText: text,
       sourceContext: context.trim() || null,
     });
     onOpenChange(false);
+    // Open the sheet on the next frame so this dialog's close (and its
+    // focus restore) doesn't fight the sheet's focus trap.
+    requestAnimationFrame(() => openDetail(task.id));
     queueMicrotask(() => runTriage(task.id));
   };
 

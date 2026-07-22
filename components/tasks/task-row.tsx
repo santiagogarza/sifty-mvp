@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import type { Label, Task } from "@/lib/domain/types";
+import type { Label, Lifecycle, Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import { formatRelativeDay, isOverdue, isToday } from "@/lib/utils/dates";
@@ -28,8 +28,14 @@ export const TaskRow = React.forwardRef<
     active?: boolean;
     labels: Label[];
     tabIndex?: number;
+    /**
+     * Status to restore when un-completing. Completion ghosts pass the
+     * status the task had before it was checked off, so a quick uncheck
+     * puts it back exactly where it was.
+     */
+    uncompleteTo?: Lifecycle;
   }
->(function TaskRow({ task, onOpen, active, labels, tabIndex = -1 }, ref) {
+>(function TaskRow({ task, onOpen, active, labels, tabIndex = -1, uncompleteTo = "active" }, ref) {
   const updateTask = useStore((s) => s.updateTask);
 
   const labelMap = React.useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels]);
@@ -47,7 +53,7 @@ export const TaskRow = React.forwardRef<
   const onComplete = (e: React.MouseEvent) => {
     e.stopPropagation();
     updateTask(task.id, {
-      lifecycle: task.lifecycle === "done" ? "active" : "done",
+      lifecycle: task.lifecycle === "done" ? uncompleteTo : "done",
     });
   };
 

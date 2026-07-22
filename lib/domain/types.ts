@@ -29,6 +29,11 @@
 export type ID = string;
 export type ISODate = string;
 
+/**
+ * Stored status values. Presented to the user as "Status" — labels, order,
+ * and per-status routes live in `lib/domain/status.ts` (`STATUS_META`).
+ * Note `active` is presented as "Focus" so the picker mirrors the sidebar.
+ */
 export const LIFECYCLE = ["inbox", "active", "waiting", "someday", "done", "dropped"] as const;
 export type Lifecycle = (typeof LIFECYCLE)[number];
 
