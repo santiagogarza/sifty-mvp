@@ -19,17 +19,16 @@ test("mobile task detail overlay scrolls to reveal its footer", async ({ page })
   await page.getByPlaceholder("What do you need to do?").fill(marker);
   await page.keyboard.press("ControlOrMeta+Enter");
 
-  const row = page.getByText(marker.slice(0, 30)).first();
-  await expect(row).toBeVisible({ timeout: 10_000 });
-  await row.click();
+  // Capture auto-opens the detail sheet on submit; waiting for detail-scroll
+  // avoids racing a click on the inbox row under the sheet backdrop.
+  const scroller = page.getByTestId("detail-scroll");
+  await expect(scroller).toBeVisible({ timeout: 10_000 });
 
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
 
   // The scroll region must actually scroll: its content overflows its own box
   // rather than expanding the box and spilling out of the sheet.
-  const scroller = dialog.getByTestId("detail-scroll");
-  await expect(scroller).toBeVisible();
   const overflow = await scroller.evaluate((el) => el.scrollHeight - el.clientHeight);
   expect(overflow).toBeGreaterThan(0);
 
