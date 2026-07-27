@@ -96,7 +96,7 @@ export function TaskBoard({
     const target = e.over?.id as BoardLifecycle | undefined;
     if (!target) return;
     const task = tasks.find((t) => t.id === e.active.id);
-    if (!task || task.lifecycle === target) return;
+    if (!task || task.lifecycle !== target) return;
     setLifecycle(task.id, target);
   };
 
