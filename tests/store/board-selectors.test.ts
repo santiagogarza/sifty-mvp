@@ -1,5 +1,5 @@
-import type { Task } from "@/lib/domain/types";
 import { STATUS_VIEWS } from "@/lib/domain/status";
+import type { Task } from "@/lib/domain/types";
 import { selectBoardColumns } from "@/lib/store/selectors";
 import { describe, expect, it } from "vitest";
 
@@ -105,10 +105,12 @@ describe("selectBoardColumns", () => {
     ];
 
     const bySearch = selectBoardColumns(tasks, { search: "alpha" });
-    expect(bySearch.flatMap((c) => c.tasks).map((t) => t.title).sort()).toEqual([
-      "Alpha draft",
-      "Alpha wait",
-    ]);
+    expect(
+      bySearch
+        .flatMap((c) => c.tasks)
+        .map((t) => t.title)
+        .sort(),
+    ).toEqual(["Alpha draft", "Alpha wait"]);
 
     const byLabel = selectBoardColumns(tasks, { labelId: "lbl_a" });
     expect(byLabel.flatMap((c) => c.tasks)).toHaveLength(3);

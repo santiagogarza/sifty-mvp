@@ -9,7 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const NOW = "2026-07-22T12:00:00.000Z";
 
-function makeTask(patch: Partial<Task> & { id: string; title: string; lifecycle: Task["lifecycle"] }): Task {
+function makeTask(
+  patch: Partial<Task> & { id: string; title: string; lifecycle: Task["lifecycle"] },
+): Task {
   return {
     sourceText: patch.title,
     sourceContext: null,
@@ -44,9 +46,7 @@ beforeEach(() => {
   useStore.setState({
     hydrated: true,
     labels: [],
-    tasks: [
-      makeTask({ id: "t_someday", title: "Shelf item", lifecycle: "someday" }),
-    ],
+    tasks: [makeTask({ id: "t_someday", title: "Shelf item", lifecycle: "someday" })],
   });
   Object.defineProperty(window, "matchMedia", {
     writable: true,

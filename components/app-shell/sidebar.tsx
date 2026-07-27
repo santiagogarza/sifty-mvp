@@ -81,9 +81,7 @@ export function Sidebar() {
             )}
           >
             {statusItems.map((item) => {
-              const active = boardGroupActive
-                ? false
-                : !!pathname?.startsWith(item.href);
+              const active = boardGroupActive ? false : !!pathname?.startsWith(item.href);
               return (
                 <NavLink
                   key={item.href}

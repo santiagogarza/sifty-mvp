@@ -104,16 +104,18 @@ export const BoardCard = React.forwardRef<
       }
     : undefined;
 
+  const dragPointerDown = listeners?.onPointerDown as ((e: React.PointerEvent) => void) | undefined;
+
   return (
     <div
       ref={setRefs}
-      role="option"
-      aria-selected={selected}
-      tabIndex={tabIndex}
       data-task-id={task.id}
       style={style}
       {...(dragDisabled ? {} : listeners)}
       {...(dragDisabled ? {} : attributes)}
+      role="option"
+      aria-selected={selected}
+      tabIndex={tabIndex}
       onClick={() => {
         onSelect?.(task.id);
         onOpen(task.id);
@@ -126,6 +128,7 @@ export const BoardCard = React.forwardRef<
         }
       }}
       onPointerDown={(e) => {
+        dragPointerDown?.(e);
         if (!onLongPress || !dragDisabled) return;
         if (e.pointerType !== "touch") return;
         clearLongPress();
@@ -151,9 +154,7 @@ export const BoardCard = React.forwardRef<
       <p
         className={cn(
           "line-clamp-2 text-[13px] leading-[18px]",
-          isDone
-            ? "text-[var(--fg-subtle)] line-through decoration-[1.5px]"
-            : "text-[var(--fg)]",
+          isDone ? "text-[var(--fg-subtle)] line-through decoration-[1.5px]" : "text-[var(--fg)]",
         )}
       >
         {task.title}

@@ -1,7 +1,7 @@
 "use client";
 
-import { STATUS_VIEWS } from "@/lib/domain/status";
 import { focusScore } from "@/lib/domain/priority";
+import { STATUS_VIEWS } from "@/lib/domain/status";
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import { dayDelta, isOverdue } from "@/lib/utils/dates";
 import { useMemo } from "react";

@@ -1,12 +1,7 @@
 "use client";
 
 import { StatusIcon } from "@/components/tasks/status-icon";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { STATUS_VIEWS, statusLabel } from "@/lib/domain/status";
 import type { Lifecycle } from "@/lib/domain/types";
 import { cn } from "@/lib/utils/cn";

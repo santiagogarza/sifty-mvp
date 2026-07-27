@@ -81,6 +81,7 @@ export function BoardColumn({
 
       <div
         role="listbox"
+        tabIndex={-1}
         aria-label={label}
         className={cn(
           "flex flex-1 flex-col gap-2 px-2 pb-2 min-h-[72px] overflow-y-auto",

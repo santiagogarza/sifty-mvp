@@ -94,12 +94,12 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
     }),
   );
 
-  const clearUndoTimer = () => {
+  const clearUndoTimer = React.useCallback(() => {
     if (undoTimerRef.current) {
       clearTimeout(undoTimerRef.current);
       undoTimerRef.current = null;
     }
-  };
+  }, []);
 
   const moveTask = React.useCallback(
     (taskId: string, to: Lifecycle, opts?: { viaKeyboard?: boolean }) => {
@@ -143,7 +143,6 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
       if (hooks) {
         void hooks.waitForTask(taskId).then(() => {
           if (hooks.isTaskDirty(taskId)) {
-            setPendingUndo((cur) => (cur?.taskId === taskId ? cur : cur));
             setPillState("saved-locally");
           }
         });
@@ -153,7 +152,7 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
         }, 800);
       }
     },
-    [updateTask],
+    [updateTask, clearUndoTimer],
   );
 
   const undoMove = React.useCallback(() => {
@@ -164,7 +163,7 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
     clearUndoTimer();
     setSelectedTaskId(taskId);
     setAnnounce(`Restored to ${statusLabel(from)}`);
-  }, [pendingUndo, updateTask]);
+  }, [pendingUndo, updateTask, clearUndoTimer]);
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -186,7 +185,9 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
     (taskId: string | null): { col: number; row: number } | null => {
       if (!taskId) return null;
       for (let col = 0; col < columns.length; col++) {
-        const row = columns[col].tasks.findIndex((t) => t.id === taskId);
+        const column = columns[col];
+        if (!column) continue;
+        const row = column.tasks.findIndex((t) => t.id === taskId);
         if (row >= 0) return { col, row };
       }
       return null;
@@ -200,21 +201,27 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
 
     const focusAt = (col: number, row: number) => {
       const clampedCol = Math.max(0, Math.min(columns.length - 1, col));
-      const colTasks = columns[clampedCol].tasks;
-      if (colTasks.length === 0) {
+      const target = columns[clampedCol];
+      if (!target) return;
+      if (target.tasks.length === 0) {
         // Skip empty columns when moving horizontally.
         const dir = col > (loc?.col ?? 0) ? 1 : -1;
         let next = clampedCol + dir;
-        while (next >= 0 && next < columns.length && columns[next].tasks.length === 0) {
+        while (next >= 0 && next < columns.length) {
+          const candidate = columns[next];
+          if (candidate && candidate.tasks.length > 0) break;
           next += dir;
         }
-        if (next < 0 || next >= columns.length || columns[next].tasks.length === 0) return;
-        const r = Math.min(row, columns[next].tasks.length - 1);
-        setSelectedTaskId(columns[next].tasks[r].id);
+        const landed = columns[next];
+        if (!landed || landed.tasks.length === 0) return;
+        const r = Math.min(row, landed.tasks.length - 1);
+        const task = landed.tasks[r];
+        if (task) setSelectedTaskId(task.id);
         return;
       }
-      const r = Math.max(0, Math.min(colTasks.length - 1, row));
-      setSelectedTaskId(colTasks[r].id);
+      const r = Math.max(0, Math.min(target.tasks.length - 1, row));
+      const task = target.tasks[r];
+      if (task) setSelectedTaskId(task.id);
     };
 
     if (e.key === "ArrowDown" || e.key === "j") {
@@ -236,12 +243,12 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
     } else if (e.key === "ArrowRight" && e.shiftKey) {
       if (!loc || !selectedTaskId) return;
       e.preventDefault();
-      const nextStatus = COLUMN_ORDER[Math.min(COLUMN_ORDER.length - 1, loc.col + 1)];
+      const nextStatus = COLUMN_ORDER[Math.min(COLUMN_ORDER.length - 1, loc.col + 1)] ?? "done";
       moveTask(selectedTaskId, nextStatus, { viaKeyboard: true });
     } else if (e.key === "ArrowLeft" && e.shiftKey) {
       if (!loc || !selectedTaskId) return;
       e.preventDefault();
-      const nextStatus = COLUMN_ORDER[Math.max(0, loc.col - 1)];
+      const nextStatus = COLUMN_ORDER[Math.max(0, loc.col - 1)] ?? "inbox";
       moveTask(selectedTaskId, nextStatus, { viaKeyboard: true });
     } else if (e.key === "Enter") {
       if (!selectedTaskId) return;
@@ -343,12 +350,11 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
   };
 
   const moveSheetTask = moveSheetTaskId
-    ? tasks.find((t) => t.id === moveSheetTaskId) ?? null
+    ? (tasks.find((t) => t.id === moveSheetTaskId) ?? null)
     : null;
 
   const reducedMotion =
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   return (
     <div className="relative flex flex-col gap-3 pb-4">
@@ -384,7 +390,6 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
       >
         <div
           ref={boardRef}
-          tabIndex={0}
           onKeyDown={onBoardKeyDown}
           className="outline-none"
           aria-label="Task board"
@@ -412,9 +417,7 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
                 cardRefs={cardRefs}
                 onOpen={onOpen}
                 onSelect={setSelectedTaskId}
-                onLongPress={
-                  isCoarsePointer ? (id) => setMoveSheetTaskId(id) : undefined
-                }
+                onLongPress={isCoarsePointer ? (id) => setMoveSheetTaskId(id) : undefined}
                 draggable={!isCoarsePointer}
               />
             ))}

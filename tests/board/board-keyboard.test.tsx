@@ -9,7 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const NOW = "2026-07-22T12:00:00.000Z";
 
-function makeTask(patch: Partial<Task> & { id: string; title: string; lifecycle: Task["lifecycle"] }): Task {
+function makeTask(
+  patch: Partial<Task> & { id: string; title: string; lifecycle: Task["lifecycle"] },
+): Task {
   return {
     sourceText: patch.title,
     sourceContext: null,
@@ -44,8 +46,20 @@ function seedBoard() {
     hydrated: true,
     labels: [],
     tasks: [
-      makeTask({ id: "t_inbox_1", title: "Inbox one", lifecycle: "inbox" }),
-      makeTask({ id: "t_inbox_2", title: "Inbox two", lifecycle: "inbox" }),
+      // Inbox sorts newest-first by createdAt — give one a later stamp so
+      // "Inbox one" is reliably first in the column.
+      makeTask({
+        id: "t_inbox_1",
+        title: "Inbox one",
+        lifecycle: "inbox",
+        createdAt: "2026-07-22T13:00:00.000Z",
+      }),
+      makeTask({
+        id: "t_inbox_2",
+        title: "Inbox two",
+        lifecycle: "inbox",
+        createdAt: "2026-07-22T12:00:00.000Z",
+      }),
       makeTask({ id: "t_focus_1", title: "Focus one", lifecycle: "active" }),
     ],
   });
@@ -77,9 +91,6 @@ describe("BoardView keyboard", () => {
   it("⇧→ files the selected card and focus follows into the new column", async () => {
     const user = userEvent.setup();
     render(<BoardView onOpen={vi.fn()} />);
-
-    const board = screen.getByLabelText("Task board");
-    board.focus();
 
     // Select the first inbox card.
     const inboxOne = screen.getByRole("option", { name: /Inbox one/i });
@@ -119,7 +130,9 @@ describe("BoardView keyboard", () => {
     });
 
     // Still in Inbox — did not cross columns.
-    expect(screen.getByRole("option", { name: /Inbox one/i }).closest('[aria-label="Inbox"]')).toBeTruthy();
+    expect(
+      screen.getByRole("option", { name: /Inbox one/i }).closest('[aria-label="Inbox"]'),
+    ).toBeTruthy();
   });
 
   it("announces moves through an aria-live region", async () => {

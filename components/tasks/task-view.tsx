@@ -4,8 +4,8 @@ import { useFrame } from "@/components/app-shell/app-frame";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Task } from "@/lib/domain/types";
-import { useBoardMode } from "@/lib/store/view-mode";
 import { useStore } from "@/lib/store/store";
+import { useBoardMode } from "@/lib/store/view-mode";
 import * as React from "react";
 import { BoardView, BoardViewSkeleton } from "./board/board-view";
 import { ViewToggle } from "./board/view-toggle";
@@ -63,7 +63,11 @@ export function TaskView({
         actions={enableBoard || rightSlot ? actions : undefined}
       />
       {!hydrated ? (
-        isBoard && enableBoard ? <BoardViewSkeleton /> : <TaskListSkeleton />
+        isBoard && enableBoard ? (
+          <BoardViewSkeleton />
+        ) : (
+          <TaskListSkeleton />
+        )
       ) : enableBoard && isBoard ? (
         <BoardView onOpen={openDetail} />
       ) : (
