@@ -16,7 +16,12 @@ function ensureContext(): AudioContext | null {
     window.AudioContext ??
     (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!Ctor) return null;
-  if (!audioContext) audioContext = new Ctor();
+  try {
+    if (!audioContext) audioContext = new Ctor();
+  } catch {
+    // No output device (headless, locked-down kiosk): stay silent.
+    return null;
+  }
   return audioContext;
 }
 
