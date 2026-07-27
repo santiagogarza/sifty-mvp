@@ -5,7 +5,10 @@ import { PageHeader } from "@/components/app-shell/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
+import type { ViewMode } from "@/lib/store/view-mode";
 import * as React from "react";
+import { BoardView } from "./board/board-view";
+import { ViewToggle } from "./board/view-toggle";
 import { TaskEmptyState } from "./empty-state";
 import { TaskList } from "./task-list";
 
@@ -22,6 +25,9 @@ export function TaskView({
   emptyTitle,
   emptyDescription,
   rightSlot,
+  enableBoard = false,
+  mode = "list",
+  onModeChange,
 }: {
   eyebrow?: string;
   title: string;
@@ -30,17 +36,34 @@ export function TaskView({
   emptyTitle: string;
   emptyDescription?: string;
   rightSlot?: React.ReactNode;
+  /** Offer the List/Board toggle. Off for lens views like Today. */
+  enableBoard?: boolean;
+  mode?: ViewMode;
+  onModeChange?: (mode: ViewMode) => void;
 }) {
   const { openDetail } = useFrame();
   const tasks = useStore((s) => s.tasks);
   const hydrated = useStore((s) => s.hydrated);
 
-  const visible = React.useMemo(() => selector(tasks), [tasks, selector]);
+  const isBoard = enableBoard && mode === "board";
+  const visible = React.useMemo(() => (isBoard ? [] : selector(tasks)), [tasks, selector, isBoard]);
+
+  const actions =
+    enableBoard && onModeChange ? (
+      <>
+        {rightSlot}
+        <ViewToggle mode={mode} onChange={onModeChange} />
+      </>
+    ) : (
+      rightSlot
+    );
 
   return (
     <>
-      <PageHeader eyebrow={eyebrow} title={title} description={description} actions={rightSlot} />
-      {!hydrated ? (
+      <PageHeader eyebrow={eyebrow} title={title} description={description} actions={actions} />
+      {isBoard ? (
+        <BoardView />
+      ) : !hydrated ? (
         <TaskListSkeleton />
       ) : (
         <TaskList

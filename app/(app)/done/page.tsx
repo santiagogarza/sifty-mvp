@@ -7,21 +7,28 @@ import { TaskView } from "@/components/tasks/task-view";
 import { statusLabel } from "@/lib/domain/status";
 import { selectDoneTasks, selectDroppedTasks } from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
+import { useBoardMode } from "@/lib/store/view-mode";
 import { cn } from "@/lib/utils/cn";
 import { ChevronRight } from "lucide-react";
 import * as React from "react";
 
 export default function DonePage() {
+  const { mode, setMode } = useBoardMode();
   return (
-    <PageShell title={statusLabel("done")}>
+    <PageShell title={statusLabel("done")} width={mode === "board" ? "full" : "default"}>
       <TaskView
         title="Done"
         description="Finished work, newest first. Uncheck anything to send it back to Focus."
         selector={selectDoneTasks}
         emptyTitle="Nothing finished yet."
         emptyDescription="Completed tasks land here, so checking one off never loses it."
+        enableBoard
+        mode={mode}
+        onModeChange={setMode}
       />
-      <DroppedSection />
+      {/* The board owns the whole pipeline; Dropped has no column, so the
+          disclosure only makes sense alongside the Done list. */}
+      {mode === "board" ? null : <DroppedSection />}
     </PageShell>
   );
 }
