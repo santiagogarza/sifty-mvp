@@ -121,7 +121,7 @@ export const BoardCard = React.forwardRef<
               "transition-opacity duration-100",
               isDone
                 ? "border-[var(--done)] bg-[var(--done)] opacity-100"
-                : "border-[var(--fg-muted)]/40 bg-[var(--surface-muted)] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:border-[var(--accent)]",
+                : "border-[var(--fg-muted)]/60 bg-[var(--surface)] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:border-[var(--accent)]",
             )}
           >
             {isDone ? <Check size={10} className="text-white" strokeWidth={3} /> : null}

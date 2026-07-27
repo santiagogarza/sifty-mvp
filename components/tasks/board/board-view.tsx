@@ -2,9 +2,9 @@
 
 import { useFrame } from "@/components/app-shell/app-frame";
 import { Skeleton } from "@/components/ui/skeleton";
-import { STATUS_META, STATUS_VIEWS } from "@/lib/domain/status";
+import { STATUS_VIEWS } from "@/lib/domain/status";
 import type { Label, Lifecycle } from "@/lib/domain/types";
-import { useBoardMove } from "@/lib/store/board-move";
+import { commitBoardMove } from "@/lib/store/board-move";
 import { type BoardColumnData, selectBoardColumns } from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
 import {
@@ -39,32 +39,15 @@ export function BoardView() {
   const labels = useStore((s) => s.labels);
   const hydrated = useStore((s) => s.hydrated);
   const { openDetail } = useFrame();
-  const record = useBoardMove((s) => s.record);
 
   const columns = React.useMemo(() => selectBoardColumns(tasks), [tasks]);
 
   const [announcement, setAnnouncement] = React.useState("");
 
-  const moveTask = React.useCallback(
-    (taskId: string, toStatus: Lifecycle) => {
-      const task = useStore.getState().tasks.find((t) => t.id === taskId);
-      if (!task || task.lifecycle === toStatus) return;
-      const toLabel = STATUS_META[toStatus].label;
-      // Capture the prior state before the optimistic update so Undo can
-      // restore lifecycle *and* completedAt exactly.
-      useStore.getState().updateTask(taskId, { lifecycle: toStatus });
-      record({
-        taskId,
-        taskTitle: task.title,
-        toLifecycle: toStatus,
-        toLabel,
-        fromLifecycle: task.lifecycle,
-        fromCompletedAt: task.completedAt,
-      });
-      setAnnouncement(`Moved "${task.title}" to ${toLabel}`);
-    },
-    [record],
-  );
+  const moveTask = React.useCallback((taskId: string, toStatus: Lifecycle) => {
+    const message = commitBoardMove(taskId, toStatus);
+    if (message) setAnnouncement(message);
+  }, []);
 
   return (
     <div className="mt-4">
@@ -114,6 +97,8 @@ function DesktopBoard({
 
   const cardRefs = React.useRef(new Map<string, HTMLDivElement | null>());
   const pendingFocus = React.useRef<string | null>(null);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const didInitialFocus = React.useRef(false);
 
   const registerCard = React.useCallback((id: string, el: HTMLDivElement | null) => {
     if (el) cardRefs.current.set(id, el);
@@ -165,6 +150,15 @@ function DesktopBoard({
     pendingFocus.current = null;
     cardRefs.current.get(id)?.focus({ preventScroll: false });
   });
+
+  // Focus the board (not a card) once on mount so j/k and arrows work without
+  // hunting for a tab stop — mirrors the list's autofocus, but leaves nothing
+  // pre-selected so the first arrow makes the first, deliberate selection.
+  React.useEffect(() => {
+    if (didInitialFocus.current) return;
+    didInitialFocus.current = true;
+    containerRef.current?.focus({ preventScroll: true });
+  }, []);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
@@ -236,7 +230,13 @@ function DesktopBoard({
       onDragEnd={onDragEnd}
       onDragCancel={() => setActiveDragId(null)}
     >
-      <div onKeyDown={onKeyDown} className="flex h-[calc(100dvh-196px)] min-h-[380px] gap-3">
+      <div
+        ref={containerRef}
+        onKeyDown={onKeyDown}
+        tabIndex={-1}
+        aria-label="Board"
+        className="flex h-[calc(100dvh-196px)] min-h-[380px] gap-3 focus:outline-none"
+      >
         {columns.map((column) => (
           <BoardColumn
             key={column.status}

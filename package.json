@@ -57,6 +57,7 @@
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^6.0.4",
     "@vitest/ui": "^4.1.9",
     "drizzle-kit": "^0.31.10",
     "jsdom": "^29.1.1",

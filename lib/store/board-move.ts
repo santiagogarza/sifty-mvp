@@ -1,7 +1,9 @@
 "use client";
 
+import { STATUS_META } from "@/lib/domain/status";
 import type { Lifecycle } from "@/lib/domain/types";
 import { create } from "zustand";
+import { useStore } from "./store";
 
 /**
  * The last board move, held just long enough to offer an Undo.
@@ -42,3 +44,26 @@ export const useBoardMove = create<BoardMoveState>((set) => ({
   clear: (token) =>
     set((s) => (token === undefined || s.pending?.token === token ? { pending: null } : s)),
 }));
+
+/**
+ * The one and only "move a card" operation, shared by pointer drag and the
+ * keyboard file. It reads the prior state, applies the optimistic lifecycle
+ * change, and records the move for Undo — returning the polite announcement
+ * text (or null when the move is a no-op) for the caller's aria-live region.
+ */
+export function commitBoardMove(taskId: string, toStatus: Lifecycle): string | null {
+  const store = useStore.getState();
+  const task = store.tasks.find((t) => t.id === taskId);
+  if (!task || task.lifecycle === toStatus) return null;
+  const toLabel = STATUS_META[toStatus].label;
+  store.updateTask(taskId, { lifecycle: toStatus });
+  useBoardMove.getState().record({
+    taskId,
+    taskTitle: task.title,
+    toLifecycle: toStatus,
+    toLabel,
+    fromLifecycle: task.lifecycle,
+    fromCompletedAt: task.completedAt,
+  });
+  return `Moved "${task.title}" to ${toLabel}`;
+}
