@@ -47,6 +47,9 @@ export function TaskView({
 
   const visible = React.useMemo(() => selector(tasks), [tasks, selector]);
   const board = view?.mode === "board";
+  // An empty board says nothing at all — not even how to drag, since
+  // there is nothing to drag. Capture is still one keystroke away.
+  const boardHasTasks = board && hydrated && tasks.length > 0;
 
   const actions = view ? (
     <>
@@ -64,7 +67,9 @@ export function TaskView({
         title={board ? "Everything, by status" : title}
         description={
           board
-            ? "Drag a card to another column to file it. Same order, words, and icons as the sidebar."
+            ? boardHasTasks
+              ? "Drag a card to another column to file it. Same order, words, and icons as the sidebar."
+              : undefined
             : description
         }
         actions={actions}

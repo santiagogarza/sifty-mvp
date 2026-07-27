@@ -22,7 +22,9 @@ export function ToastStackProvider({ children }: { children: React.ReactNode }) 
       {children}
       <div
         ref={setNode}
-        className="fixed bottom-[92px] md:bottom-4 left-1/2 -translate-x-1/2 z-40
+        // High enough on desktop to clear the board's keyboard hint bar,
+        // which sits on the last line of the page.
+        className="fixed bottom-[92px] md:bottom-14 left-1/2 -translate-x-1/2 z-40
         flex flex-col items-center gap-2 pointer-events-none"
       />
     </ToastStackContext.Provider>

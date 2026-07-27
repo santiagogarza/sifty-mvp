@@ -113,19 +113,18 @@ export function BoardColumn({
             +{remaining} more
           </button>
         ) : null}
+        {status === "done" ? null : (
+          <button
+            type="button"
+            onClick={() => onAdd(status)}
+            className="flex shrink-0 items-center gap-1 self-start rounded-[var(--radius-xs)] px-1 py-0.5
+            text-[12px] text-[var(--fg-subtle)] hover:text-[var(--fg)] transition-colors"
+          >
+            <Plus size={12} />
+            Add
+          </button>
+        )}
       </div>
-
-      {status === "done" ? null : (
-        <button
-          type="button"
-          onClick={() => onAdd(status)}
-          className="flex shrink-0 items-center gap-1 rounded-[var(--radius-xs)] px-1 py-0.5
-          text-[12px] text-[var(--fg-subtle)] hover:text-[var(--fg)] transition-colors"
-        >
-          <Plus size={12} />
-          Add
-        </button>
-      )}
     </section>
   );
 }

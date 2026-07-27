@@ -106,6 +106,15 @@ export function BoardView() {
     if (selectedId && !tasks.some((t) => t.id === selectedId)) setSelectedId(null);
   }, [selectedId, tasks]);
 
+  // The list view focuses its listbox on mount so j/k work without
+  // tabbing in first; the board owes the keyboard the same courtesy.
+  const didAutoFocus = React.useRef(false);
+  React.useEffect(() => {
+    if (didAutoFocus.current || tasks.length === 0) return;
+    didAutoFocus.current = true;
+    boardRef.current?.focus({ preventScroll: true });
+  }, [tasks.length]);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: focusTick is the trigger, not a value — a card that changes column keeps its id but gets a brand new DOM node, and focus has to follow it there.
   React.useEffect(() => {
     if (!selectedId) return;
@@ -361,7 +370,7 @@ export function BoardView() {
             </div>
           ))}
         </div>
-        <BoardKeyboardHint />
+        {tasks.length > 0 ? <BoardKeyboardHint /> : null}
       </div>
 
       <p aria-live="polite" className="sr-only">

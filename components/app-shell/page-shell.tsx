@@ -41,10 +41,15 @@ export function PageShell({
       />
       <div
         className={cn(
-          "flex-1 px-4 sm:px-6 md:px-8 w-full mx-auto",
+          "px-4 sm:px-6 md:px-8 w-full mx-auto",
           width === "prose"
-            ? "max-w-[820px]"
-            : "max-w-[1600px] min-h-0 flex flex-col md:px-6 lg:px-8",
+            ? "flex-1 max-w-[820px]"
+            : // A board that scrolls the page instead of its columns loses
+              // its headers, so the wide container takes exactly what is
+              // left of the viewport under the 56px top bar (and, on
+              // phones, above the 80px bottom nav) and hands the overflow
+              // to the columns.
+              "max-w-[1600px] flex flex-col min-h-0 h-[calc(100dvh-136px)] md:h-[calc(100dvh-56px)]",
         )}
       >
         {children}
