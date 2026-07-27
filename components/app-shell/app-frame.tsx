@@ -71,9 +71,7 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
     <FrameContext.Provider value={value}>
       <div className="relative flex min-h-dvh">
         <Sidebar />
-        {/* @container lets the board view size itself against the main pane
-            (100cqw) instead of the viewport, which the sidebar offsets. */}
-        <main className="relative z-0 flex-1 flex flex-col min-w-0 pb-[80px] md:pb-0 @container">
+        <main className="relative z-0 flex-1 flex flex-col min-w-0 pb-[80px] md:pb-0">
           {children}
         </main>
       </div>
