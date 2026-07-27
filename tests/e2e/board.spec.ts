@@ -52,3 +52,35 @@ test("board: five columns, a keyboard move, and it survives a refresh", async ({
   await expect(focus(page).getByRole("option")).toHaveCount(focusBefore + 1);
   await expect(inbox(page).getByRole("option")).toHaveCount(inboxBefore - 1);
 });
+
+test("board: pointer drag moves a card into another column, with an Undo pill", async ({ page }) => {
+  await page.goto("/focus", { waitUntil: "networkidle" });
+  await page.keyboard.press("c");
+  await page.getByPlaceholder("What do you need to do?").fill(`Board drag ${Date.now()}`);
+  await page.keyboard.press("ControlOrMeta+Enter");
+  await expect(page.getByPlaceholder("What do you need to do?")).toBeHidden();
+
+  await page.getByRole("button", { name: "Board" }).click();
+  await expect(page.getByRole("listbox")).toHaveCount(5);
+
+  const waiting = page.getByRole("listbox", { name: "Waiting on" });
+  const inboxBefore = await inbox(page).getByRole("option").count();
+  const waitingBefore = await waiting.getByRole("option").count();
+
+  const card = inbox(page).getByRole("option").first();
+  const from = await card.boundingBox();
+  const to = await waiting.boundingBox();
+  if (!from || !to) throw new Error("missing bounding boxes");
+
+  // dnd-kit's PointerSensor needs the activation distance crossed before the
+  // drop, so move in steps rather than a single jump.
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2 + 24, from.y + from.height / 2, { steps: 5 });
+  await page.mouse.move(to.x + to.width / 2, to.y + 80, { steps: 10 });
+  await page.mouse.up();
+
+  await expect(inbox(page).getByRole("option")).toHaveCount(inboxBefore - 1);
+  await expect(waiting.getByRole("option")).toHaveCount(waitingBefore + 1);
+  await expect(page.getByText(/Moved to Waiting on/)).toBeVisible();
+});
