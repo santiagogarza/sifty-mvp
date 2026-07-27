@@ -127,7 +127,12 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
   });
 
   return (
-    <div className="flex h-full flex-col">
+    // flex-1 + min-h-0 (not h-full): on mobile the sheet is `bottom-0
+    // max-h-[88dvh]` with no fixed height, so height:100% has nothing to
+    // resolve against. Filling the sheet via flex and allowing this column to
+    // shrink below its content lets the inner region scroll instead of pushing
+    // the footer off-screen.
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-elevated)]/95 backdrop-blur px-4 sm:px-5 py-3">
         <div className="flex items-center gap-2 text-[12px] text-[var(--fg-subtle)]">
           {organizing && task.priorityBucket === "unset" ? (
