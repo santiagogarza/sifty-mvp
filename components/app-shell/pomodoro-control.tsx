@@ -199,10 +199,11 @@ export function PomodoroControl() {
                 )}
                 {phase === "idle" ? null : (
                   <span
+                    // Fixed width: the countdown and the "Break"/"Focus"
+                    // labels must not shuffle the rest of the header around.
                     className={cn(
-                      "text-num text-[12px] font-medium",
+                      "text-num w-[38px] text-left text-[12px] font-medium",
                       paused && "opacity-50",
-                      !awaiting && "w-[38px] text-left",
                     )}
                     style={awaiting ? { color: toneColor } : undefined}
                   >
@@ -491,7 +492,8 @@ function History({ history, now }: { history: PomodoroBlock[]; now: number }) {
                     count > 0 && "hover:bg-[var(--surface-hover)]",
                   )}
                 >
-                  <span className="text-num w-[46px] shrink-0 text-[12px] text-[var(--fg-muted)]">
+                  {/* Min-width, not fixed: a 12-hour locale adds "AM". */}
+                  <span className="text-num min-w-[46px] shrink-0 whitespace-nowrap text-[12px] text-[var(--fg-muted)]">
                     {clockTime(block.startedAt)}
                   </span>
                   <span className="text-num w-[28px] shrink-0 text-[12px] text-[var(--fg-subtle)]">
