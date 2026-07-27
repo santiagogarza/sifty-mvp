@@ -56,21 +56,30 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
   const [announce, setAnnounce] = React.useState("");
   const [mobileColumn, setMobileColumn] = React.useState(0);
   const [moveSheetTaskId, setMoveSheetTaskId] = React.useState<string | null>(null);
-  const [isCoarsePointer, setIsCoarsePointer] = React.useState(false);
+  const [isMobileBoard, setIsMobileBoard] = React.useState(false);
 
   const boardRef = React.useRef<HTMLDivElement>(null);
   const scrollerRef = React.useRef<HTMLDivElement>(null);
   const cardRefs = React.useRef(new Map<string, HTMLDivElement | null>());
   const undoTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const settleTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Suppress the click that browsers fire after a successful drag. */
+  const suppressClickRef = React.useRef(false);
 
   React.useEffect(() => {
     setHintVisible(!readHintSeen());
-    const mq = window.matchMedia("(pointer: coarse)");
-    const update = () => setIsCoarsePointer(mq.matches);
+    // Touch phones and the md breakpoint both get the long-press Move-to
+    // path — dragging inside a horizontally scrolling strip fights scroll.
+    const coarse = window.matchMedia("(pointer: coarse)");
+    const narrow = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobileBoard(coarse.matches || narrow.matches);
     update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
+    coarse.addEventListener("change", update);
+    narrow.addEventListener("change", update);
+    return () => {
+      coarse.removeEventListener("change", update);
+      narrow.removeEventListener("change", update);
+    };
   }, []);
 
   // Seed selection when columns first gain tasks.
@@ -195,67 +204,86 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
     [columns],
   );
 
-  const onBoardKeyDown = (e: React.KeyboardEvent) => {
-    const loc = findTaskLocation(selectedTaskId);
-    if (!loc && columns.every((c) => c.tasks.length === 0)) return;
-
-    const focusAt = (col: number, row: number) => {
-      const clampedCol = Math.max(0, Math.min(columns.length - 1, col));
-      const target = columns[clampedCol];
-      if (!target) return;
-      if (target.tasks.length === 0) {
-        // Skip empty columns when moving horizontally.
-        const dir = col > (loc?.col ?? 0) ? 1 : -1;
-        let next = clampedCol + dir;
-        while (next >= 0 && next < columns.length) {
-          const candidate = columns[next];
-          if (candidate && candidate.tasks.length > 0) break;
-          next += dir;
-        }
-        const landed = columns[next];
-        if (!landed || landed.tasks.length === 0) return;
-        const r = Math.min(row, landed.tasks.length - 1);
-        const task = landed.tasks[r];
-        if (task) setSelectedTaskId(task.id);
+  const handleBoardKey = React.useCallback(
+    (e: KeyboardEvent | React.KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+      ) {
         return;
       }
-      const r = Math.max(0, Math.min(target.tasks.length - 1, row));
-      const task = target.tasks[r];
-      if (task) setSelectedTaskId(task.id);
-    };
 
-    if (e.key === "ArrowDown" || e.key === "j") {
-      if (!loc) return;
-      e.preventDefault();
-      focusAt(loc.col, loc.row + 1);
-    } else if (e.key === "ArrowUp" || e.key === "k") {
-      if (!loc) return;
-      e.preventDefault();
-      focusAt(loc.col, loc.row - 1);
-    } else if (e.key === "ArrowRight" && !e.shiftKey) {
-      if (!loc) return;
-      e.preventDefault();
-      focusAt(loc.col + 1, loc.row);
-    } else if (e.key === "ArrowLeft" && !e.shiftKey) {
-      if (!loc) return;
-      e.preventDefault();
-      focusAt(loc.col - 1, loc.row);
-    } else if (e.key === "ArrowRight" && e.shiftKey) {
-      if (!loc || !selectedTaskId) return;
-      e.preventDefault();
-      const nextStatus = COLUMN_ORDER[Math.min(COLUMN_ORDER.length - 1, loc.col + 1)] ?? "done";
-      moveTask(selectedTaskId, nextStatus, { viaKeyboard: true });
-    } else if (e.key === "ArrowLeft" && e.shiftKey) {
-      if (!loc || !selectedTaskId) return;
-      e.preventDefault();
-      const nextStatus = COLUMN_ORDER[Math.max(0, loc.col - 1)] ?? "inbox";
-      moveTask(selectedTaskId, nextStatus, { viaKeyboard: true });
-    } else if (e.key === "Enter") {
-      if (!selectedTaskId) return;
-      e.preventDefault();
-      onOpen(selectedTaskId);
-    }
-  };
+      const loc = findTaskLocation(selectedTaskId);
+      if (!loc && columns.every((c) => c.tasks.length === 0)) return;
+
+      const focusAt = (col: number, row: number) => {
+        const clampedCol = Math.max(0, Math.min(columns.length - 1, col));
+        const column = columns[clampedCol];
+        if (!column) return;
+        if (column.tasks.length === 0) {
+          // Skip empty columns when moving horizontally.
+          const dir = col > (loc?.col ?? 0) ? 1 : -1;
+          let next = clampedCol + dir;
+          while (next >= 0 && next < columns.length) {
+            const candidate = columns[next];
+            if (candidate && candidate.tasks.length > 0) break;
+            next += dir;
+          }
+          const landed = columns[next];
+          if (!landed || landed.tasks.length === 0) return;
+          const r = Math.min(row, landed.tasks.length - 1);
+          const task = landed.tasks[r];
+          if (task) setSelectedTaskId(task.id);
+          return;
+        }
+        const r = Math.max(0, Math.min(column.tasks.length - 1, row));
+        const task = column.tasks[r];
+        if (task) setSelectedTaskId(task.id);
+      };
+
+      if (e.key === "ArrowDown" || e.key === "j") {
+        if (!loc) return;
+        e.preventDefault();
+        focusAt(loc.col, loc.row + 1);
+      } else if (e.key === "ArrowUp" || e.key === "k") {
+        if (!loc) return;
+        e.preventDefault();
+        focusAt(loc.col, loc.row - 1);
+      } else if (e.key === "ArrowRight" && !e.shiftKey) {
+        if (!loc) return;
+        e.preventDefault();
+        focusAt(loc.col + 1, loc.row);
+      } else if (e.key === "ArrowLeft" && !e.shiftKey) {
+        if (!loc) return;
+        e.preventDefault();
+        focusAt(loc.col - 1, loc.row);
+      } else if (e.key === "ArrowRight" && e.shiftKey) {
+        if (!loc || !selectedTaskId) return;
+        e.preventDefault();
+        const nextStatus = COLUMN_ORDER[Math.min(COLUMN_ORDER.length - 1, loc.col + 1)] ?? "done";
+        moveTask(selectedTaskId, nextStatus, { viaKeyboard: true });
+      } else if (e.key === "ArrowLeft" && e.shiftKey) {
+        if (!loc || !selectedTaskId) return;
+        e.preventDefault();
+        const nextStatus = COLUMN_ORDER[Math.max(0, loc.col - 1)] ?? "inbox";
+        moveTask(selectedTaskId, nextStatus, { viaKeyboard: true });
+      } else if (e.key === "Enter") {
+        if (!selectedTaskId) return;
+        e.preventDefault();
+        onOpen(selectedTaskId);
+      }
+    },
+    [columns, findTaskLocation, moveTask, onOpen, selectedTaskId],
+  );
+
+  // Window-level so j/k work even when focus left a card (e.g. after a click
+  // that opened then closed the sheet). Skip when typing in inputs.
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => handleBoardKey(e);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [handleBoardKey]);
 
   const onDragStart = (event: DragStartEvent) => {
     const id = String(event.active.id);
@@ -282,18 +310,33 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
 
   const onDragEnd = (event: DragEndEvent) => {
     const taskId = String(event.active.id);
-    const from = (event.active.data.current?.from as Lifecycle | undefined) ?? null;
+    // Prefer live store lifecycle over drag-start snapshot — more honest if
+    // something else filed the card mid-drag.
+    const live = useStore.getState().tasks.find((t) => t.id === taskId);
+    const from =
+      live?.lifecycle ?? (event.active.data.current?.from as Lifecycle | undefined) ?? null;
     let to: Lifecycle | null = null;
     const overData = event.over?.data.current;
     if (overData?.type === "column") {
       to = overData.status as Lifecycle;
     } else if (event.over) {
-      const overTask = tasks.find((t) => t.id === String(event.over!.id));
-      to = overTask?.lifecycle ?? null;
+      const overId = String(event.over.id);
+      if (overId.startsWith("column:")) {
+        to = overId.slice("column:".length) as Lifecycle;
+      } else {
+        const overTask = useStore.getState().tasks.find((t) => t.id === overId);
+        to = overTask?.lifecycle ?? overStatus;
+      }
+    } else if (overStatus) {
+      to = overStatus;
     }
     setDraggingId(null);
     setOverStatus(null);
     if (from && to && from !== to) {
+      suppressClickRef.current = true;
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 100);
       moveTask(taskId, to);
     }
   };
@@ -383,16 +426,21 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
-        onDragStart={isCoarsePointer ? undefined : onDragStart}
-        onDragOver={isCoarsePointer ? undefined : onDragOver}
-        onDragEnd={isCoarsePointer ? undefined : onDragEnd}
-        onDragCancel={isCoarsePointer ? undefined : onDragCancel}
+        onDragStart={isMobileBoard ? undefined : onDragStart}
+        onDragOver={isMobileBoard ? undefined : onDragOver}
+        onDragEnd={isMobileBoard ? undefined : onDragEnd}
+        onDragCancel={isMobileBoard ? undefined : onDragCancel}
       >
         <div
           ref={boardRef}
-          onKeyDown={onBoardKeyDown}
           className="outline-none"
           aria-label="Task board"
+          onClickCapture={(e) => {
+            if (!suppressClickRef.current) return;
+            e.preventDefault();
+            e.stopPropagation();
+            suppressClickRef.current = false;
+          }}
         >
           <div
             ref={scrollerRef}
@@ -417,8 +465,9 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
                 cardRefs={cardRefs}
                 onOpen={onOpen}
                 onSelect={setSelectedTaskId}
-                onLongPress={isCoarsePointer ? (id) => setMoveSheetTaskId(id) : undefined}
-                draggable={!isCoarsePointer}
+                onLongPress={isMobileBoard ? (id) => setMoveSheetTaskId(id) : undefined}
+                draggable={!isMobileBoard}
+                suppressOpenRef={suppressClickRef}
               />
             ))}
           </div>

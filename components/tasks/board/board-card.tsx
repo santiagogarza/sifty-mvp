@@ -30,6 +30,8 @@ export const BoardCard = React.forwardRef<
     onOpen: (id: string) => void;
     onSelect?: (id: string) => void;
     onLongPress?: (id: string) => void;
+    /** When true, the next click is swallowed (post-drag). */
+    suppressOpenRef?: React.MutableRefObject<boolean>;
     uncompleteTo?: Lifecycle;
   }
 >(function BoardCard(
@@ -43,6 +45,7 @@ export const BoardCard = React.forwardRef<
     onOpen,
     onSelect,
     onLongPress,
+    suppressOpenRef,
     uncompleteTo = "active",
   },
   ref,
@@ -89,11 +92,14 @@ export const BoardCard = React.forwardRef<
   };
 
   const longPressTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressOrigin = React.useRef<{ x: number; y: number } | null>(null);
+  const didLongPress = React.useRef(false);
   const clearLongPress = () => {
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
     }
+    longPressOrigin.current = null;
   };
 
   const style: React.CSSProperties | undefined = isDragging
@@ -116,7 +122,17 @@ export const BoardCard = React.forwardRef<
       role="option"
       aria-selected={selected}
       tabIndex={tabIndex}
-      onClick={() => {
+      onClick={(e) => {
+        // Drag and long-press both synthesize a click on release — swallow those
+        // so they don't open the detail sheet over the undo / Move-to UI.
+        if (didLongPress.current || isDragging || suppressOpenRef?.current) {
+          didLongPress.current = false;
+          if (suppressOpenRef) suppressOpenRef.current = false;
+          e.preventDefault();
+          e.stopPropagation();
+          onSelect?.(task.id);
+          return;
+        }
         onSelect?.(task.id);
         onOpen(task.id);
       }}
@@ -131,14 +147,25 @@ export const BoardCard = React.forwardRef<
         dragPointerDown?.(e);
         if (!onLongPress || !dragDisabled) return;
         if (e.pointerType !== "touch") return;
+        didLongPress.current = false;
         clearLongPress();
+        longPressOrigin.current = { x: e.clientX, y: e.clientY };
         longPressTimer.current = setTimeout(() => {
+          didLongPress.current = true;
           onLongPress(task.id);
+          clearLongPress();
         }, 450);
       }}
       onPointerUp={clearLongPress}
       onPointerCancel={clearLongPress}
-      onPointerMove={clearLongPress}
+      onPointerMove={(e) => {
+        // Only cancel long-press on a real finger drag, not micro-jitter.
+        const origin = longPressOrigin.current;
+        if (!origin || !longPressTimer.current) return;
+        const dx = e.clientX - origin.x;
+        const dy = e.clientY - origin.y;
+        if (dx * dx + dy * dy > 100) clearLongPress();
+      }}
       className={cn(
         "group relative flex w-full flex-col gap-1",
         "rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)]",

@@ -28,7 +28,8 @@ export function UndoPill({
       role="status"
       aria-live="polite"
       className={cn(
-        "fixed bottom-[92px] md:bottom-4 left-1/2 -translate-x-1/2 z-50",
+        // Above the detail sheet (z-50) and the sync-error pill (z-40).
+        "fixed bottom-[92px] md:bottom-4 left-1/2 -translate-x-1/2 z-[60]",
         "flex items-center gap-2 rounded-full border border-[var(--border)]",
         "bg-[var(--bg-elevated)]/95 backdrop-blur pl-3.5 pr-2 py-[7px]",
         "text-[13px] text-[var(--fg)] shadow-[0_30px_60px_-15px_oklch(0%_0_0/0.5)]",

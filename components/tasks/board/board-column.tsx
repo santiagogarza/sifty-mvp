@@ -27,6 +27,7 @@ export function BoardColumn({
   onSelect,
   onLongPress,
   draggable,
+  suppressOpenRef,
 }: {
   status: Lifecycle;
   label: string;
@@ -42,6 +43,7 @@ export function BoardColumn({
   onSelect: (id: string) => void;
   onLongPress?: (id: string) => void;
   draggable: boolean;
+  suppressOpenRef?: React.MutableRefObject<boolean>;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `column:${status}`,
@@ -107,6 +109,7 @@ export function BoardColumn({
               onOpen={onOpen}
               onSelect={onSelect}
               onLongPress={onLongPress}
+              suppressOpenRef={suppressOpenRef}
             />
           );
         })}
