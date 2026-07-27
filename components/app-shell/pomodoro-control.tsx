@@ -17,7 +17,7 @@ import {
   remainingMs,
 } from "@/lib/pomodoro/machine";
 import { usePomodoro } from "@/lib/pomodoro/store";
-import { serverNow, syncServerClock } from "@/lib/time/server-clock";
+import { isClockSynced, serverNow, syncServerClock } from "@/lib/time/server-clock";
 import { cn } from "@/lib/utils/cn";
 import { formatRelativeDay } from "@/lib/utils/dates";
 import {
@@ -135,9 +135,14 @@ export function PomodoroControl() {
     };
   }, [phase]);
 
-  const start = React.useCallback((kind: "focus" | "break") => {
+  const start = React.useCallback(async (kind: "focus" | "break") => {
     // Audio only unlocks inside a gesture, and the chime is 25 minutes out.
     primeAlerts();
+    // Anchors must be written in the server clock's domain. Before the first
+    // sample lands they'd be local time and would jump once the offset is
+    // adopted, so wait out the (shared, timeout-bounded) sync first. A failed
+    // sync still falls back to the local clock.
+    if (!isClockSynced()) await syncServerClock();
     const store = usePomodoro.getState();
     if (kind === "focus") store.startFocus();
     else store.startBreak();
@@ -150,8 +155,8 @@ export function PomodoroControl() {
    * on the header can never stop the clock.
    */
   const onPrimary = React.useCallback(() => {
-    if (phase === "idle" || phase === "break-done") start("focus");
-    else if (phase === "focus-done") start("break");
+    if (phase === "idle" || phase === "break-done") void start("focus");
+    else if (phase === "focus-done") void start("break");
     else setOpen((v) => !v);
   }, [phase, start]);
 
@@ -235,8 +240,8 @@ export function PomodoroControl() {
             paused={paused}
             remaining={remaining}
             now={now ?? Date.now()}
-            onStartFocus={() => start("focus")}
-            onStartBreak={() => start("break")}
+            onStartFocus={() => void start("focus")}
+            onStartBreak={() => void start("break")}
           />
         </PopoverContent>
       </Popover>
