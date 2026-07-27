@@ -78,7 +78,9 @@ export function BoardColumn({
           "mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-[var(--radius-lg)] p-2",
           "border border-[var(--border)] bg-[var(--surface-muted)]/50",
           "transition-colors duration-150 ease-[var(--ease-product)]",
-          wouldLand && "border-[var(--accent)]/60 bg-[var(--accent-soft)]/40",
+          // Figma drop target: accent-on-accent/soft. A full accent-soft wash
+          // (not a faint tint) makes the feedforward unmistakable.
+          wouldLand && "border-[var(--accent)] bg-[var(--accent-soft)]",
         )}
       >
         {column.tasks.map((task) => (
