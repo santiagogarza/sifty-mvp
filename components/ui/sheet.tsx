@@ -49,7 +49,7 @@ export const SheetContent = React.forwardRef<
           "bg-[var(--bg-elevated)]",
           "shadow-[-40px_0_80px_-30px_oklch(0%_0_0/0.4)]",
           "data-[state=open]:animate-rise",
-          "flex flex-col",
+          "flex flex-col overflow-hidden",
           className,
         )}
         {...props}
