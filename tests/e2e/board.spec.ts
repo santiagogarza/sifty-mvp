@@ -47,10 +47,9 @@ test("toggle Focus into Board, move by keyboard, survives reload", async ({ page
 
   await page.goto("/focus?view=board", { waitUntil: "networkidle" });
 
-  await expect(page.getByRole("button", { name: /board/i })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(
+    page.getByRole("group", { name: "View mode" }).getByRole("button", { name: "Board" }),
+  ).toHaveAttribute("aria-pressed", "true");
   await expect(
     page.getByRole("listbox", { name: "Focus" }).getByRole("option", {
       name: new RegExp(marker.slice(0, 20)),

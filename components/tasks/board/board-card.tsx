@@ -38,22 +38,16 @@ export function BoardCard({
   const labelMap = React.useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels]);
   const taskLabels = task.labelIds.map((id) => labelMap.get(id)).filter(Boolean) as Label[];
 
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: task.id,
-    disabled: dragDisabled,
-  });
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, isDragging } =
+    useDraggable({
+      id: task.id,
+      disabled: dragDisabled,
+    });
 
-  const dragAttrs = React.useMemo(() => {
-    const { role: _role, ...rest } = attributes;
+  const activatorAttrs = React.useMemo(() => {
+    const { role: _role, tabIndex: _tabIndex, ...rest } = attributes;
     return rest;
   }, [attributes]);
-
-  const dragPointerDown = listeners?.onPointerDown;
-  const dragListeners = React.useMemo(() => {
-    if (!listeners) return {};
-    const { onPointerDown: _pd, ...rest } = listeners;
-    return rest;
-  }, [listeners]);
 
   const setRef = React.useCallback(
     (node: HTMLDivElement | null) => {
@@ -84,12 +78,39 @@ export function BoardCard({
     });
   };
 
+  const onCardClick = () => {
+    if (longPressFired.current) {
+      longPressFired.current = false;
+      return;
+    }
+    if (isDragging || suppressClickRef?.current) return;
+    onOpen(task.id);
+  };
+
+  const onLongPressPointerDown = (e: React.PointerEvent) => {
+    if (!onLongPress) return;
+    longPressTimer.current = setTimeout(() => {
+      longPressFired.current = true;
+      onLongPress(task);
+    }, 500);
+    const clear = () => {
+      if (longPressTimer.current) clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    };
+    e.currentTarget.addEventListener("pointerup", clear, { once: true });
+    e.currentTarget.addEventListener("pointercancel", clear, { once: true });
+  };
+
   const style = transform
     ? {
         transform: CSS.Translate.toString(transform),
         zIndex: isDragging ? 50 : undefined,
       }
     : undefined;
+
+  const bodyProps = dragDisabled
+    ? { onPointerDown: onLongPressPointerDown }
+    : { ref: setActivatorNodeRef, ...listeners, ...activatorAttrs };
 
   return (
     <div
@@ -98,15 +119,6 @@ export function BoardCard({
       aria-selected={active}
       tabIndex={tabIndex}
       style={style}
-      {...(dragDisabled ? {} : { ...dragAttrs, ...dragListeners })}
-      onClick={() => {
-        if (longPressFired.current) {
-          longPressFired.current = false;
-          return;
-        }
-        if (isDragging || suppressClickRef?.current) return;
-        onOpen(task.id);
-      }}
       onKeyDown={(e) => {
         if (active && onBoardKeyDown) {
           const navKeys = ["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "j", "k", "Enter"];
@@ -119,20 +131,6 @@ export function BoardCard({
           e.preventDefault();
           onOpen(task.id);
         }
-      }}
-      onPointerDown={(e) => {
-        dragPointerDown?.(e);
-        if (!onLongPress || dragDisabled) return;
-        longPressTimer.current = setTimeout(() => {
-          longPressFired.current = true;
-          onLongPress(task);
-        }, 500);
-        const clear = () => {
-          if (longPressTimer.current) clearTimeout(longPressTimer.current);
-          longPressTimer.current = null;
-        };
-        e.currentTarget.addEventListener("pointerup", clear, { once: true });
-        e.currentTarget.addEventListener("pointercancel", clear, { once: true });
       }}
       className={cn(
         "group relative flex flex-col gap-1.5 rounded-[var(--radius-md)] border border-[var(--border)]",
@@ -161,7 +159,7 @@ export function BoardCard({
         >
           {isDone ? <Check size={10} className="text-white" strokeWidth={3} /> : null}
         </button>
-        <div className="min-w-0 flex-1">
+        <div {...bodyProps} onClick={onCardClick} className="min-w-0 flex-1 flex flex-col gap-1.5">
           <div className="flex items-start gap-1.5">
             <PriorityGlyph bucket={task.priorityBucket} />
             <span
@@ -176,31 +174,33 @@ export function BoardCard({
             </span>
           </div>
           {task.nextAction && !isDone ? (
-            <p className="mt-1 truncate text-[11px] text-[var(--fg-muted)]">{task.nextAction}</p>
+            <p className="truncate text-[11px] text-[var(--fg-muted)]">{task.nextAction}</p>
           ) : null}
+          {(dueLabel || taskLabels.length > 0) && (
+            <div className="flex flex-wrap items-center gap-1">
+              {taskLabels.slice(0, 2).map((label) => (
+                <Badge key={label.id} tone={label.tone} className="text-[10px] px-1.5 py-0">
+                  {label.name}
+                </Badge>
+              ))}
+              {taskLabels.length > 2 ? (
+                <span className="text-[10px] text-[var(--fg-subtle)]">
+                  +{taskLabels.length - 2}
+                </span>
+              ) : null}
+              {dueLabel ? (
+                <Badge
+                  tone={dueTone}
+                  variant={dueTone === "neutral" ? "outline" : "soft"}
+                  className="text-[10px] px-1.5 py-0"
+                >
+                  {dueLabel}
+                </Badge>
+              ) : null}
+            </div>
+          )}
         </div>
       </div>
-      {(dueLabel || taskLabels.length > 0) && (
-        <div className="flex flex-wrap items-center gap-1 pl-6">
-          {taskLabels.slice(0, 2).map((label) => (
-            <Badge key={label.id} tone={label.tone} className="text-[10px] px-1.5 py-0">
-              {label.name}
-            </Badge>
-          ))}
-          {taskLabels.length > 2 ? (
-            <span className="text-[10px] text-[var(--fg-subtle)]">+{taskLabels.length - 2}</span>
-          ) : null}
-          {dueLabel ? (
-            <Badge
-              tone={dueTone}
-              variant={dueTone === "neutral" ? "outline" : "soft"}
-              className="text-[10px] px-1.5 py-0"
-            >
-              {dueLabel}
-            </Badge>
-          ) : null}
-        </div>
-      )}
     </div>
   );
 }
