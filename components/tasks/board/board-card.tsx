@@ -70,6 +70,7 @@ export const BoardCard = React.forwardRef<
       role="option"
       aria-selected={selected}
       aria-label={task.title}
+      data-task-id={task.id}
       tabIndex={tabIndex}
       onClick={() => onOpen(task.id)}
       {...dragProps}

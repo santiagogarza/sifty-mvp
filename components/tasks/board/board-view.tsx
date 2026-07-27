@@ -208,14 +208,24 @@ function DesktopBoard({
     }
   };
 
+  // Keep the selection in lockstep with real DOM focus: a card reached by Tab
+  // or click (not just the arrow keys) becomes the selected option, so Enter
+  // and j/k act on whatever the user is actually focused on.
+  const onFocusCapture = (e: React.FocusEvent) => {
+    const id = (e.target as HTMLElement).dataset?.taskId;
+    if (id) setSelectedTaskId(id);
+  };
+
   const onDragStart = (e: DragStartEvent) => {
     setActiveDragId(String(e.active.id));
     setSelectedTaskId(String(e.active.id));
   };
   const onDragEnd = (e: DragEndEvent) => {
     setActiveDragId(null);
-    if (!e.over) return;
-    moveTask(String(e.active.id), e.over.id as Lifecycle);
+    const id = String(e.active.id);
+    // Return focus to the dragged card so keyboard control continues from it.
+    pendingFocus.current = id;
+    if (e.over) moveTask(id, e.over.id as Lifecycle);
   };
 
   const activeTask = activeDragId
@@ -233,6 +243,7 @@ function DesktopBoard({
       <div
         ref={containerRef}
         onKeyDown={onKeyDown}
+        onFocusCapture={onFocusCapture}
         tabIndex={-1}
         aria-label="Board"
         className="flex h-[calc(100dvh-196px)] min-h-[380px] gap-3 focus:outline-none"

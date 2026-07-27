@@ -61,7 +61,8 @@ export function UndoPill() {
   React.useEffect(() => {
     if (!pending) return;
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+      // Undo is ⌘Z / ^Z only — never ⌘⇧Z, which is Redo.
+      if (e.shiftKey || !(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
       const target = e.target;
       if (
         target instanceof HTMLElement &&
