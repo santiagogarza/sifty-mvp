@@ -7,13 +7,15 @@ import { TaskView } from "@/components/tasks/task-view";
 import { statusLabel } from "@/lib/domain/status";
 import { selectDoneTasks, selectDroppedTasks } from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
+import { useBoardMode } from "@/lib/store/view-mode";
 import { cn } from "@/lib/utils/cn";
 import { ChevronRight } from "lucide-react";
 import * as React from "react";
 
 export default function DonePage() {
+  const [mode] = useBoardMode();
   return (
-    <PageShell title={statusLabel("done")}>
+    <PageShell title={statusLabel("done")} width={mode === "board" ? "wide" : "default"}>
       <TaskView
         title="Done"
         description="Finished work, newest first. Uncheck anything to send it back to Focus."

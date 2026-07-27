@@ -5,7 +5,10 @@ import { PageHeader } from "@/components/app-shell/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
+import { useBoardMode } from "@/lib/store/view-mode";
 import * as React from "react";
+import { BoardView, BoardViewSkeleton } from "./board/board-view";
+import { ViewToggle } from "./board/view-toggle";
 import { TaskEmptyState } from "./empty-state";
 import { TaskList } from "./task-list";
 
@@ -34,14 +37,29 @@ export function TaskView({
   const { openDetail } = useFrame();
   const tasks = useStore((s) => s.tasks);
   const hydrated = useStore((s) => s.hydrated);
+  const [mode, setMode] = useBoardMode();
 
   const visible = React.useMemo(() => selector(tasks), [tasks, selector]);
 
+  const toggle = <ViewToggle mode={mode} onChange={setMode} />;
+  const actions = (
+    <>
+      {rightSlot}
+      {toggle}
+    </>
+  );
+
   return (
     <>
-      <PageHeader eyebrow={eyebrow} title={title} description={description} actions={rightSlot} />
+      <PageHeader eyebrow={eyebrow} title={title} description={description} actions={actions} />
       {!hydrated ? (
-        <TaskListSkeleton />
+        mode === "board" ? (
+          <BoardViewSkeleton />
+        ) : (
+          <TaskListSkeleton />
+        )
+      ) : mode === "board" ? (
+        <BoardView />
       ) : (
         <TaskList
           tasks={visible}

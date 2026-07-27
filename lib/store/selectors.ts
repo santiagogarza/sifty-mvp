@@ -1,6 +1,7 @@
 "use client";
 
 import { focusScore } from "@/lib/domain/priority";
+import { STATUS_VIEWS } from "@/lib/domain/status";
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import { dayDelta, isOverdue } from "@/lib/utils/dates";
 import { useMemo } from "react";
@@ -117,6 +118,37 @@ export function selectDoneTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
 
 export function selectDroppedTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
   return selectByLifecycle(tasks, "dropped", args);
+}
+
+export interface BoardColumnData {
+  status: Lifecycle;
+  label: string;
+  tasks: Task[];
+}
+
+function selectColumnTasks(tasks: Task[], status: Lifecycle, args: ViewArgs): Task[] {
+  switch (status) {
+    case "inbox":
+      return selectInboxTasks(tasks, args);
+    case "active":
+      return selectFocusTasks(tasks, args);
+    case "done":
+      return selectDoneTasks(tasks, args);
+    default:
+      return selectByLifecycle(tasks, status, args);
+  }
+}
+
+/**
+ * Kanban columns: exactly the five STATUS_VIEWS statuses in pipeline order.
+ * Dropped tasks never appear. Per-column sort matches the equivalent list view.
+ */
+export function selectBoardColumns(tasks: Task[], args: ViewArgs = {}): BoardColumnData[] {
+  return STATUS_VIEWS.map((view) => ({
+    status: view.status,
+    label: view.label,
+    tasks: selectColumnTasks(tasks, view.status, args),
+  }));
 }
 
 export interface TaskCounts {
