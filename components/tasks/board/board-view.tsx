@@ -91,9 +91,14 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
   const seqRef = React.useRef(0);
 
   const focusCard = React.useCallback((id: string) => {
-    rootRef.current
-      ?.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(id)}"]`)
-      ?.focus({ preventScroll: false });
+    const root = rootRef.current;
+    if (!root) return;
+    for (const el of root.querySelectorAll<HTMLElement>("[data-task-id]")) {
+      if (el.dataset.taskId === id) {
+        el.focus();
+        return;
+      }
+    }
   }, []);
 
   const moveTask = React.useCallback(
@@ -188,7 +193,7 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
     [moveTask],
   );
 
-  // --- Keyboard model -----------------------------------------------------
+  // --- Keyboard model -------------------------------------------------------
 
   const onCardKeyDown = React.useCallback(
     (e: React.KeyboardEvent, task: Task) => {
