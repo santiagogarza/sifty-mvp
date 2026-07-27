@@ -72,9 +72,12 @@ export function BoardCard({
       onClick={() => onOpen(task.id)}
       onFocus={() => onFocusTask(task.id)}
       onPointerDown={(event) => {
-        longPressTimer.current = setTimeout(() => onLongPress(task), 520);
+        if (event.pointerType === "touch") {
+          longPressTimer.current = setTimeout(() => onLongPress(task), 520);
+        }
         draggable.listeners?.onPointerDown?.(event);
       }}
+      onPointerMove={clearLongPress}
       onPointerUp={clearLongPress}
       onPointerCancel={clearLongPress}
       onPointerLeave={clearLongPress}

@@ -53,7 +53,7 @@ export function BoardView({
     : null;
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 160, tolerance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { distance: 8 } }),
   );
 
   const liveTasks = columns.flatMap((column) => column.tasks);
