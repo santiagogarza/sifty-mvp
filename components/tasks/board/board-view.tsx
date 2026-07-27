@@ -130,6 +130,15 @@ export function BoardView() {
     setFocusTick((t) => t + 1);
   }, []);
 
+  // Undo puts the card back and takes focus with it. Without this the
+  // pill's button unmounts under the pointer, focus falls to the body,
+  // and the next keystroke goes nowhere.
+  const undoAndFollow = React.useCallback(() => {
+    const taskId = pending?.taskId;
+    undo();
+    if (taskId) focusOn(taskId);
+  }, [focusOn, pending, undo]);
+
   const complete = React.useCallback(
     (task: Task) => {
       // Byte-for-byte what the list row's circle does, including the
@@ -247,11 +256,11 @@ export function BoardView() {
         return;
       }
       e.preventDefault();
-      undo();
+      undoAndFollow();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [pending, undo]);
+  }, [pending, undoAndFollow]);
 
   /* ---------------------------------------------------------------- *
    * Pointer drag
@@ -259,6 +268,11 @@ export function BoardView() {
 
   // 6px of travel means a click to open never reads as a failed drag.
   const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: 6 } }));
+
+  // The settle is a Web Animation, so the reduced-motion rule in
+  // globals.css cannot collapse it. The state change still happens; only
+  // the travel is removed.
+  const reducedMotion = usePrefersReducedMotion();
 
   const onDragStart = (event: DragStartEvent) => {
     setDraggingId(String(event.active.id));
@@ -378,7 +392,7 @@ export function BoardView() {
         {announcement}
       </p>
 
-      {pending ? <UndoPill move={pending} onUndo={undo} /> : null}
+      {pending ? <UndoPill move={pending} onUndo={undoAndFollow} /> : null}
 
       <MoveToSheet
         task={moveSheetTask}
@@ -386,11 +400,27 @@ export function BoardView() {
         onMove={(task, to) => move(task, to)}
       />
 
-      <DragOverlay dropAnimation={{ duration: 160, easing: "cubic-bezier(0.32, 0.72, 0.18, 1)" }}>
+      <DragOverlay
+        dropAnimation={
+          reducedMotion ? null : { duration: 160, easing: "cubic-bezier(0.32, 0.72, 0.18, 1)" }
+        }
+      >
         {draggingTask ? <BoardCardOverlay task={draggingTask} labels={labels} /> : null}
       </DragOverlay>
     </DndContext>
   );
+}
+
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = React.useState(false);
+  React.useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReduced(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+  return reduced;
 }
 
 /**

@@ -7,6 +7,22 @@ import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
 process.env.AUTH_SECRET ??= "test-auth-secret-do-not-use-in-production-please-32";
 process.env.CREATOR_EMAIL ??= "s.gonzalez.garza@gmail.com";
 
+// jsdom ships no matchMedia, and component code legitimately asks for
+// prefers-reduced-motion and prefers-color-scheme. Default to "no match".
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+  window.matchMedia = (query: string) =>
+    ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }) as MediaQueryList;
+}
+
 // Provide a fresh in-memory repo per test so writes don't leak across files.
 let _handle = createMemoryRepos();
 

@@ -84,9 +84,10 @@ export const BoardCard = React.forwardRef<
         "hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)]/40",
         draggable && "cursor-grab active:cursor-grabbing",
         selected && "border-[var(--accent)] ring-1 ring-[var(--accent)]",
-        // A ghost holds the slot so the source column keeps its shape
-        // while the pointer is elsewhere.
-        isDragging && "opacity-35 border-dashed",
+        // Lifted: an empty dashed slot holds the card's place so the
+        // source column keeps its shape under the hand, and so the ghost
+        // never reads as a second copy of the card in flight.
+        isDragging && "border-dashed bg-transparent [&>*]:invisible",
       )}
     >
       <CardBody task={task} labels={labels} onComplete={onComplete} />
