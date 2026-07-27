@@ -242,6 +242,14 @@ body::before {
   border-radius: 4px;
 }
 
+/* A focus scope holds the keyboard for the widget inside it and delegates
+   the ring to whichever child is selected — ringing the scope itself would
+   put a 1000px box around the board. Unlayered, so it beats the utility
+   classes Tailwind emits into @layer. */
+[data-focus-scope]:focus-visible {
+  outline: none;
+}
+
 button,
 [role="button"] {
   cursor: default;

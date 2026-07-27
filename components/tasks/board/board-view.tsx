@@ -331,8 +331,9 @@ export function BoardView() {
         tabIndex={-1}
         role="group"
         aria-label="Board"
+        data-focus-scope
         onKeyDown={onKeyDown}
-        className="flex min-h-0 flex-1 flex-col focus:outline-none"
+        className="flex min-h-0 flex-1 flex-col"
       >
         <div
           ref={stripRef}
