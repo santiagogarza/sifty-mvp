@@ -1,6 +1,7 @@
 "use client";
 
 import { focusScore } from "@/lib/domain/priority";
+import { STATUS_VIEWS } from "@/lib/domain/status";
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import { dayDelta, isOverdue } from "@/lib/utils/dates";
 import { useMemo } from "react";
@@ -117,6 +118,23 @@ export function selectDoneTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
 
 export function selectDroppedTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
   return selectByLifecycle(tasks, "dropped", args);
+}
+
+export interface BoardColumnData {
+  status: (typeof STATUS_VIEWS)[number]["status"];
+  label: string;
+  tasks: Task[];
+}
+
+export function selectBoardColumns(tasks: Task[], args: ViewArgs = {}): BoardColumnData[] {
+  return STATUS_VIEWS.map(({ status, label }) => {
+    let columnTasks: Task[];
+    if (status === "inbox") columnTasks = selectInboxTasks(tasks, args);
+    else if (status === "active") columnTasks = selectFocusTasks(tasks, args);
+    else if (status === "done") columnTasks = selectDoneTasks(tasks, args);
+    else columnTasks = selectByLifecycle(tasks, status, args);
+    return { status, label, tasks: columnTasks };
+  });
 }
 
 export interface TaskCounts {

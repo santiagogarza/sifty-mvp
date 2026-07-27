@@ -210,10 +210,18 @@ export const useStore = create<SiftyState>()(
               ) {
                 next.priorityBucket = bucketFromScalars(next.urgency, next.importance);
               }
-              if (patch.lifecycle === "done" && !t.completedAt) {
+              if (
+                patch.lifecycle === "done" &&
+                !t.completedAt &&
+                !Object.hasOwn(patch, "completedAt")
+              ) {
                 next.completedAt = next.updatedAt;
               }
-              if (patch.lifecycle && patch.lifecycle !== "done") {
+              if (
+                patch.lifecycle &&
+                patch.lifecycle !== "done" &&
+                !Object.hasOwn(patch, "completedAt")
+              ) {
                 next.completedAt = null;
               }
               return next;
