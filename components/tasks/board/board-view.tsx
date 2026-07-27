@@ -40,24 +40,42 @@ export function BoardView({
   const [announcement, setAnnouncement] = React.useState("");
   const [hintDismissed, setHintDismissed] = React.useState(false);
   const [sheetTask, setSheetTask] = React.useState<Task | null>(null);
+  const boardRef = React.useRef<HTMLDivElement | null>(null);
   const cardRefs = React.useRef(new Map<string, HTMLDivElement>());
+  const activeTaskIdRef = React.useRef<string | null>(null);
+  const columnsRef = React.useRef(columns);
+  const lifecycleIntentRef = React.useRef(new Map<string, Lifecycle>());
   const undoTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const moveRef = React.useRef<BoardMove | null>(null);
+  columnsRef.current = columns;
+  const activeLifecycle = activeTaskId
+    ? (allTasks.find((task) => task.id === activeTaskId)?.lifecycle ?? null)
+    : null;
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 160, tolerance: 8 } }),
   );
 
-  const liveTasks = tasks.length > 0 ? tasks : columns.flatMap((column) => column.tasks);
+  const liveTasks = columns.flatMap((column) => column.tasks);
+
+  const setActiveTask = React.useCallback((taskId: string | null) => {
+    activeTaskIdRef.current = taskId;
+    setActiveTaskId(taskId);
+  }, []);
 
   React.useEffect(() => {
     if (activeTaskId && liveTasks.some((task) => task.id === activeTaskId)) return;
-    setActiveTaskId(liveTasks[0]?.id ?? null);
-  }, [activeTaskId, liveTasks]);
+    setActiveTask(liveTasks[0]?.id ?? null);
+  }, [activeTaskId, liveTasks, setActiveTask]);
+
+  React.useLayoutEffect(() => {
+    if (!activeTaskId || !activeLifecycle) return;
+    cardRefs.current.get(activeTaskId)?.focus({ preventScroll: true });
+  }, [activeTaskId, activeLifecycle]);
 
   React.useEffect(() => {
-    if (!activeTaskId) return;
-    cardRefs.current.get(activeTaskId)?.focus({ preventScroll: true });
-  }, [activeTaskId]);
+    moveRef.current = move;
+  }, [move]);
 
   React.useEffect(() => {
     return () => {
@@ -102,29 +120,41 @@ export function BoardView({
         syncState: "saving",
       };
       updateTask(task.id, { lifecycle: to });
-      setActiveTaskId(task.id);
+      lifecycleIntentRef.current.set(task.id, to);
+      setActiveTask(task.id);
       setMove(nextMove);
       setAnnouncement(`${task.title} moved to ${statusLabel(to)}.`);
       if (source === "keyboard") setHintDismissed(true);
       scheduleExpiry();
       trackSync(nextMove.id, task.id);
     },
-    [scheduleExpiry, trackSync, updateTask],
+    [scheduleExpiry, setActiveTask, trackSync, updateTask],
   );
 
   const undo = React.useCallback(() => {
-    if (!move) return;
-    updateTask(move.taskId, { lifecycle: move.from, completedAt: move.completedAt });
-    setAnnouncement(`${move.title} restored to ${statusLabel(move.from)}.`);
-    setActiveTaskId(move.taskId);
-    setMove(null);
+    const currentMove = moveRef.current;
+    if (!currentMove) return;
     if (undoTimer.current) clearTimeout(undoTimer.current);
-  }, [move, updateTask]);
+    updateTask(currentMove.taskId, {
+      lifecycle: currentMove.from,
+      completedAt: currentMove.completedAt,
+    });
+    lifecycleIntentRef.current.set(currentMove.taskId, currentMove.from);
+    getSyncHooks()
+      ?.waitForTask(currentMove.taskId)
+      .catch(() => {});
+    setAnnouncement(`${currentMove.title} restored to ${statusLabel(currentMove.from)}.`);
+    setActiveTask(currentMove.taskId);
+    setMove(null);
+  }, [setActiveTask, updateTask]);
 
-  const onDragStart = React.useCallback((event: DragStartEvent) => {
-    setDragTaskId(String(event.active.id));
-    setActiveTaskId(String(event.active.id));
-  }, []);
+  const onDragStart = React.useCallback(
+    (event: DragStartEvent) => {
+      setDragTaskId(String(event.active.id));
+      setActiveTask(String(event.active.id));
+    },
+    [setActiveTask],
+  );
 
   const onDragEnd = React.useCallback(
     (event: DragEndEvent) => {
@@ -137,54 +167,55 @@ export function BoardView({
     [allTasks, moveTask],
   );
 
-  const findPosition = React.useCallback(
-    (taskId: string | null) => {
-      if (!taskId) return null;
-      for (let columnIndex = 0; columnIndex < columns.length; columnIndex += 1) {
-        const column = columns[columnIndex];
-        if (!column) continue;
-        const taskIndex = column.tasks.findIndex((task) => task.id === taskId);
-        if (taskIndex >= 0) return { columnIndex, taskIndex };
-      }
-      return null;
-    },
-    [columns],
-  );
+  const findPosition = React.useCallback((taskId: string | null) => {
+    if (!taskId) return null;
+    const currentColumns = columnsRef.current;
+    for (let columnIndex = 0; columnIndex < currentColumns.length; columnIndex += 1) {
+      const column = currentColumns[columnIndex];
+      if (!column) continue;
+      const taskIndex = column.tasks.findIndex((task) => task.id === taskId);
+      if (taskIndex >= 0) return { columnIndex, taskIndex };
+    }
+    return null;
+  }, []);
 
   const focusByDelta = React.useCallback(
-    (columnDelta: number, taskDelta: number) => {
-      const position = findPosition(activeTaskId);
+    (taskId: string | null, columnDelta: number, taskDelta: number) => {
+      const position = findPosition(taskId);
       if (!position) return;
+      const currentColumns = columnsRef.current;
       const columnIndex = Math.min(
         Math.max(position.columnIndex + columnDelta, 0),
-        columns.length - 1,
+        currentColumns.length - 1,
       );
-      const targetColumn = columns[columnIndex];
+      const targetColumn = currentColumns[columnIndex];
       if (!targetColumn?.tasks.length) return;
       const taskIndex =
         columnDelta === 0
           ? Math.min(Math.max(position.taskIndex + taskDelta, 0), targetColumn.tasks.length - 1)
           : Math.min(position.taskIndex, targetColumn.tasks.length - 1);
-      setActiveTaskId(targetColumn.tasks[taskIndex]?.id ?? null);
+      setActiveTask(targetColumn.tasks[taskIndex]?.id ?? null);
     },
-    [activeTaskId, columns, findPosition],
+    [findPosition, setActiveTask],
   );
 
   const fileByDelta = React.useCallback(
-    (delta: number) => {
-      const position = findPosition(activeTaskId);
-      if (!position) return;
-      const sourceColumn = columns[position.columnIndex];
-      const task = sourceColumn?.tasks[position.taskIndex];
-      const target = columns[position.columnIndex + delta]?.view.status;
+    (taskId: string | null, delta: number) => {
+      if (!taskId) return;
+      const task = useStore.getState().tasks.find((candidate) => candidate.id === taskId);
+      const lifecycle = lifecycleIntentRef.current.get(taskId) ?? task?.lifecycle;
+      const statusIndex = lifecycle
+        ? STATUS_VIEWS.findIndex((view) => view.status === lifecycle)
+        : -1;
+      const target = STATUS_VIEWS[statusIndex + delta]?.status;
       if (task && target) moveTask(task, target, "keyboard");
     },
-    [activeTaskId, columns, findPosition, moveTask],
+    [moveTask],
   );
 
-  const onKeyDown = React.useCallback(
-    (event: React.KeyboardEvent) => {
-      if (!activeTaskId) return;
+  const handleBoardKeyDown = React.useCallback(
+    (event: React.KeyboardEvent, sourceTaskId: string | null) => {
+      if (!sourceTaskId) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
         undo();
@@ -192,34 +223,60 @@ export function BoardView({
       }
       if (event.shiftKey && event.key === "ArrowRight") {
         event.preventDefault();
-        fileByDelta(1);
+        fileByDelta(sourceTaskId, 1);
       } else if (event.shiftKey && event.key === "ArrowLeft") {
         event.preventDefault();
-        fileByDelta(-1);
+        fileByDelta(sourceTaskId, -1);
       } else if (event.key === "ArrowRight") {
         event.preventDefault();
-        focusByDelta(1, 0);
+        focusByDelta(sourceTaskId, 1, 0);
       } else if (event.key === "ArrowLeft") {
         event.preventDefault();
-        focusByDelta(-1, 0);
+        focusByDelta(sourceTaskId, -1, 0);
       } else if (event.key === "ArrowDown" || event.key === "j") {
         event.preventDefault();
-        focusByDelta(0, 1);
+        focusByDelta(sourceTaskId, 0, 1);
       } else if (event.key === "ArrowUp" || event.key === "k") {
         event.preventDefault();
-        focusByDelta(0, -1);
+        focusByDelta(sourceTaskId, 0, -1);
       } else if (event.key === "Enter") {
         event.preventDefault();
-        onOpen(activeTaskId);
+        onOpen(sourceTaskId);
       }
     },
-    [activeTaskId, fileByDelta, focusByDelta, onOpen, undo],
+    [fileByDelta, focusByDelta, onOpen, undo],
   );
+
+  const onKeyDown = React.useCallback(
+    (event: React.KeyboardEvent) => handleBoardKeyDown(event, activeTaskIdRef.current),
+    [handleBoardKeyDown],
+  );
+
+  React.useEffect(() => {
+    const onWindowKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const board = boardRef.current;
+      if (!board || !target) return;
+      const pageOwnsFocus = target === document.body || target === document.documentElement;
+      if (!pageOwnsFocus && !board.contains(target)) return;
+      if (target === board) return;
+      if (
+        target.closest(
+          'a,button,input,textarea,select,[contenteditable="true"],[role="dialog"],[role="option"]',
+        )
+      ) {
+        return;
+      }
+      handleBoardKeyDown(event as unknown as React.KeyboardEvent, activeTaskIdRef.current);
+    };
+    window.addEventListener("keydown", onWindowKeyDown);
+    return () => window.removeEventListener("keydown", onWindowKeyDown);
+  }, [handleBoardKeyDown]);
 
   const activeTask = dragTaskId ? allTasks.find((task) => task.id === dragTaskId) : null;
 
   return (
-    <div className="flex flex-col gap-3" onKeyDown={onKeyDown}>
+    <div ref={boardRef} className="flex flex-col gap-3" onKeyDown={onKeyDown}>
       <div className="flex items-center justify-between gap-3">
         <StatusPager columns={columns.map((column) => column.view)} />
         <BoardKeyboardHint hidden={hintDismissed} />
@@ -257,7 +314,8 @@ export function BoardView({
               }
               onOpen={onOpen}
               onLongPress={setSheetTask}
-              onFocusTask={setActiveTaskId}
+              onFocusTask={setActiveTask}
+              onBoardKeyDown={(taskId, event) => handleBoardKeyDown(event, taskId)}
               registerCard={registerCard}
             />
           ))}
@@ -266,7 +324,13 @@ export function BoardView({
       <p aria-live="polite" className="sr-only">
         {announcement}
       </p>
-      <UndoPill move={move} onUndo={undo} />
+      <UndoPill
+        move={move}
+        onUndoIntent={() => {
+          if (undoTimer.current) clearTimeout(undoTimer.current);
+        }}
+        onUndo={undo}
+      />
       <MoveToSheet
         task={sheetTask}
         open={!!sheetTask}

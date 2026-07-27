@@ -21,6 +21,14 @@ test("board mode files a task by keyboard and persists across reload", async ({
   await page.keyboard.press("Shift+ArrowRight");
 
   await expect(page.getByRole("listbox", { name: "Focus tasks" }).getByText(marker)).toBeVisible();
+
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(page.getByRole("listbox", { name: "Inbox tasks" }).getByText(marker)).toBeVisible();
+
+  await card.focus();
+  await page.keyboard.press("Shift+ArrowRight");
+  await expect(page.getByRole("listbox", { name: "Focus tasks" }).getByText(marker)).toBeVisible();
+
   await expect
     .poll(
       async () => {

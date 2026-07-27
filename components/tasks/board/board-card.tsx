@@ -20,6 +20,7 @@ export function BoardCard({
   onOpen,
   onLongPress,
   onFocusTask,
+  onBoardKeyDown,
   register,
 }: {
   task: Task;
@@ -29,6 +30,7 @@ export function BoardCard({
   onOpen: (id: string) => void;
   onLongPress: (task: Task) => void;
   onFocusTask: (id: string) => void;
+  onBoardKeyDown: (taskId: string, event: React.KeyboardEvent) => void;
   register?: (node: HTMLDivElement | null) => void;
 }) {
   const updateTask = useStore((s) => s.updateTask);
@@ -80,7 +82,10 @@ export function BoardCard({
         if (event.key === "Enter") {
           event.preventDefault();
           onOpen(task.id);
+          return;
         }
+        event.stopPropagation();
+        onBoardKeyDown(task.id, event);
       }}
       className={cn(
         "group relative flex min-h-[92px] w-full cursor-grab flex-col gap-1 rounded-[var(--radius-md)]",

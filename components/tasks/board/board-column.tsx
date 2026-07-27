@@ -17,6 +17,7 @@ export function BoardColumn({
   onOpen,
   onLongPress,
   onFocusTask,
+  onBoardKeyDown,
   registerCard,
 }: {
   status: Lifecycle;
@@ -28,6 +29,7 @@ export function BoardColumn({
   onOpen: (id: string) => void;
   onLongPress: (task: Task) => void;
   onFocusTask: (id: string) => void;
+  onBoardKeyDown: (taskId: string, event: React.KeyboardEvent) => void;
   registerCard: (taskId: string, node: HTMLDivElement | null) => void;
 }) {
   const droppable = useDroppable({ id: status, data: { lifecycle: status } });
@@ -41,6 +43,22 @@ export function BoardColumn({
       tabIndex={-1}
       aria-label={`${label} tasks`}
       data-status={status}
+      onPointerDown={(event) => {
+        const target = event.target as HTMLElement;
+        if (target.closest('a,button,[role="option"]')) return;
+        const firstTask = tasks[0];
+        if (firstTask) onFocusTask(firstTask.id);
+      }}
+      onPointerUp={(event) => {
+        const target = event.target as HTMLElement;
+        if (target.closest('a,button,[role="option"]')) return;
+        const firstTask = tasks[0];
+        if (firstTask) onFocusTask(firstTask.id);
+      }}
+      onPointerEnter={() => {
+        const firstTask = tasks[0];
+        if (firstTask) onFocusTask(firstTask.id);
+      }}
       className={cn(
         "flex h-[calc(100dvh-220px)] min-h-[420px] w-[min(82vw,300px)] shrink-0 snap-center flex-col rounded-[var(--radius-lg)]",
         "border border-[var(--border)] bg-[var(--surface-muted)]/70 p-2 md:w-[224px] lg:w-[236px]",
@@ -71,6 +89,7 @@ export function BoardColumn({
             onOpen={onOpen}
             onLongPress={onLongPress}
             onFocusTask={onFocusTask}
+            onBoardKeyDown={onBoardKeyDown}
             register={(node) => registerCard(task.id, node)}
           />
         ))}

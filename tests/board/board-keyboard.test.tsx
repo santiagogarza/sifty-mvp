@@ -4,6 +4,8 @@ import { BoardView } from "@/components/tasks/board/board-view";
 import type { Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const NOW = "2026-07-22T12:00:00.000Z";
@@ -50,7 +52,7 @@ describe("BoardView keyboard model", () => {
     const task = makeTask("task_inbox", "Inbox card", "inbox");
     useStore.setState({ tasks: [task], labels: [], hydrated: true });
 
-    render(<BoardView tasks={[task]} onOpen={open} />);
+    render(React.createElement(BoardView, { tasks: [task], onOpen: open }));
 
     const card = await screen.findByRole("option", { name: /Inbox card/i });
     await waitFor(() => expect(card).toHaveFocus());
@@ -71,21 +73,22 @@ describe("BoardView keyboard model", () => {
 
   it("uses j/k within a column and left/right across columns", async () => {
     const tasks = [
-      makeTask("task_inbox_1", "Inbox one", "inbox"),
-      makeTask("task_inbox_2", "Inbox two", "inbox"),
+      { ...makeTask("task_inbox_1", "Inbox one", "inbox"), createdAt: "2026-07-23T12:00:00.000Z" },
+      { ...makeTask("task_inbox_2", "Inbox two", "inbox"), createdAt: "2026-07-22T12:00:00.000Z" },
       makeTask("task_focus_1", "Focus one", "active"),
     ];
     useStore.setState({ tasks, labels: [], hydrated: true });
 
-    render(<BoardView tasks={tasks} onOpen={vi.fn()} />);
+    render(React.createElement(BoardView, { tasks, onOpen: vi.fn() }));
+    const user = userEvent.setup();
 
     const first = await screen.findByRole("option", { name: /Inbox one/i });
     await waitFor(() => expect(first).toHaveFocus());
 
-    fireEvent.keyDown(first, { key: "j" });
+    await user.keyboard("j");
     await waitFor(() => expect(screen.getByRole("option", { name: /Inbox two/i })).toHaveFocus());
 
-    fireEvent.keyDown(screen.getByRole("option", { name: /Inbox two/i }), { key: "k" });
+    await user.keyboard("k");
     await waitFor(() => expect(screen.getByRole("option", { name: /Inbox one/i })).toHaveFocus());
 
     fireEvent.keyDown(screen.getByRole("option", { name: /Inbox one/i }), { key: "ArrowRight" });

@@ -19,9 +19,11 @@ export interface BoardMove {
 
 export function UndoPill({
   move,
+  onUndoIntent,
   onUndo,
 }: {
   move: BoardMove | null;
+  onUndoIntent: () => void;
   onUndo: () => void;
 }) {
   if (!move) return null;
@@ -40,7 +42,13 @@ export function UndoPill({
       <span className="truncate">
         {stateText} · moved to {statusLabel(move.to)}
       </span>
-      <Button size="sm" variant="ghost" className="h-6 px-2 text-[12px]" onClick={onUndo}>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-6 px-2 text-[12px]"
+        onPointerDown={onUndoIntent}
+        onClick={onUndo}
+      >
         Undo
       </Button>
     </div>
