@@ -6,7 +6,6 @@ import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import { formatRelativeDay, isOverdue, isToday } from "@/lib/utils/dates";
 import { useDraggable } from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
 import { Check } from "lucide-react";
 import * as React from "react";
 import { PriorityGlyph } from "../priority-glyph";
@@ -67,7 +66,6 @@ export function BoardCard({
       aria-selected={active}
       tabIndex={tabIndex}
       data-task-id={task.id}
-      {...draggable.attributes}
       {...draggable.listeners}
       onClick={() => onOpen(task.id)}
       onFocus={() => onFocusTask(task.id)}
@@ -98,7 +96,9 @@ export function BoardCard({
         isDone && "min-h-[72px]",
       )}
       style={{
-        transform: CSS.Translate.toString(draggable.transform),
+        transform: draggable.transform
+          ? `translate3d(${draggable.transform.x}px, ${draggable.transform.y}px, 0)`
+          : undefined,
       }}
     >
       <div

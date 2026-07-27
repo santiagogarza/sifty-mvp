@@ -75,16 +75,16 @@ describe("selectBoardColumns", () => {
     expect(columns.flatMap((column) => column.tasks.map((task) => task.lifecycle))).not.toContain(
       "dropped",
     );
-    expect(columns[0].tasks.map((task) => task.id)).toEqual(
+    expect(columns[0]?.tasks.map((task) => task.id)).toEqual(
       selectInboxTasks(tasks).map((task) => task.id),
     );
-    expect(columns[1].tasks.map((task) => task.id)).toEqual(
+    expect(columns[1]?.tasks.map((task) => task.id)).toEqual(
       selectFocusTasks(tasks).map((task) => task.id),
     );
-    expect(columns[2].tasks.map((task) => task.id)).toEqual(
+    expect(columns[2]?.tasks.map((task) => task.id)).toEqual(
       selectByLifecycle(tasks, "waiting").map((task) => task.id),
     );
-    expect(columns[4].tasks.map((task) => task.id)).toEqual(
+    expect(columns[4]?.tasks.map((task) => task.id)).toEqual(
       selectDoneTasks(tasks).map((task) => task.id),
     );
   });

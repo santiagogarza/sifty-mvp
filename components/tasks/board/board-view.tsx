@@ -141,7 +141,9 @@ export function BoardView({
     (taskId: string | null) => {
       if (!taskId) return null;
       for (let columnIndex = 0; columnIndex < columns.length; columnIndex += 1) {
-        const taskIndex = columns[columnIndex].tasks.findIndex((task) => task.id === taskId);
+        const column = columns[columnIndex];
+        if (!column) continue;
+        const taskIndex = column.tasks.findIndex((task) => task.id === taskId);
         if (taskIndex >= 0) return { columnIndex, taskIndex };
       }
       return null;
@@ -172,7 +174,8 @@ export function BoardView({
     (delta: number) => {
       const position = findPosition(activeTaskId);
       if (!position) return;
-      const task = columns[position.columnIndex].tasks[position.taskIndex];
+      const sourceColumn = columns[position.columnIndex];
+      const task = sourceColumn?.tasks[position.taskIndex];
       const target = columns[position.columnIndex + delta]?.view.status;
       if (task && target) moveTask(task, target, "keyboard");
     },
