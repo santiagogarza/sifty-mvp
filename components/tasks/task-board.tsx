@@ -256,7 +256,9 @@ function BoardCardContent({
       : "neutral";
 
   const isDone = task.lifecycle === "done";
-  const hasMeta = dueLabel || taskLabels.length > 0 || task.aiStatus === "failed";
+  // Mirror AiStatusInline's render condition so in-flight triage shows too.
+  const showAiStatus = task.aiStatus !== "ready" && task.aiStatus !== "idle";
+  const hasMeta = dueLabel || taskLabels.length > 0 || showAiStatus;
 
   return (
     <div
