@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/utils/cn";
 import * as React from "react";
 import { useFrame } from "./app-frame";
 import { TopBar } from "./top-bar";
@@ -14,11 +15,18 @@ export function PageShell({
   title,
   subtitle,
   rightSlot,
+  /**
+   * "prose" keeps the reading measure every list view uses. "wide" gives
+   * the page the full frame and turns the container into a column, which
+   * is what lets the board stretch its five columns to equal height.
+   */
+  width = "prose",
   children,
 }: {
   title?: string;
   subtitle?: string;
   rightSlot?: React.ReactNode;
+  width?: "prose" | "wide";
   children: React.ReactNode;
 }) {
   const { openCapture, openCommand } = useFrame();
@@ -31,7 +39,16 @@ export function PageShell({
         onCapture={openCapture}
         onCommand={openCommand}
       />
-      <div className="flex-1 px-4 sm:px-6 md:px-8 max-w-[820px] w-full mx-auto">{children}</div>
+      <div
+        className={cn(
+          "flex-1 px-4 sm:px-6 md:px-8 w-full mx-auto",
+          width === "prose"
+            ? "max-w-[820px]"
+            : "max-w-[1600px] min-h-0 flex flex-col md:px-6 lg:px-8",
+        )}
+      >
+        {children}
+      </div>
     </>
   );
 }

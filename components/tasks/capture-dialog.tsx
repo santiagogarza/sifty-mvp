@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import { runTriage } from "@/lib/ai/run-triage";
 import { TASK_LIMITS } from "@/lib/domain/limits";
+import type { Lifecycle } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
 import { ArrowUpRight, Sparkles } from "lucide-react";
 import * as React from "react";
@@ -29,12 +30,20 @@ import * as React from "react";
 export function CaptureDialog({
   open,
   onOpenChange,
+  lifecycle,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  /**
+   * Where the task lands. Null captures into Inbox as usual; the board's
+   * per-column "Add" passes that column's status so the card appears
+   * where the user asked for it.
+   */
+  lifecycle?: Lifecycle | null;
 }) {
   const { openDetail } = useFrame();
   const createTask = useStore((s) => s.createTask);
+  const setLifecycle = useStore((s) => s.setLifecycle);
   const [text, setText] = React.useState("");
   const [context, setContext] = React.useState("");
   const [showContext, setShowContext] = React.useState(false);
@@ -56,6 +65,7 @@ export function CaptureDialog({
       sourceText: text,
       sourceContext: context.trim() || null,
     });
+    if (lifecycle && lifecycle !== "inbox") setLifecycle(task.id, lifecycle);
     onOpenChange(false);
     // Open the sheet on the next frame so this dialog's close (and its
     // focus restore) doesn't fight the sheet's focus trap.

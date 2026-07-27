@@ -5,7 +5,10 @@ import { PageHeader } from "@/components/app-shell/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
+import type { BoardModeApi } from "@/lib/store/view-mode";
 import * as React from "react";
+import { BoardView } from "./board/board-view";
+import { ViewToggle } from "./board/view-toggle";
 import { TaskEmptyState } from "./empty-state";
 import { TaskList } from "./task-list";
 
@@ -13,6 +16,10 @@ import { TaskList } from "./task-list";
  * Reusable view that renders the standard structure for Today/Inbox/Focus/etc.
  * Hydration-safe: renders skeletons until the persistence rehydrates so the
  * server-rendered shell never shows a flashed empty state.
+ *
+ * Board mode replaces the list with the whole pipeline rather than this
+ * view's one status, so the header restates the scope instead of leaving
+ * the page claiming to be "Focus" with five columns on screen.
  */
 export function TaskView({
   eyebrow,
@@ -22,6 +29,7 @@ export function TaskView({
   emptyTitle,
   emptyDescription,
   rightSlot,
+  view,
 }: {
   eyebrow?: string;
   title: string;
@@ -30,17 +38,40 @@ export function TaskView({
   emptyTitle: string;
   emptyDescription?: string;
   rightSlot?: React.ReactNode;
+  /** Omit to render a list-only view with no toggle. */
+  view?: BoardModeApi;
 }) {
   const { openDetail } = useFrame();
   const tasks = useStore((s) => s.tasks);
   const hydrated = useStore((s) => s.hydrated);
 
   const visible = React.useMemo(() => selector(tasks), [tasks, selector]);
+  const board = view?.mode === "board";
+
+  const actions = view ? (
+    <>
+      {rightSlot}
+      <ViewToggle mode={view.mode} onChange={view.setMode} />
+    </>
+  ) : (
+    rightSlot
+  );
 
   return (
     <>
-      <PageHeader eyebrow={eyebrow} title={title} description={description} actions={rightSlot} />
-      {!hydrated ? (
+      <PageHeader
+        eyebrow={board ? "Board" : eyebrow}
+        title={board ? "Everything, by status" : title}
+        description={
+          board
+            ? "Drag a card to another column to file it. Same order, words, and icons as the sidebar."
+            : description
+        }
+        actions={actions}
+      />
+      {board ? (
+        <BoardView />
+      ) : !hydrated ? (
         <TaskListSkeleton />
       ) : (
         <TaskList

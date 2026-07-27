@@ -1,6 +1,7 @@
 "use client";
 
 import { focusScore } from "@/lib/domain/priority";
+import { STATUS_VIEWS } from "@/lib/domain/status";
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import { dayDelta, isOverdue } from "@/lib/utils/dates";
 import { useMemo } from "react";
@@ -117,6 +118,35 @@ export function selectDoneTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
 
 export function selectDroppedTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
   return selectByLifecycle(tasks, "dropped", args);
+}
+
+export interface BoardColumn {
+  status: Lifecycle;
+  label: string;
+  tasks: Task[];
+}
+
+/**
+ * The board's column set: the statuses that have a view, in pipeline
+ * order, each holding exactly the tasks its list view would show.
+ *
+ * Delegating to the list selectors is the point — a column and its list
+ * can never drift into different filters or different sorts. `dropped`
+ * has no view, so it has no column either.
+ */
+export function selectBoardColumns(tasks: Task[], args: ViewArgs = {}): BoardColumn[] {
+  return STATUS_VIEWS.map(({ status, label }) => ({
+    status,
+    label,
+    tasks: selectColumnTasks(tasks, status, args),
+  }));
+}
+
+function selectColumnTasks(tasks: Task[], status: Lifecycle, args: ViewArgs): Task[] {
+  if (status === "inbox") return selectInboxTasks(tasks, args);
+  if (status === "active") return selectFocusTasks(tasks, args);
+  if (status === "done") return selectDoneTasks(tasks, args);
+  return selectByLifecycle(tasks, status, args);
 }
 
 export interface TaskCounts {

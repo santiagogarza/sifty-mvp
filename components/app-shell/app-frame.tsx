@@ -2,6 +2,7 @@
 
 import { CaptureDialog } from "@/components/tasks/capture-dialog";
 import { TaskDetailSheet } from "@/components/tasks/task-detail-sheet";
+import type { Lifecycle } from "@/lib/domain/types";
 import { useServerSync } from "@/lib/store/sync";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
@@ -10,6 +11,7 @@ import { CommandPalette } from "./command-palette";
 import { GlobalKeyboard } from "./keyboard";
 import { Sidebar } from "./sidebar";
 import { ThemeProvider } from "./theme-context";
+import { Toast, ToastStackProvider } from "./toast-stack";
 
 /**
  * Top-level client frame. Owns the global overlays (capture, command,
@@ -35,6 +37,7 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const search = useSearchParams();
   const [captureOpen, setCaptureOpen] = React.useState(false);
+  const [captureLifecycle, setCaptureLifecycle] = React.useState<Lifecycle | null>(null);
   const [commandOpen, setCommandOpen] = React.useState(false);
 
   // Pulls the server snapshot into the store on mount and reconciles; a
@@ -43,7 +46,10 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
 
   const detailTaskId = search.get("task");
 
-  const openCapture = React.useCallback(() => setCaptureOpen(true), []);
+  const openCapture = React.useCallback((opts?: { lifecycle?: Lifecycle }) => {
+    setCaptureLifecycle(opts?.lifecycle ?? null);
+    setCaptureOpen(true);
+  }, []);
   const openCommand = React.useCallback(() => setCommandOpen(true), []);
 
   const openDetail = React.useCallback(
@@ -69,32 +75,45 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
 
   return (
     <FrameContext.Provider value={value}>
-      <div className="relative flex min-h-dvh">
-        <Sidebar />
-        <main className="relative z-0 flex-1 flex flex-col min-w-0 pb-[80px] md:pb-0">
-          {children}
-        </main>
-      </div>
-      <BottomNav onCapture={openCapture} />
-      <CaptureDialog open={captureOpen} onOpenChange={setCaptureOpen} />
-      <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} onCapture={openCapture} />
-      <TaskDetailSheet taskId={detailTaskId} onClose={closeDetail} />
-      <GlobalKeyboard onCapture={openCapture} onCommand={openCommand} />
-      {sync.hydrated && sync.error ? (
-        <div
-          role="status"
-          className="fixed bottom-[92px] md:bottom-4 left-1/2 -translate-x-1/2 z-40 rounded-full border border-[var(--border)] bg-[var(--bg-elevated)]/95 backdrop-blur px-3.5 py-1.5 text-[12px] text-[var(--fg-muted)] shadow-sm"
-        >
-          Can't reach Sifty — changes are saved locally and will sync.
+      <ToastStackProvider>
+        <div className="relative flex min-h-dvh">
+          <Sidebar />
+          <main className="relative z-0 flex-1 flex flex-col min-w-0 pb-[80px] md:pb-0">
+            {children}
+          </main>
         </div>
-      ) : null}
+        <BottomNav onCapture={() => openCapture()} />
+        <CaptureDialog
+          open={captureOpen}
+          onOpenChange={setCaptureOpen}
+          lifecycle={captureLifecycle}
+        />
+        <CommandPalette
+          open={commandOpen}
+          onOpenChange={setCommandOpen}
+          onCapture={() => openCapture()}
+        />
+        <TaskDetailSheet taskId={detailTaskId} onClose={closeDetail} />
+        <GlobalKeyboard onCapture={() => openCapture()} onCommand={openCommand} />
+        {sync.hydrated && sync.error ? (
+          <Toast>
+            <div
+              role="status"
+              className="rounded-full border border-[var(--border)] bg-[var(--bg-elevated)]/95 backdrop-blur px-3.5 py-1.5 text-[12px] text-[var(--fg-muted)] shadow-sm"
+            >
+              Can't reach Sifty — changes are saved locally and will sync.
+            </div>
+          </Toast>
+        ) : null}
+      </ToastStackProvider>
     </FrameContext.Provider>
   );
 }
 
 interface FrameApi {
   openDetail: (id: string) => void;
-  openCapture: () => void;
+  /** `lifecycle` files the captured task straight into that column. */
+  openCapture: (opts?: { lifecycle?: Lifecycle }) => void;
   openCommand: () => void;
 }
 

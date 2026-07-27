@@ -3,6 +3,7 @@
 import { PageShell } from "@/components/app-shell/page-shell";
 import { TaskView } from "@/components/tasks/task-view";
 import { selectTodayTasks } from "@/lib/store/selectors";
+import { useBoardMode } from "@/lib/store/view-mode";
 import * as React from "react";
 
 function getTimeGreeting(now: Date): string {
@@ -23,6 +24,7 @@ function getDateLine(now: Date): string {
 }
 
 export default function TodayPage() {
+  const view = useBoardMode();
   const [greeting, setGreeting] = React.useState<string | null>(null);
   const [dateLine, setDateLine] = React.useState<string | null>(null);
 
@@ -33,7 +35,11 @@ export default function TodayPage() {
   }, []);
 
   return (
-    <PageShell title="Today" subtitle={dateLine ?? undefined}>
+    <PageShell
+      title="Today"
+      subtitle={dateLine ?? undefined}
+      width={view.mode === "board" ? "wide" : "prose"}
+    >
       <TaskView
         eyebrow={greeting ?? undefined}
         title="What matters today"
@@ -41,6 +47,7 @@ export default function TodayPage() {
         selector={selectTodayTasks}
         emptyTitle="Nothing pressing today."
         emptyDescription="When something needs your attention, it'll show up here. Until then, enjoy the quiet."
+        view={view}
       />
     </PageShell>
   );

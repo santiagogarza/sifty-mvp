@@ -20,7 +20,7 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between mt-6 mb-5">
+    <header className="shrink-0 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between mt-6 mb-5">
       <div className="min-w-0">
         {eyebrow ? <div className="text-eyebrow mb-1.5">{eyebrow}</div> : null}
         <h1 className="text-display text-[34px] sm:text-[36px] text-[var(--fg)]">{title}</h1>
