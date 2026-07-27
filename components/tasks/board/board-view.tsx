@@ -87,18 +87,14 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
 
   React.useEffect(() => {
     setHintVisible(!readHintSeen());
-    // Touch phones and the md breakpoint both get the long-press Move-to
-    // path — dragging inside a horizontally scrolling strip fights scroll.
-    const coarse = window.matchMedia("(pointer: coarse)");
+    // Narrow viewports get snap-scroll + long-press Move-to (drag fights the
+    // horizontal strip). Wide coarse pointers (iPad landscape) keep pointer
+    // drag — they have room for columns side-by-side.
     const narrow = window.matchMedia("(max-width: 767px)");
-    const update = () => setIsMobileBoard(coarse.matches || narrow.matches);
+    const update = () => setIsMobileBoard(narrow.matches);
     update();
-    coarse.addEventListener("change", update);
     narrow.addEventListener("change", update);
-    return () => {
-      coarse.removeEventListener("change", update);
-      narrow.removeEventListener("change", update);
-    };
+    return () => narrow.removeEventListener("change", update);
   }, []);
 
   // Seed selection when columns first gain tasks.
@@ -296,10 +292,18 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
     [columns, findTaskLocation, moveTask, onOpen, selectedTaskId],
   );
 
-  // Window-level so j/k work even when focus left a card (e.g. after a click
-  // that opened then closed the sheet). Skip when typing in inputs.
+  // Scoped like TaskList: only when focus is inside the board (or on a card
+  // option). Avoids stealing j/k from the sidebar, toggle, or other chrome.
   React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => handleBoardKey(e);
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const root = boardRef.current;
+      if (!root || !target) return;
+      const inside = root.contains(target);
+      const onOption = target.getAttribute("role") === "option";
+      if (!inside && !onOption) return;
+      handleBoardKey(e);
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [handleBoardKey]);

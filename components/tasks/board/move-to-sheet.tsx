@@ -27,7 +27,7 @@ export function MoveToSheet({
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:hidden">
+      <SheetContent className="sm:max-w-md">
         <div className="px-5 pt-4 pb-2">
           <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--border-strong)]" />
           <SheetTitle>Move to</SheetTitle>
