@@ -19,6 +19,7 @@ export function BoardCard({
   onOpen,
   onLongPress,
   onBoardKeyDown,
+  suppressClickRef,
   dragDisabled,
   cardRef,
 }: {
@@ -29,6 +30,7 @@ export function BoardCard({
   onOpen: (id: string) => void;
   onLongPress?: (task: Task) => void;
   onBoardKeyDown?: (e: React.KeyboardEvent) => void;
+  suppressClickRef?: React.RefObject<boolean>;
   dragDisabled?: boolean;
   cardRef?: React.Ref<HTMLDivElement>;
 }) {
@@ -45,6 +47,13 @@ export function BoardCard({
     const { role: _role, ...rest } = attributes;
     return rest;
   }, [attributes]);
+
+  const dragPointerDown = listeners?.onPointerDown;
+  const dragListeners = React.useMemo(() => {
+    if (!listeners) return {};
+    const { onPointerDown: _pd, ...rest } = listeners;
+    return rest;
+  }, [listeners]);
 
   const setRef = React.useCallback(
     (node: HTMLDivElement | null) => {
@@ -89,12 +98,13 @@ export function BoardCard({
       aria-selected={active}
       tabIndex={tabIndex}
       style={style}
-      {...(dragDisabled ? {} : { ...dragAttrs, ...listeners })}
+      {...(dragDisabled ? {} : { ...dragAttrs, ...dragListeners })}
       onClick={() => {
         if (longPressFired.current) {
           longPressFired.current = false;
           return;
         }
+        if (isDragging || suppressClickRef?.current) return;
         onOpen(task.id);
       }}
       onKeyDown={(e) => {
@@ -111,6 +121,7 @@ export function BoardCard({
         }
       }}
       onPointerDown={(e) => {
+        dragPointerDown?.(e);
         if (!onLongPress || dragDisabled) return;
         longPressTimer.current = setTimeout(() => {
           longPressFired.current = true;
@@ -122,11 +133,11 @@ export function BoardCard({
         };
         e.currentTarget.addEventListener("pointerup", clear, { once: true });
         e.currentTarget.addEventListener("pointercancel", clear, { once: true });
-        e.currentTarget.addEventListener("pointermove", clear, { once: true });
       }}
       className={cn(
         "group relative flex flex-col gap-1.5 rounded-[var(--radius-md)] border border-[var(--border)]",
-        "bg-[var(--bg-elevated)] px-3 py-2.5 cursor-default touch-none",
+        "bg-[var(--bg-elevated)] px-3 py-2.5 touch-none",
+        !dragDisabled && "cursor-grab active:cursor-grabbing",
         "transition-[box-shadow,background-color,border-color] duration-150 ease-[var(--ease-product)]",
         "hover:border-[var(--border-strong)] hover:shadow-sm",
         active && "ring-2 ring-[var(--accent)]/40 border-[var(--accent)]/30",

@@ -18,6 +18,7 @@ export function BoardColumn({
   onOpen,
   onLongPress,
   onBoardKeyDown,
+  suppressClickRef,
   dragDisabled,
   cardRef,
   columnIndex,
@@ -32,6 +33,7 @@ export function BoardColumn({
   onOpen: (id: string) => void;
   onLongPress?: (task: Task) => void;
   onBoardKeyDown?: (e: React.KeyboardEvent) => void;
+  suppressClickRef?: React.RefObject<boolean>;
   dragDisabled?: boolean;
   cardRef?: (taskId: string) => React.Ref<HTMLDivElement>;
   columnIndex: number;
@@ -90,6 +92,7 @@ export function BoardColumn({
             onOpen={onOpen}
             onLongPress={onLongPress}
             onBoardKeyDown={onBoardKeyDown}
+            suppressClickRef={suppressClickRef}
             dragDisabled={dragDisabled}
             cardRef={cardRef?.(task.id)}
           />

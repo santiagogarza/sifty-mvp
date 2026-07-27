@@ -16,6 +16,7 @@ import {
   type DragStartEvent,
   PointerSensor,
   TouchSensor,
+  pointerWithin,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -62,6 +63,7 @@ export function BoardView() {
   const [moveSheetTask, setMoveSheetTask] = React.useState<Task | null>(null);
   const [announcement, setAnnouncement] = React.useState("");
   const [dirtyTaskId, setDirtyTaskId] = React.useState<string | null>(null);
+  const suppressClickRef = React.useRef(false);
 
   const boardRef = React.useRef<HTMLDivElement>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -211,6 +213,7 @@ export function BoardView() {
   };
 
   const onDragStart = (event: DragStartEvent) => {
+    suppressClickRef.current = true;
     setDraggingId(String(event.active.id));
   };
 
@@ -239,6 +242,9 @@ export function BoardView() {
     setDraggingId(null);
     setDropTargetStatus(null);
     setDropPreviewCount(undefined);
+    setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 100);
 
     const { active, over } = event;
     if (!over) return;
@@ -287,6 +293,7 @@ export function BoardView() {
 
       <DndContext
         sensors={isMobile ? undefined : sensors}
+        collisionDetection={pointerWithin}
         onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDragEnd={onDragEnd}
@@ -313,6 +320,7 @@ export function BoardView() {
               onOpen={openDetail}
               onLongPress={isMobile ? setMoveSheetTask : undefined}
               onBoardKeyDown={onKeyDown}
+              suppressClickRef={suppressClickRef}
               dragDisabled={isMobile}
               cardRef={(taskId) => (el) => {
                 if (el) cardRefs.current.set(taskId, el);
