@@ -1,6 +1,7 @@
 "use client";
 
 import { DEFAULT_MODEL_ID } from "@/lib/ai/models";
+import { normalizeAssigneeName } from "@/lib/domain/assignee";
 import { bucketFromScalars } from "@/lib/domain/priority";
 import { mergeTriageIntoTask } from "@/lib/domain/triage-merge";
 import {
@@ -130,7 +131,7 @@ interface SiftyState {
   ensureLabel: (name: string) => Label;
 }
 
-const VERSION = 2;
+const VERSION = 3;
 
 export const useStore = create<SiftyState>()(
   persist(
@@ -175,6 +176,7 @@ export const useStore = create<SiftyState>()(
             effort: "small",
             due: null,
             delegationCandidate: "unsure",
+            assigneeName: null,
             confidence: 0,
             clarifyingQuestion: null,
             rationale: null,
@@ -198,9 +200,13 @@ export const useStore = create<SiftyState>()(
               const editedFields = opts?.editedFields
                 ? Array.from(new Set([...t.editedFields, ...opts.editedFields]))
                 : t.editedFields;
+              const scopedPatch = { ...patch };
+              if ("assigneeName" in patch) {
+                scopedPatch.assigneeName = normalizeAssigneeName(patch.assigneeName);
+              }
               const next: Task = {
                 ...t,
-                ...patch,
+                ...scopedPatch,
                 editedFields,
                 updatedAt: new Date().toISOString(),
               };
@@ -407,6 +413,9 @@ export const useStore = create<SiftyState>()(
         const state = persisted as Partial<SiftyState>;
         if (version < 2 && state.tasks) {
           state.tasks = state.tasks.map((t) => ({ ...t, agentBrief: t.agentBrief ?? null }));
+        }
+        if (version < 3 && state.tasks) {
+          state.tasks = state.tasks.map((t) => ({ ...t, assigneeName: t.assigneeName ?? null }));
         }
         return state as SiftyState;
       },

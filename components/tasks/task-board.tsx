@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { statusLabel } from "@/lib/domain/status";
 import type { Label, Task } from "@/lib/domain/types";
 import { type BoardColumn, type BoardLifecycle, selectBoardColumns } from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
@@ -38,14 +39,6 @@ import { PriorityGlyph } from "./priority-glyph";
  *  - The floating card is a DragOverlay clone; the source card dims in
  *    place, which keeps columns from reflowing mid-drag.
  */
-
-const COLUMN_TITLES: Record<BoardLifecycle, string> = {
-  inbox: "Inbox",
-  active: "Focus",
-  waiting: "Waiting",
-  someday: "Someday",
-  done: "Done",
-};
 
 const COLUMN_DOTS: Record<BoardLifecycle, string> = {
   inbox: "bg-[var(--fg-subtle)]",
@@ -165,7 +158,7 @@ function BoardColumnView({
   return (
     <section
       ref={setNodeRef}
-      aria-label={`${COLUMN_TITLES[column.lifecycle]} column`}
+      aria-label={`${statusLabel(column.lifecycle)} column`}
       className={cn(
         "flex w-[248px] min-w-[248px] flex-1 snap-start flex-col self-start",
         "rounded-[var(--radius-lg)] border p-1.5",
@@ -178,7 +171,7 @@ function BoardColumnView({
       <header className="flex items-center gap-2 px-2 pt-1.5 pb-2">
         <span className={cn("size-[6px] rounded-full", COLUMN_DOTS[column.lifecycle])} />
         <span className="text-[12.5px] font-medium text-[var(--fg-muted)]">
-          {COLUMN_TITLES[column.lifecycle]}
+          {statusLabel(column.lifecycle)}
         </span>
         <span className="text-num text-[11.5px] tabular-nums text-[var(--fg-subtle)]">
           {column.tasks.length}

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeAssigneeName } from "./assignee";
 import { TASK_LIMITS } from "./limits";
 import {
   AI_STATUS,
@@ -45,6 +46,12 @@ export const TaskPatchSchema = z
       .nullable()
       .optional(),
     delegationCandidate: z.enum(DELEGATION_CANDIDATE).optional(),
+    assigneeName: z
+      .string()
+      .max(TASK_LIMITS.assigneeName)
+      .nullable()
+      .optional()
+      .transform((v) => (v === undefined ? undefined : normalizeAssigneeName(v))),
     confidence: z.number().min(0).max(1).optional(),
     clarifyingQuestion: z.string().max(TASK_LIMITS.clarifyingQuestion).nullable().optional(),
     rationale: z.string().max(TASK_LIMITS.rationale).nullable().optional(),

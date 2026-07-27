@@ -15,6 +15,13 @@
       "when": 1784613215358,
       "tag": "0001_eminent_the_twelve",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784704982678,
+      "tag": "0002_equal_monster_badoon",
+      "breakpoints": true
     }
   ]
 }

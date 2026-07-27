@@ -12,6 +12,12 @@ import { useStore } from "./store";
  * The rule of thumb: a "view" is a (filter, sort) pair plus optional
  * grouping. Selectors stay pure so they can be reused in tests and in
  * server-side code if persistence moves there.
+ *
+ * Every sidebar view except Today maps 1:1 to a status (`Lifecycle`), so
+ * the nav, the Status picker, and a future Kanban board all agree on where
+ * a task lives. Today is a smart lens over statuses, defined by
+ * `isTodayTask` — the single predicate shared by the Today list and the
+ * sidebar count so the two can never disagree.
  */
 
 export interface ViewArgs {
@@ -36,35 +42,47 @@ function applyCommonFilters(tasks: Task[], args: ViewArgs): Task[] {
   return out;
 }
 
+/**
+ * Today membership:
+ *  - Inbox/Focus tasks that are overdue, due today, or read as urgent +
+ *    important (`do_now`) — your ball, today.
+ *  - Waiting-on tasks only when a deadline forces them (overdue/due today):
+ *    the ball is elsewhere, but the date arrives regardless — chase it.
+ *  - Someday never resurfaces (an explicit "not now"), and done/dropped
+ *    are out of play.
+ */
+export function isTodayTask(t: Task, now = new Date()): boolean {
+  const dueForces = isOverdue(t.due, now) || (!!t.due && dayDelta(new Date(t.due), now) === 0);
+  if (t.lifecycle === "inbox" || t.lifecycle === "active") {
+    return dueForces || t.priorityBucket === "do_now";
+  }
+  if (t.lifecycle === "waiting") return dueForces;
+  return false;
+}
+
+function byFocusScore(now: Date) {
+  return (a: Task, b: Task) =>
+    focusScore({
+      bucket: a.priorityBucket,
+      importance: a.importance,
+      urgency: a.urgency,
+      due: a.due,
+      now,
+    }) -
+    focusScore({
+      bucket: b.priorityBucket,
+      importance: b.importance,
+      urgency: b.urgency,
+      due: b.due,
+      now,
+    });
+}
+
 export function selectTodayTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
-  const filtered = applyCommonFilters(tasks, args).filter(
-    (t) => t.lifecycle !== "done" && t.lifecycle !== "dropped",
-  );
   const now = new Date();
-  return filtered
-    .filter((t) => {
-      if (isOverdue(t.due, now)) return true;
-      if (t.due && dayDelta(new Date(t.due), now) === 0) return true;
-      if (t.priorityBucket === "do_now") return true;
-      return false;
-    })
-    .sort(
-      (a, b) =>
-        focusScore({
-          bucket: a.priorityBucket,
-          importance: a.importance,
-          urgency: a.urgency,
-          due: a.due,
-          now,
-        }) -
-        focusScore({
-          bucket: b.priorityBucket,
-          importance: b.importance,
-          urgency: b.urgency,
-          due: b.due,
-          now,
-        }),
-    );
+  return applyCommonFilters(tasks, args)
+    .filter((t) => isTodayTask(t, now))
+    .sort(byFocusScore(now));
 }
 
 export function selectInboxTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
@@ -73,27 +91,12 @@ export function selectInboxTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
+/** Focus is exactly the "active" status — Inbox stays the review gate. */
 export function selectFocusTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
   const now = new Date();
   return applyCommonFilters(tasks, args)
-    .filter((t) => t.lifecycle === "active" || t.lifecycle === "inbox")
-    .sort(
-      (a, b) =>
-        focusScore({
-          bucket: a.priorityBucket,
-          importance: a.importance,
-          urgency: a.urgency,
-          due: a.due,
-          now,
-        }) -
-        focusScore({
-          bucket: b.priorityBucket,
-          importance: b.importance,
-          urgency: b.urgency,
-          due: b.due,
-          now,
-        }),
-    );
+    .filter((t) => t.lifecycle === "active")
+    .sort(byFocusScore(now));
 }
 
 export function selectByLifecycle(
@@ -107,9 +110,9 @@ export function selectByLifecycle(
 }
 
 /**
- * Board columns, left to right, mirroring the sidebar's pipeline order.
- * `dropped` is deliberately absent — the board is for live work, and
- * dropping stays an explicit action in the detail sheet.
+ * Board columns, left to right, mirroring the sidebar's pipeline order
+ * (`STATUS_META` order). `dropped` is deliberately absent — the board is
+ * for live work, and dropping stays an explicit action in the detail sheet.
  */
 export const BOARD_LIFECYCLES = ["inbox", "active", "waiting", "someday", "done"] as const;
 export type BoardLifecycle = (typeof BOARD_LIFECYCLES)[number];
@@ -135,23 +138,7 @@ export function selectBoardColumns(
     if (lifecycle === "inbox") {
       columnTasks.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
     } else if (lifecycle === "active") {
-      columnTasks.sort(
-        (a, b) =>
-          focusScore({
-            bucket: a.priorityBucket,
-            importance: a.importance,
-            urgency: a.urgency,
-            due: a.due,
-            now,
-          }) -
-          focusScore({
-            bucket: b.priorityBucket,
-            importance: b.importance,
-            urgency: b.urgency,
-            due: b.due,
-            now,
-          }),
-      );
+      columnTasks.sort(byFocusScore(now));
     } else if (lifecycle === "done") {
       columnTasks.sort((a, b) =>
         (a.completedAt ?? a.updatedAt) < (b.completedAt ?? b.updatedAt) ? 1 : -1,
@@ -163,32 +150,58 @@ export function selectBoardColumns(
   });
 }
 
-export function useTaskCounts() {
-  const tasks = useStore((s) => s.tasks);
-  return useMemo(() => {
-    const now = new Date();
-    let today = 0;
-    let inbox = 0;
-    let focus = 0;
-    let waiting = 0;
-    let someday = 0;
-    let done = 0;
-    for (const t of tasks) {
-      if (t.lifecycle === "done") {
-        done += 1;
-        continue;
-      }
-      if (t.lifecycle === "dropped") continue;
-      if (t.lifecycle === "inbox") inbox += 1;
-      if (t.lifecycle === "active" || t.lifecycle === "inbox") {
-        focus += 1;
-        const isOver = isOverdue(t.due, now);
-        const dueToday = t.due && dayDelta(new Date(t.due), now) === 0;
-        if (isOver || dueToday || t.priorityBucket === "do_now") today += 1;
-      }
-      if (t.lifecycle === "waiting") waiting += 1;
-      if (t.lifecycle === "someday") someday += 1;
+export function selectDoneTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
+  return applyCommonFilters(tasks, args)
+    .filter((t) => t.lifecycle === "done")
+    .sort((a, b) => ((a.completedAt ?? a.updatedAt) < (b.completedAt ?? b.updatedAt) ? 1 : -1));
+}
+
+export function selectDroppedTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
+  return selectByLifecycle(tasks, "dropped", args);
+}
+
+export interface TaskCounts {
+  today: number;
+  inbox: number;
+  focus: number;
+  waiting: number;
+  someday: number;
+  done: number;
+  dropped: number;
+  total: number;
+}
+
+/** Pure counterpart of `useTaskCounts`; uses the same predicates as the lists. */
+export function computeTaskCounts(tasks: Task[], now = new Date()): TaskCounts {
+  const counts: TaskCounts = {
+    today: 0,
+    inbox: 0,
+    focus: 0,
+    waiting: 0,
+    someday: 0,
+    done: 0,
+    dropped: 0,
+    total: tasks.length,
+  };
+  for (const t of tasks) {
+    if (t.lifecycle === "done") {
+      counts.done += 1;
+      continue;
     }
-    return { today, inbox, focus, waiting, someday, done, total: tasks.length };
-  }, [tasks]);
+    if (t.lifecycle === "dropped") {
+      counts.dropped += 1;
+      continue;
+    }
+    if (t.lifecycle === "inbox") counts.inbox += 1;
+    if (t.lifecycle === "active") counts.focus += 1;
+    if (t.lifecycle === "waiting") counts.waiting += 1;
+    if (t.lifecycle === "someday") counts.someday += 1;
+    if (isTodayTask(t, now)) counts.today += 1;
+  }
+  return counts;
+}
+
+export function useTaskCounts(): TaskCounts {
+  const tasks = useStore((s) => s.tasks);
+  return useMemo(() => computeTaskCounts(tasks), [tasks]);
 }

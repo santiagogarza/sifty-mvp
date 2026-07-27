@@ -29,6 +29,11 @@
 export type ID = string;
 export type ISODate = string;
 
+/**
+ * Stored status values. Presented to the user as "Status" — labels, order,
+ * and per-status routes live in `lib/domain/status.ts` (`STATUS_META`).
+ * Note `active` is presented as "Focus" so the picker mirrors the sidebar.
+ */
 export const LIFECYCLE = ["inbox", "active", "waiting", "someday", "done", "dropped"] as const;
 export type Lifecycle = (typeof LIFECYCLE)[number];
 
@@ -100,6 +105,8 @@ export interface Task {
   due: ISODate | null;
 
   delegationCandidate: DelegationCandidate;
+  /** User-assigned person; independent of AI delegation recommendation. */
+  assigneeName: string | null;
 
   /** AI's self-reported confidence in this triage, 0..1. */
   confidence: number;
@@ -141,6 +148,7 @@ export const TASK_EDITABLE_FIELDS = [
   "effort",
   "due",
   "delegationCandidate",
+  "assigneeName",
   "labelIds",
   "subtasks",
 ] as const;

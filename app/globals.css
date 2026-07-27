@@ -312,6 +312,47 @@ button,
   }
 }
 
+@keyframes sifty-fill-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes sifty-ai-wash {
+  from {
+    background-color: var(--ai-soft);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+@keyframes sifty-count-pulse {
+  0% {
+    transform: none;
+  }
+  35% {
+    transform: scale(1.3);
+    color: var(--fg);
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes sifty-ghost-collapse {
+  from {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+  to {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+
 .animate-rise {
   animation: sifty-rise 320ms var(--ease-product) both;
 }
@@ -320,6 +361,30 @@ button,
 }
 .animate-pulse-soft {
   animation: sifty-pulse-soft 1800ms var(--ease-soft) infinite;
+}
+/* Sections settling in after Sifty fills a task — a short rise plus a
+   longer AI-tinted wash that fades out; staggered via animation-delay
+   set inline (one value applies to both animations). */
+.animate-fill-in {
+  border-radius: var(--radius-md);
+  animation: sifty-fill-in 420ms var(--ease-product) both, sifty-ai-wash 1200ms var(--ease-soft)
+    both;
+}
+/* One-shot pulse when a sidebar count goes up. */
+.animate-count-pulse {
+  display: inline-block;
+  animation: sifty-count-pulse 600ms var(--ease-product) both;
+}
+/* A just-completed row: stays readable for a beat, then collapses.
+   The grid-template-rows trick animates an unknown height to zero. */
+.ghost-collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: sifty-ghost-collapse 240ms var(--ease-product) 600ms forwards;
+}
+.ghost-collapse > * {
+  overflow: hidden;
+  min-height: 0;
 }
 
 /* Skeleton shimmer — barely there. */
@@ -334,6 +399,20 @@ button,
   background-size: 220% 100%, 100% 100%;
   animation: sifty-shimmer 1.6s linear infinite;
   border-radius: var(--radius-sm);
+}
+
+/* Shimmer for a slot Sifty is deciding — the skeleton, tinted with the
+   quiet AI hue so "being organized" reads differently from "loading". */
+.ai-fill-shimmer {
+  background: linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--ai-soft) 40%,
+      var(--ai-soft) 60%,
+      transparent 100%
+    ), var(--surface-hover);
+  background-size: 220% 100%, 100% 100%;
+  animation: sifty-shimmer 1.6s linear infinite;
 }
 
 /* -----------------------------------------------------------------

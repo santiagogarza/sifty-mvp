@@ -2,8 +2,10 @@
 
 import { useOpenDetail } from "@/components/app-shell/app-frame";
 import { useTheme } from "@/components/app-shell/theme-context";
+import { STATUS_ICONS } from "@/components/tasks/status-icon";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
+import { STATUS_VIEWS } from "@/lib/domain/status";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import {
@@ -11,15 +13,11 @@ import {
   Brain,
   Columns3,
   CreditCard,
-  Inbox,
-  ListTodo,
-  PauseCircle,
   Rows3,
   Search,
   Settings,
   Sparkles,
   Sun,
-  Target,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -68,34 +66,18 @@ export function CommandPalette({
         icon: <Sun size={14} />,
         run: () => router.push("/today"),
       },
-      {
-        id: "go-focus",
-        group: "navigate",
-        label: "Go to Focus",
-        icon: <Target size={14} />,
-        run: () => router.push("/focus"),
-      },
-      {
-        id: "go-inbox",
-        group: "navigate",
-        label: "Go to Inbox",
-        icon: <Inbox size={14} />,
-        run: () => router.push("/inbox"),
-      },
-      {
-        id: "go-waiting",
-        group: "navigate",
-        label: "Go to Waiting",
-        icon: <PauseCircle size={14} />,
-        run: () => router.push("/waiting"),
-      },
-      {
-        id: "go-someday",
-        group: "navigate",
-        label: "Go to Someday",
-        icon: <ListTodo size={14} />,
-        run: () => router.push("/someday"),
-      },
+      // Status views, in the same order and words as the sidebar and the
+      // Status picker.
+      ...STATUS_VIEWS.map((view): CommandItem => {
+        const Icon = STATUS_ICONS[view.status];
+        return {
+          id: `go-${view.status}`,
+          group: "navigate",
+          label: `Go to ${view.label}`,
+          icon: <Icon size={14} />,
+          run: () => router.push(view.href),
+        };
+      }),
       {
         id: "go-memory",
         group: "navigate",

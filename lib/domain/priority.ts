@@ -27,7 +27,9 @@ export function bucketLabel(bucket: PriorityBucket): string {
     case "delegate":
       return "Delegate";
     case "drop":
-      return "Drop or someday";
+      // Deliberately not "Drop or someday": that phrasing collides with the
+      // Dropped/Someday statuses and reads like an action.
+      return "Low priority";
     case "unset":
       return "Unset";
   }

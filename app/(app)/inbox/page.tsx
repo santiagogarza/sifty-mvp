@@ -9,10 +9,10 @@ export default function InboxPage() {
     <PageShell title="Inbox">
       <TaskView
         title="Inbox"
-        description="Newly captured tasks. Review, then move them into Focus, Waiting, Someday, or just leave them — Today will pull what matters."
+        description="Newly captured tasks. Review, then move them into Focus, Waiting on, or Someday — or just leave them; Today will pull what matters."
         selector={selectInboxTasks}
         emptyTitle="Inbox zero."
-        emptyDescription="Capture anything on your mind. Sifty will triage it before you next check."
+        emptyDescription="Capture anything on your mind. Sifty will organize it before you next check."
       />
     </PageShell>
   );
