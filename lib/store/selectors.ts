@@ -1,6 +1,7 @@
 "use client";
 
 import { focusScore } from "@/lib/domain/priority";
+import { STATUS_VIEWS } from "@/lib/domain/status";
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import { dayDelta, isOverdue } from "@/lib/utils/dates";
 import { useMemo } from "react";
@@ -117,6 +118,52 @@ export function selectDoneTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
 
 export function selectDroppedTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
   return selectByLifecycle(tasks, "dropped", args);
+}
+
+/**
+ * One Kanban column: a status that has a view of its own, plus the tasks
+ * currently filed there. `dropped` is excluded by construction — it comes
+ * from `STATUS_VIEWS`, which drops the page-less status, so the board and
+ * the sidebar can never disagree about which statuses are real destinations.
+ */
+export interface BoardColumnData {
+  status: Lifecycle;
+  label: string;
+  href: string;
+  tasks: Task[];
+}
+
+/**
+ * Per-column ordering matches the equivalent list view exactly, so a task
+ * sits in the same relative spot whether you're scanning the List or the
+ * Board. Reusing the list selectors (rather than re-deriving a sort) is what
+ * guarantees that — there is no second ordering to keep in step.
+ */
+function selectColumnTasks(status: Lifecycle, tasks: Task[], args: ViewArgs): Task[] {
+  switch (status) {
+    case "inbox":
+      return selectInboxTasks(tasks, args);
+    case "active":
+      return selectFocusTasks(tasks, args);
+    case "done":
+      return selectDoneTasks(tasks, args);
+    default:
+      return selectByLifecycle(tasks, status, args);
+  }
+}
+
+/**
+ * The board's read model: exactly the five `STATUS_VIEWS` columns in pipeline
+ * order, always five even when empty, each sorted like its list view and
+ * narrowed by the same `labelId`/`search` filters as every other view.
+ */
+export function selectBoardColumns(tasks: Task[], args: ViewArgs = {}): BoardColumnData[] {
+  return STATUS_VIEWS.map((view) => ({
+    status: view.status,
+    label: view.label,
+    href: view.href,
+    tasks: selectColumnTasks(view.status, tasks, args),
+  }));
 }
 
 export interface TaskCounts {
