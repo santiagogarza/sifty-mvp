@@ -9,12 +9,13 @@ import * as React from "react";
 export default function SomedayPage() {
   const select = React.useCallback((t: Task[]) => selectByLifecycle(t, "someday"), []);
   return (
-    <PageShell title="Someday">
+    <PageShell title="Someday" width="wide">
       <TaskView
         title="Someday"
         description="A quiet shelf for ideas that aren't urgent. Revisit when the season is right."
         selector={select}
         emptyTitle="Empty shelf."
+        enableBoard
       />
     </PageShell>
   );
