@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { BoardView } from "@/components/tasks/board/board-view";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeTask, seedStore, stubMatchMedia, taskInStore } from "./helpers";
 
@@ -103,6 +103,24 @@ describe("board keyboard model", () => {
     card.focus();
     fireEvent.keyDown(card, { key: "ArrowLeft", shiftKey: true });
     expect(taskInStore(task.id)?.lifecycle).toBe("inbox");
+  });
+
+  it("keeps the keyboard model alive when focus falls back to <body>", () => {
+    // Closing the detail sheet restores focus to <body>; the selected card
+    // must still respond so open → Escape → ⇧→ works without re-tabbing.
+    const task = makeTask({ title: "Alpha", lifecycle: "inbox" });
+    seedStore([task]);
+    renderBoard();
+
+    const card = cardByTitle("Alpha");
+    act(() => {
+      card.focus();
+      card.blur();
+    });
+    expect(document.activeElement).toBe(document.body);
+
+    fireEvent.keyDown(document.body, { key: "ArrowRight", shiftKey: true });
+    expect(taskInStore(task.id)?.lifecycle).toBe("active");
   });
 
   it("opens the detail sheet on Enter", () => {

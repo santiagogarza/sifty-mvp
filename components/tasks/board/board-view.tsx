@@ -50,6 +50,8 @@ import { UndoPill } from "./undo-pill";
 const UNDO_WINDOW_MS = 6000;
 /** Mobile column width (px) + the gap-3 between columns; used by the pager. */
 const MOBILE_COLUMN_STRIDE = 300 + 12;
+/** Keys the board claims when routing from <body> to the selected card. */
+const BOARD_KEYS = ["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "j", "k", "Enter"];
 
 interface UndoEntry {
   seq: number;
@@ -196,7 +198,7 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
   // --- Keyboard model -------------------------------------------------------
 
   const onCardKeyDown = React.useCallback(
-    (e: React.KeyboardEvent, task: Task) => {
+    (e: Pick<React.KeyboardEvent, "key" | "shiftKey" | "preventDefault">, task: Task) => {
       const colIndex = columns.findIndex((c) => c.status === task.lifecycle);
       const column = columns[colIndex];
       if (!column) return;
@@ -239,6 +241,27 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
     },
     [columns, moveTask, onOpen, focusCard],
   );
+
+  // Closing the detail sheet drops focus on <body> (the sheet has no
+  // trigger element to restore to), which would strand the keyboard model
+  // even though the selection ring still shows. Route the board keys from
+  // <body> to the selected card so keyboard flow survives open → Escape.
+  React.useEffect(() => {
+    if (!selectedId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target !== document.body) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (!BOARD_KEYS.includes(e.key)) return;
+      const task = tasks.find((t) => t.id === selectedId);
+      if (!task) return;
+      onCardKeyDown(
+        { key: e.key, shiftKey: e.shiftKey, preventDefault: () => e.preventDefault() },
+        task,
+      );
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [selectedId, tasks, onCardKeyDown]);
 
   // Roving tabindex: the selected card is the tab stop; before any
   // selection, the first card of the first non-empty column is.
