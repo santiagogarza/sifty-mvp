@@ -83,6 +83,8 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
       {sync.hydrated && sync.error ? (
         <div
           role="status"
+          // z-40 sits under the board UndoPill (z-50) so both can coexist in
+          // the same bottom-center slot without fighting for equal priority.
           className="fixed bottom-[92px] md:bottom-4 left-1/2 -translate-x-1/2 z-40 rounded-full border border-[var(--border)] bg-[var(--bg-elevated)]/95 backdrop-blur px-3.5 py-1.5 text-[12px] text-[var(--fg-muted)] shadow-sm"
         >
           Can't reach Sifty — changes are saved locally and will sync.

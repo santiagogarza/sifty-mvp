@@ -1,35 +1,38 @@
 "use client";
 
 import { useFrame } from "@/components/app-shell/app-frame";
-import { PageShell } from "@/components/app-shell/page-shell";
+import { StatusPageShell } from "@/components/tasks/board/status-page-shell";
 import { TaskList } from "@/components/tasks/task-list";
 import { TaskView } from "@/components/tasks/task-view";
 import { statusLabel } from "@/lib/domain/status";
 import { selectDoneTasks, selectDroppedTasks } from "@/lib/store/selectors";
+import { useBoardMode } from "@/lib/store/view-mode";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import { ChevronRight } from "lucide-react";
 import * as React from "react";
 
 export default function DonePage() {
+  const { isBoard } = useBoardMode();
   return (
-    <PageShell title={statusLabel("done")}>
+    <StatusPageShell title={statusLabel("done")}>
       <TaskView
         title="Done"
         description="Finished work, newest first. Uncheck anything to send it back to Focus."
         selector={selectDoneTasks}
         emptyTitle="Nothing finished yet."
         emptyDescription="Completed tasks land here, so checking one off never loses it."
+        enableBoard
       />
-      <DroppedSection />
-    </PageShell>
+      {!isBoard ? <DroppedSection /> : null}
+    </StatusPageShell>
   );
 }
 
 /**
  * Dropped tasks live behind a disclosure at the end of Done — kept for
  * reference, never given a nav item of their own. Renders nothing when
- * there is nothing dropped.
+ * there is nothing dropped. Hidden in board mode (dropped has no column).
  */
 function DroppedSection() {
   const { openDetail } = useFrame();

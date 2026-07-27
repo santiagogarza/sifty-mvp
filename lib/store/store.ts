@@ -210,11 +210,14 @@ export const useStore = create<SiftyState>()(
               ) {
                 next.priorityBucket = bucketFromScalars(next.urgency, next.importance);
               }
-              if (patch.lifecycle === "done" && !t.completedAt) {
-                next.completedAt = next.updatedAt;
-              }
-              if (patch.lifecycle && patch.lifecycle !== "done") {
-                next.completedAt = null;
+              // Explicit completedAt in the patch wins (board undo restores it).
+              if (!("completedAt" in patch)) {
+                if (patch.lifecycle === "done" && !t.completedAt) {
+                  next.completedAt = next.updatedAt;
+                }
+                if (patch.lifecycle && patch.lifecycle !== "done") {
+                  next.completedAt = null;
+                }
               }
               return next;
             }),

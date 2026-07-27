@@ -4,8 +4,11 @@ import { useFrame } from "@/components/app-shell/app-frame";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Task } from "@/lib/domain/types";
+import { useBoardMode } from "@/lib/store/view-mode";
 import { useStore } from "@/lib/store/store";
 import * as React from "react";
+import { BoardView, BoardViewSkeleton } from "./board/board-view";
+import { ViewToggle } from "./board/view-toggle";
 import { TaskEmptyState } from "./empty-state";
 import { TaskList } from "./task-list";
 
@@ -13,6 +16,9 @@ import { TaskList } from "./task-list";
  * Reusable view that renders the standard structure for Today/Inbox/Focus/etc.
  * Hydration-safe: renders skeletons until the persistence rehydrates so the
  * server-rendered shell never shows a flashed empty state.
+ *
+ * On status routes, a List/Board toggle lands in the header actions. Board
+ * mode releases the status filter and shows all five STATUS_VIEWS columns.
  */
 export function TaskView({
   eyebrow,
@@ -22,6 +28,7 @@ export function TaskView({
   emptyTitle,
   emptyDescription,
   rightSlot,
+  enableBoard = false,
 }: {
   eyebrow?: string;
   title: string;
@@ -30,18 +37,35 @@ export function TaskView({
   emptyTitle: string;
   emptyDescription?: string;
   rightSlot?: React.ReactNode;
+  /** When true, show the List/Board toggle and render BoardView in board mode. */
+  enableBoard?: boolean;
 }) {
   const { openDetail } = useFrame();
   const tasks = useStore((s) => s.tasks);
   const hydrated = useStore((s) => s.hydrated);
+  const { mode, setMode, isBoard } = useBoardMode();
 
   const visible = React.useMemo(() => selector(tasks), [tasks, selector]);
 
+  const actions = (
+    <div className="flex items-center gap-2">
+      {rightSlot}
+      {enableBoard ? <ViewToggle mode={mode} onChange={setMode} /> : null}
+    </div>
+  );
+
   return (
     <>
-      <PageHeader eyebrow={eyebrow} title={title} description={description} actions={rightSlot} />
+      <PageHeader
+        eyebrow={eyebrow}
+        title={title}
+        description={description}
+        actions={enableBoard || rightSlot ? actions : undefined}
+      />
       {!hydrated ? (
-        <TaskListSkeleton />
+        isBoard && enableBoard ? <BoardViewSkeleton /> : <TaskListSkeleton />
+      ) : enableBoard && isBoard ? (
+        <BoardView onOpen={openDetail} />
       ) : (
         <TaskList
           tasks={visible}

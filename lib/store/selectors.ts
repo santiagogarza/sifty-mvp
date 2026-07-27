@@ -1,5 +1,6 @@
 "use client";
 
+import { STATUS_VIEWS } from "@/lib/domain/status";
 import { focusScore } from "@/lib/domain/priority";
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import { dayDelta, isOverdue } from "@/lib/utils/dates";
@@ -117,6 +118,39 @@ export function selectDoneTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
 
 export function selectDroppedTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
   return selectByLifecycle(tasks, "dropped", args);
+}
+
+export interface BoardColumn {
+  status: Lifecycle;
+  label: string;
+  href: string;
+  tasks: Task[];
+}
+
+/**
+ * Board columns: exactly the five `STATUS_VIEWS` statuses in pipeline order.
+ * `dropped` never appears. Per-column sort matches the equivalent list view.
+ * Common filters (search / label) narrow every column the same way lists do.
+ */
+export function selectBoardColumns(tasks: Task[], args: ViewArgs = {}): BoardColumn[] {
+  return STATUS_VIEWS.map((view) => {
+    let columnTasks: Task[];
+    if (view.status === "inbox") {
+      columnTasks = selectInboxTasks(tasks, args);
+    } else if (view.status === "active") {
+      columnTasks = selectFocusTasks(tasks, args);
+    } else if (view.status === "done") {
+      columnTasks = selectDoneTasks(tasks, args);
+    } else {
+      columnTasks = selectByLifecycle(tasks, view.status, args);
+    }
+    return {
+      status: view.status,
+      label: view.label,
+      href: view.href,
+      tasks: columnTasks,
+    };
+  });
 }
 
 export interface TaskCounts {
