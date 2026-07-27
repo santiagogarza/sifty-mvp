@@ -304,7 +304,9 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
     <div
       ref={rootRef}
       className="flex min-h-0 flex-1 flex-col"
-      style={height !== null ? { height } : undefined}
+      // `flex: none` matters: with flex-1 alone the flex-basis would win
+      // over the measured height and the columns would never scroll.
+      style={height !== null ? { height, flex: "none" } : undefined}
     >
       <div className="mb-2 flex gap-1.5 overflow-x-auto pb-0.5 md:hidden">
         {columns.map((col, i) => {
