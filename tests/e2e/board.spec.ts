@@ -19,11 +19,13 @@ test("board: toggle, five columns, keyboard move, refresh persistence", async ({
   await page.keyboard.press("c");
   await page.getByPlaceholder("What do you need to do?").fill(marker);
   await page.keyboard.press("ControlOrMeta+Enter");
-  await expect(page.getByText(marker).first()).toBeVisible();
 
-  // Capture opens the new task's detail sheet; close it before toggling.
+  // Capture opens the new task's detail sheet (async, via ?task=); wait for
+  // it so the Escape can't race ahead of it, then close it before toggling.
+  await expect(page).toHaveURL(/task=/);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByText(marker).first()).toBeVisible();
 
   // Toggle into Board mode.
   await page.getByRole("button", { name: "Board" }).click();
