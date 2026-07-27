@@ -58,6 +58,15 @@ const COLUMN_DOTS: Record<BoardLifecycle, string> = {
 /** Keep the Done column skimmable — history lives in the list views. */
 const DONE_VISIBLE_LIMIT = 25;
 
+/**
+ * Break out of the 820px reading column: sized and centered against the
+ * <main> container (100cqw), capped for very wide screens. Browsers without
+ * cqw fall back to the reading column. Shared with the board-mode page
+ * header so its text lines up with the first column.
+ */
+export const BOARD_BREAKOUT_CLASS = "w-[min(1360px,100cqw)] ml-[calc(50%-min(1360px,100cqw)/2)]";
+export const BOARD_GUTTER_CLASS = "px-4 sm:px-6 md:px-8";
+
 // Prefer the column under the pointer; fall back to overlap so drops just
 // outside a column edge still land somewhere sensible.
 const collisionDetection: CollisionDetection = (args) => {
@@ -110,13 +119,15 @@ export function TaskBoard({
       onDragEnd={onDragEnd}
       onDragCancel={() => setActiveId(null)}
     >
-      {/* Break out of the 820px reading column: the board is centered and
-          sized against the <main> container (100cqw), capped for very wide
-          screens. Browsers without cqw fall back to the reading column. */}
       {/* select-none: a drag that starts a few px off a card must not start
           highlighting text; card text is readable in the detail sheet. */}
-      <div className="w-[min(1360px,100cqw)] ml-[calc(50%-min(1360px,100cqw)/2)] select-none">
-        <div className="flex gap-3 overflow-x-auto px-4 sm:px-6 md:px-8 pb-10 snap-x snap-proximity">
+      <div className={cn(BOARD_BREAKOUT_CLASS, "select-none")}>
+        <div
+          className={cn(
+            "flex gap-3 overflow-x-auto pb-10 snap-x snap-proximity",
+            BOARD_GUTTER_CLASS,
+          )}
+        >
           {columns.map((column) => (
             <BoardColumnView
               key={column.lifecycle}

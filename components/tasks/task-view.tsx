@@ -5,9 +5,10 @@ import { PageHeader } from "@/components/app-shell/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
+import { cn } from "@/lib/utils/cn";
 import * as React from "react";
 import { TaskEmptyState } from "./empty-state";
-import { TaskBoard } from "./task-board";
+import { BOARD_BREAKOUT_CLASS, BOARD_GUTTER_CLASS, TaskBoard } from "./task-board";
 import { TaskList } from "./task-list";
 import { ViewModeToggle } from "./view-mode-toggle";
 
@@ -46,21 +47,32 @@ export function TaskView({
 
   const board = hydrated && viewMode === "board";
 
+  const header = (
+    <PageHeader
+      eyebrow={eyebrow}
+      title={board ? "Board" : title}
+      description={
+        board ? "Everything on the board, by status. Drag a card to move it." : description
+      }
+      actions={
+        <div className="flex items-center gap-2">
+          {rightSlot}
+          <ViewModeToggle />
+        </div>
+      }
+    />
+  );
+
   return (
     <>
-      <PageHeader
-        eyebrow={eyebrow}
-        title={board ? "Board" : title}
-        description={
-          board ? "Everything on the board, by status. Drag a card to move it." : description
-        }
-        actions={
-          <div className="flex items-center gap-2">
-            {rightSlot}
-            <ViewModeToggle />
-          </div>
-        }
-      />
+      {/* In board mode the header shares the board's breakout width so its
+          text left-aligns with the first column instead of the centered
+          reading column. */}
+      {board ? (
+        <div className={cn(BOARD_BREAKOUT_CLASS, BOARD_GUTTER_CLASS)}>{header}</div>
+      ) : (
+        header
+      )}
       {!hydrated ? (
         <TaskListSkeleton />
       ) : board ? (
