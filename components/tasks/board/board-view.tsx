@@ -235,7 +235,11 @@ export function BoardView() {
       if (selectedId) openDetail(selectedId);
     } else if (key === " ") {
       e.preventDefault();
-      if (selectedTask) complete(selectedTask);
+      if (!selectedTask) return;
+      complete(selectedTask);
+      // Completing moves the card into Done; focus goes with it, the same
+      // way it does for a ⇧arrow.
+      setFocusTick((t) => t + 1);
     } else if (key === "Escape") {
       setSelectedId(null);
       boardRef.current?.focus({ preventScroll: true });
