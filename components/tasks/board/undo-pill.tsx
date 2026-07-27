@@ -42,7 +42,12 @@ export function UndoPill({
         <>
           <button
             type="button"
-            onClick={onUndo}
+            data-testid="board-undo"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onUndo();
+            }}
             className="font-medium text-[var(--accent)] hover:opacity-90 whitespace-nowrap"
           >
             Undo

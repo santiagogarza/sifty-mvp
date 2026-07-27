@@ -6,6 +6,7 @@ import { selectBoardColumns } from "@/lib/store/selectors";
 import { getSyncHooks, useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import {
+  type CollisionDetection,
   DndContext,
   type DragEndEvent,
   type DragOverEvent,
@@ -13,6 +14,8 @@ import {
   type DragStartEvent,
   PointerSensor,
   closestCenter,
+  pointerWithin,
+  rectIntersection,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -25,6 +28,17 @@ import { UndoPill } from "./undo-pill";
 
 const UNDO_WINDOW_MS = 6000;
 const COLUMN_ORDER = ["inbox", "active", "waiting", "someday", "done"] as const;
+
+/** Prefer column droppables — cards are never insertion targets. */
+const boardCollision: CollisionDetection = (args) => {
+  const columns = args.droppableContainers.filter((c) => String(c.id).startsWith("column:"));
+  const pointerHits = pointerWithin({ ...args, droppableContainers: columns });
+  if (pointerHits.length > 0) return pointerHits;
+  const rectHits = rectIntersection({ ...args, droppableContainers: columns });
+  if (rectHits.length > 0) return rectHits;
+  // Fall back so a drag over a card still resolves to some column via center.
+  return closestCenter({ ...args, droppableContainers: columns });
+};
 
 interface PendingUndo {
   taskId: string;
@@ -48,7 +62,12 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
 
   const [selectedTaskId, setSelectedTaskId] = React.useState<string | null>(null);
   const [draggingId, setDraggingId] = React.useState<string | null>(null);
-  const [overStatus, setOverStatus] = React.useState<Lifecycle | null>(null);
+  const [overStatus, setOverStatusState] = React.useState<Lifecycle | null>(null);
+  const overStatusRef = React.useRef<Lifecycle | null>(null);
+  const setOverStatus = React.useCallback((status: Lifecycle | null) => {
+    overStatusRef.current = status;
+    setOverStatusState(status);
+  }, []);
   const [settlingTaskId, setSettlingTaskId] = React.useState<string | null>(null);
   const [pendingUndo, setPendingUndo] = React.useState<PendingUndo | null>(null);
   const [pillState, setPillState] = React.useState<"undo" | "saved-locally">("undo");
@@ -297,46 +316,42 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
       setOverStatus(null);
       return;
     }
+    const id = String(overId);
+    if (id.startsWith("column:")) {
+      setOverStatus(id.slice("column:".length) as Lifecycle);
+      return;
+    }
     const data = event.over?.data.current;
-    if (data?.type === "column") {
+    if (data?.type === "column" && data.status) {
       setOverStatus(data.status as Lifecycle);
       return;
     }
-    // Hovering a card: treat as its column.
-    const taskId = String(overId);
-    const task = tasks.find((t) => t.id === taskId);
-    setOverStatus(task?.lifecycle ?? null);
+    setOverStatus(null);
   };
 
   const onDragEnd = (event: DragEndEvent) => {
     const taskId = String(event.active.id);
-    // Prefer live store lifecycle over drag-start snapshot — more honest if
-    // something else filed the card mid-drag.
     const live = useStore.getState().tasks.find((t) => t.id === taskId);
     const from =
       live?.lifecycle ?? (event.active.data.current?.from as Lifecycle | undefined) ?? null;
-    let to: Lifecycle | null = null;
-    const overData = event.over?.data.current;
-    if (overData?.type === "column") {
-      to = overData.status as Lifecycle;
-    } else if (event.over) {
-      const overId = String(event.over.id);
-      if (overId.startsWith("column:")) {
-        to = overId.slice("column:".length) as Lifecycle;
-      } else {
-        const overTask = useStore.getState().tasks.find((t) => t.id === overId);
-        to = overTask?.lifecycle ?? overStatus;
-      }
-    } else if (overStatus) {
-      to = overStatus;
+
+    // Column-only collision means over is a column id; also trust the ref
+    // (state can be a frame behind when drag-end fires in the same tick).
+    let to: Lifecycle | null = overStatusRef.current;
+    const overId = event.over ? String(event.over.id) : null;
+    if (overId?.startsWith("column:")) {
+      to = overId.slice("column:".length) as Lifecycle;
+    } else if (event.over?.data.current?.type === "column") {
+      to = event.over.data.current.status as Lifecycle;
     }
+
     setDraggingId(null);
     setOverStatus(null);
     if (from && to && from !== to) {
       suppressClickRef.current = true;
       window.setTimeout(() => {
         suppressClickRef.current = false;
-      }, 100);
+      }, 250);
       moveTask(taskId, to);
     }
   };
@@ -425,7 +440,7 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
 
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={boardCollision}
         onDragStart={isMobileBoard ? undefined : onDragStart}
         onDragOver={isMobileBoard ? undefined : onDragOver}
         onDragEnd={isMobileBoard ? undefined : onDragEnd}
