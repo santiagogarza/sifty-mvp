@@ -53,7 +53,9 @@ test("board: five columns, a keyboard move, and it survives a refresh", async ({
   await expect(inbox(page).getByRole("option")).toHaveCount(inboxBefore - 1);
 });
 
-test("board: pointer drag moves a card into another column, with an Undo pill", async ({ page }) => {
+test("board: pointer drag moves a card into another column, with an Undo pill", async ({
+  page,
+}) => {
   await page.goto("/focus", { waitUntil: "networkidle" });
   await page.keyboard.press("c");
   await page.getByPlaceholder("What do you need to do?").fill(`Board drag ${Date.now()}`);
