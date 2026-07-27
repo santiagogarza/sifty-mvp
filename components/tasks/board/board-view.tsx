@@ -264,11 +264,16 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
   }, [selectedId, tasks, onCardKeyDown]);
 
   // Roving tabindex: the selected card is the tab stop; before any
-  // selection, the first card of the first non-empty column is.
+  // selection, the first card of the first non-empty column is. Validated
+  // against the rendered columns, not the store — a selected task that
+  // left the board (e.g. dropped from the detail sheet) must not leave
+  // every card at tabIndex -1.
   const tabStopId = React.useMemo(() => {
-    if (selectedId && tasks.some((t) => t.id === selectedId)) return selectedId;
+    if (selectedId && columns.some((c) => c.tasks.some((t) => t.id === selectedId))) {
+      return selectedId;
+    }
     return columns.find((c) => c.tasks.length > 0)?.tasks[0]?.id ?? null;
-  }, [selectedId, tasks, columns]);
+  }, [selectedId, columns]);
 
   // --- Drag ----------------------------------------------------------------
 
@@ -318,8 +323,18 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
   const onBoardScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
+    // At the end of the strip the stride math can't reach the last index
+    // (max scrollLeft < lastIndex × stride on wider phones) — treat a
+    // fully-scrolled strip as the last column.
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    const atEnd = maxScroll > 0 && el.scrollLeft >= maxScroll - 8;
     setPagerIndex(
-      Math.max(0, Math.min(columns.length - 1, Math.round(el.scrollLeft / MOBILE_COLUMN_STRIDE))),
+      atEnd
+        ? columns.length - 1
+        : Math.max(
+            0,
+            Math.min(columns.length - 1, Math.round(el.scrollLeft / MOBILE_COLUMN_STRIDE)),
+          ),
     );
   };
 

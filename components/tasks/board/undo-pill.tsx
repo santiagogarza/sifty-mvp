@@ -23,8 +23,9 @@ export function UndoPill({
   raised: boolean;
 }) {
   return (
+    // No live-region role here: the board's aria-live region already
+    // announces the move, and two simultaneous announcements read twice.
     <div
-      role="status"
       className={cn(
         "fixed left-1/2 -translate-x-1/2 z-40",
         raised ? "bottom-[136px] md:bottom-[52px]" : "bottom-[92px] md:bottom-4",

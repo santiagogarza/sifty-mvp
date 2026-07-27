@@ -1,5 +1,5 @@
 import type { Task } from "@/lib/domain/types";
-import { useStore } from "@/lib/store/store";
+import { registerSyncHooks, useStore } from "@/lib/store/store";
 
 /** Shared fixtures for the board component tests (jsdom). */
 
@@ -41,6 +41,11 @@ export function makeTask(patch: Partial<Task>): Task {
 }
 
 export function seedStore(tasks: Task[]): void {
+  // Importing BoardView pulls in lib/store/sync.ts (via app-frame), which
+  // registers real sync hooks at module scope; with pushes disabled every
+  // push "fails" and the undo pill would flip to "Saved locally" as soon
+  // as microtasks flush. Tests exercise the store, not the network.
+  registerSyncHooks(null);
   useStore.setState({ tasks, labels: [], memories: [], hydrated: true });
 }
 

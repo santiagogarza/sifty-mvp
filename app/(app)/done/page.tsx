@@ -25,9 +25,9 @@ export default function DonePage() {
         viewMode={viewMode}
         onViewModeChange={setViewMode}
       />
-      {/* Dropped has no column by design (no page, no column, like the
-          sidebar) — the disclosure stays a list-mode affordance. */}
-      {viewMode === "list" ? <DroppedSection /> : null}
+      {/* Dropped has no column by design, but this disclosure is the only
+          surface for dropped tasks in the app — it stays in both modes. */}
+      <DroppedSection />
     </PageShell>
   );
 }
