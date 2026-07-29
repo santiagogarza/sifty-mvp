@@ -45,3 +45,23 @@ Context: Board (Kanban) view — Notion PRD, Figma, plan at `/opt/cursor/artifac
 ---
 
 **Out of scope / not re-raised:** five columns always; dropped omitted; no rollback on failed sync; search UI unwired; mobile long-press not touch-drag; `@dnd-kit/core` only; explicit `completedAt` on the wire. `completedAt` client/store/pg/memory/sync path looks consistent with Undo.
+
+## Run 2 — 2026-07-29T19:21:36Z
+
+Re-review after fixes 1–5. Fix 6 (List↔Board selection preserve) intentionally skipped — not re-raised (no zero-cost seed from an existing signal that covers the common toggle path; `?task=` only helps while the detail sheet is already open).
+
+### Verified fixed (Run 1)
+- **Long-press click suppress** — `suppressClickRef` set when the timer fires; `onClick` early-returns and clears.
+- **Selection ⊆ visible board cards** — `selectedOnBoard` drives body router, column `selectedId`, and `tabStopId`; stale `selectedId` cleared in an effect.
+- **Space in `BOARD_KEYS`** — allowlist includes `" "`.
+- **FOUC** — `ready` + `useLayoutEffect` promote remembered board into `?view=` before paint; TaskView withholds content/toggle; shell width gated on `viewReady && mode === "board"`.
+- **Undo timer** — effect depends on `undoSeq` only; `savedLocally` flips no longer restart the 6s window.
+
+### Long-press suppress can stick if the synthetic click never arrives
+**File:** `components/tasks/board/board-card.tsx` L87–L88, L108–L114, L125–L129, L144
+**What's wrong:** `suppressClickRef` is cleared only inside `onClick`. After the long-press timer fires the sheet opens while the finger may still be down; if the user slides onto the sheet (or otherwise ends the touch off the card), no click is dispatched on the card and the flag stays `true`. The next intentional tap on that same card is swallowed — detail never opens.
+**Fix:** When setting the flag in the long-press timer, also schedule a short clear (e.g. `setTimeout(() => { suppressClickRef.current = false }, 400)`), or clear on `touchend` via a 0–50ms timeout so the synthetic click (if any) still sees the flag but a missed click cannot stick. Own “gesture consumed” with a bounded lifetime so a forgotten clear can’t brick the card.
+
+---
+
+Found 1 issue.

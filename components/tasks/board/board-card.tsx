@@ -125,6 +125,12 @@ export const BoardCard = React.forwardRef<
           timer: setTimeout(() => {
             longPress.current = null;
             suppressClickRef.current = true;
+            // Safety net: if the synthetic click never arrives (finger
+            // ends off the card / onto the sheet), don't swallow the
+            // next real tap.
+            window.setTimeout(() => {
+              suppressClickRef.current = false;
+            }, 400);
             onLongPress(task);
           }, LONG_PRESS_MS),
         };
