@@ -246,11 +246,15 @@ export function createMemoryRepos(): MemoryReposHandle {
       ) {
         next.priorityBucket = bucketFromScalars(next.urgency, next.importance);
       }
-      if (patch.lifecycle === "done" && !existing.completedAt) {
-        next.completedAt = next.updatedAt;
-      }
-      if (patch.lifecycle && patch.lifecycle !== "done") {
-        next.completedAt = null;
+      // An explicit completedAt in the patch wins (already applied by the
+      // spread above); otherwise derive it from the lifecycle transition.
+      if (!("completedAt" in patch)) {
+        if (patch.lifecycle === "done" && !existing.completedAt) {
+          next.completedAt = next.updatedAt;
+        }
+        if (patch.lifecycle && patch.lifecycle !== "done") {
+          next.completedAt = null;
+        }
       }
       state.tasks.set(taskId, next);
       return stripUserId(next);

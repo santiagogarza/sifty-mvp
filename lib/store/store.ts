@@ -210,11 +210,16 @@ export const useStore = create<SiftyState>()(
               ) {
                 next.priorityBucket = bucketFromScalars(next.urgency, next.importance);
               }
-              if (patch.lifecycle === "done" && !t.completedAt) {
-                next.completedAt = next.updatedAt;
-              }
-              if (patch.lifecycle && patch.lifecycle !== "done") {
-                next.completedAt = null;
+              // An explicit completedAt in the patch wins (the board's Undo
+              // restores the exact pre-move value); otherwise it is managed
+              // on entry/exit of done.
+              if (!("completedAt" in patch)) {
+                if (patch.lifecycle === "done" && !t.completedAt) {
+                  next.completedAt = next.updatedAt;
+                }
+                if (patch.lifecycle && patch.lifecycle !== "done") {
+                  next.completedAt = null;
+                }
               }
               return next;
             }),

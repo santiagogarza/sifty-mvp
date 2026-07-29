@@ -136,6 +136,7 @@ describe("task sync contract", () => {
       clarifyingQuestion: null,
       rationale: "r",
       agentBrief: null,
+      completedAt: null,
       labelIds: [],
       subtasks: [],
       editedFields: ["title"],
@@ -154,6 +155,39 @@ describe("task sync contract", () => {
     expect(persisted?.title).toBe("Edited title");
     expect(persisted?.sourceContext).toBe("Answer: yes, by Friday");
     expect(persisted?.editedFields).toEqual(["title"]);
+  });
+
+  it("preserves an explicit completedAt over the lifecycle-derived stamp", async () => {
+    // The board's Undo restores the exact pre-move completedAt; the server
+    // must not overwrite it with its own timestamp when the patch carries
+    // one explicitly (and must keep deriving it when the patch doesn't).
+    const repos = getTestRepos();
+    const { user, cookie } = await createUserWithCookie(repos, { email: "undo@example.com" });
+    const task = await repos.tasks.create(user.id, {
+      sourceText: "Round-trip me",
+      sourceContext: null,
+    });
+    const { PATCH } = await import("@/app/api/tasks/[id]/route");
+    const patch = (body: unknown) =>
+      PATCH(
+        new Request(`http://localhost/api/tasks/${task.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json", cookie },
+          body: JSON.stringify(body),
+        }),
+        { params: Promise.resolve({ id: task.id }) },
+      );
+
+    // Without completedAt, entering done derives a stamp (old behavior).
+    expect((await patch({ lifecycle: "done" })).status).toBe(200);
+    expect((await repos.tasks.get(user.id, task.id))?.completedAt).toBeTruthy();
+
+    // Undo out of done, then back in with the explicit original value.
+    const original = "2026-07-20T09:30:00.000Z";
+    expect((await patch({ lifecycle: "active", completedAt: null })).status).toBe(200);
+    expect((await repos.tasks.get(user.id, task.id))?.completedAt).toBeNull();
+    expect((await patch({ lifecycle: "done", completedAt: original })).status).toBe(200);
+    expect((await repos.tasks.get(user.id, task.id))?.completedAt).toBe(original);
   });
 
   it("memory create accepts the client id and full shape", async () => {

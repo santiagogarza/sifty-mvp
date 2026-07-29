@@ -45,6 +45,13 @@ export const TaskPatchSchema = z
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .nullable()
       .optional(),
+    /**
+     * Explicit client value wins over the server's lifecycle-derived
+     * stamping — the board's Undo restores the exact pre-move value and
+     * that must survive the round-trip. When absent, the server derives it
+     * from lifecycle transitions as before.
+     */
+    completedAt: z.string().datetime().nullable().optional(),
     delegationCandidate: z.enum(DELEGATION_CANDIDATE).optional(),
     assigneeName: z
       .string()

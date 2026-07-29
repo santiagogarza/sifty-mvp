@@ -320,11 +320,17 @@ export function createPostgresRepos(): Repos {
       }
       const now = new Date();
       let completedAt = existing.completedAt ? new Date(existing.completedAt) : null;
-      if (patch.lifecycle === "done" && !existing.completedAt) {
-        completedAt = now;
-      }
-      if (patch.lifecycle && patch.lifecycle !== "done") {
-        completedAt = null;
+      // An explicit completedAt in the patch wins (the board's Undo restores
+      // the exact pre-move value); otherwise derive it from the transition.
+      if ("completedAt" in patch) {
+        completedAt = patch.completedAt ? new Date(patch.completedAt) : null;
+      } else {
+        if (patch.lifecycle === "done" && !existing.completedAt) {
+          completedAt = now;
+        }
+        if (patch.lifecycle && patch.lifecycle !== "done") {
+          completedAt = null;
+        }
       }
 
       // Task row + label links change together — one transaction.

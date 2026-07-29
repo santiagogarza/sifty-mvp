@@ -62,9 +62,13 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [router, pathname, search]);
 
+  // Exposed so fixed bottom-center pills (e.g. the board's undo pill) can
+  // stack above the sync-error pill instead of colliding with it.
+  const syncDegraded = sync.hydrated && !!sync.error;
+
   const value = React.useMemo(
-    () => ({ openDetail, openCapture, openCommand }),
-    [openDetail, openCapture, openCommand],
+    () => ({ openDetail, openCapture, openCommand, syncDegraded }),
+    [openDetail, openCapture, openCommand, syncDegraded],
   );
 
   return (
@@ -96,6 +100,7 @@ interface FrameApi {
   openDetail: (id: string) => void;
   openCapture: () => void;
   openCommand: () => void;
+  syncDegraded: boolean;
 }
 
 const FrameContext = React.createContext<FrameApi | null>(null);
@@ -104,6 +109,11 @@ export function useFrame() {
   const ctx = React.useContext(FrameContext);
   if (!ctx) throw new Error("useFrame must be inside AppFrame");
   return ctx;
+}
+
+/** Null outside AppFrame — for components that also render in tests. */
+export function useOptionalFrame() {
+  return React.useContext(FrameContext);
 }
 
 export function useOpenDetail() {
