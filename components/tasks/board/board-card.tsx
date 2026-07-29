@@ -83,6 +83,9 @@ export const BoardCard = React.forwardRef<
     x: number;
     y: number;
   } | null>(null);
+  // Long-press consumes the gesture; the synthetic click that follows
+  // touchend must not also open the detail sheet.
+  const suppressClickRef = React.useRef(false);
   const cancelLongPress = () => {
     if (longPress.current) {
       clearTimeout(longPress.current.timer);
@@ -102,7 +105,13 @@ export const BoardCard = React.forwardRef<
       aria-selected={selected}
       tabIndex={tabIndex}
       data-task-id={overlay ? undefined : task.id}
-      onClick={() => onOpen?.(task.id)}
+      onClick={() => {
+        if (suppressClickRef.current) {
+          suppressClickRef.current = false;
+          return;
+        }
+        onOpen?.(task.id);
+      }}
       onKeyDown={onKeyDown}
       onFocus={onFocus}
       onTouchStart={(e) => {
@@ -115,6 +124,7 @@ export const BoardCard = React.forwardRef<
           y: t.clientY,
           timer: setTimeout(() => {
             longPress.current = null;
+            suppressClickRef.current = true;
             onLongPress(task);
           }, LONG_PRESS_MS),
         };

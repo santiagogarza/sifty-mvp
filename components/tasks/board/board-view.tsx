@@ -51,7 +51,7 @@ const UNDO_WINDOW_MS = 6000;
 /** Mobile column width (px) + the gap-3 between columns; used by the pager. */
 const MOBILE_COLUMN_STRIDE = 300 + 12;
 /** Keys the board claims when routing from <body> to the selected card. */
-const BOARD_KEYS = ["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "j", "k", "Enter"];
+const BOARD_KEYS = ["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "j", "k", "Enter", " "];
 
 interface UndoEntry {
   seq: number;
@@ -147,15 +147,16 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
     setUndo(null);
   }, [undo, updateTask]);
 
-  // The undo window: 6 seconds, then the pill retires itself.
+  // The undo window: 6 seconds from the move, then the pill retires.
+  // Keyed on seq only — flipping savedLocally must not restart the timer.
+  const undoSeq = undo?.seq ?? null;
   React.useEffect(() => {
-    if (!undo) return;
-    const seq = undo.seq;
+    if (undoSeq === null) return;
     const timer = setTimeout(() => {
-      setUndo((u) => (u && u.seq === seq ? null : u));
+      setUndo((u) => (u && u.seq === undoSeq ? null : u));
     }, UNDO_WINDOW_MS);
     return () => clearTimeout(timer);
-  }, [undo]);
+  }, [undoSeq]);
 
   // ⌘Z / Ctrl+Z while the window is open.
   React.useEffect(() => {
@@ -242,17 +243,29 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
     [columns, moveTask, onOpen, focusCard],
   );
 
+  // Selection must stay ⊆ visible board cards. A task that left the board
+  // (Dropped / deleted from the detail sheet) clears so the body key
+  // router and the selection ring never disagree with the tab stop.
+  const selectedOnBoard = React.useMemo(() => {
+    if (!selectedId) return null;
+    return columns.some((c) => c.tasks.some((t) => t.id === selectedId)) ? selectedId : null;
+  }, [selectedId, columns]);
+
+  React.useEffect(() => {
+    if (selectedId !== null && selectedOnBoard === null) setSelectedId(null);
+  }, [selectedId, selectedOnBoard]);
+
   // Closing the detail sheet drops focus on <body> (the sheet has no
   // trigger element to restore to), which would strand the keyboard model
   // even though the selection ring still shows. Route the board keys from
   // <body> to the selected card so keyboard flow survives open → Escape.
   React.useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedOnBoard) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.target !== document.body) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (!BOARD_KEYS.includes(e.key)) return;
-      const task = tasks.find((t) => t.id === selectedId);
+      const task = columns.flatMap((c) => c.tasks).find((t) => t.id === selectedOnBoard);
       if (!task) return;
       onCardKeyDown(
         { key: e.key, shiftKey: e.shiftKey, preventDefault: () => e.preventDefault() },
@@ -261,19 +274,12 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [selectedId, tasks, onCardKeyDown]);
+  }, [selectedOnBoard, columns, onCardKeyDown]);
 
   // Roving tabindex: the selected card is the tab stop; before any
-  // selection, the first card of the first non-empty column is. Validated
-  // against the rendered columns, not the store — a selected task that
-  // left the board (e.g. dropped from the detail sheet) must not leave
-  // every card at tabIndex -1.
-  const tabStopId = React.useMemo(() => {
-    if (selectedId && columns.some((c) => c.tasks.some((t) => t.id === selectedId))) {
-      return selectedId;
-    }
-    return columns.find((c) => c.tasks.length > 0)?.tasks[0]?.id ?? null;
-  }, [selectedId, columns]);
+  // selection, the first card of the first non-empty column is.
+  const tabStopId =
+    selectedOnBoard ?? columns.find((c) => c.tasks.length > 0)?.tasks[0]?.id ?? null;
 
   // --- Drag ----------------------------------------------------------------
 
@@ -400,7 +406,7 @@ export function BoardView({ onOpen }: { onOpen: (id: string) => void }) {
                 activeTask !== null &&
                 activeTask.lifecycle !== col.status
               }
-              selectedId={selectedId}
+              selectedId={selectedOnBoard}
               tabStopId={tabStopId}
               lastMoved={lastMoved}
               onOpen={onOpen}

@@ -9,9 +9,9 @@ import * as React from "react";
 
 export default function SomedayPage() {
   const select = React.useCallback((t: Task[]) => selectByLifecycle(t, "someday"), []);
-  const [viewMode, setViewMode] = useTaskViewMode();
+  const { mode: viewMode, setMode: setViewMode, ready: viewReady } = useTaskViewMode();
   return (
-    <PageShell title="Someday" width={viewMode === "board" ? "wide" : "default"}>
+    <PageShell title="Someday" width={viewReady && viewMode === "board" ? "wide" : "default"}>
       <TaskView
         title="Someday"
         description="A quiet shelf for ideas that aren't urgent. Revisit when the season is right."
@@ -19,6 +19,7 @@ export default function SomedayPage() {
         emptyTitle="Empty shelf."
         viewMode={viewMode}
         onViewModeChange={setViewMode}
+        viewReady={viewReady}
       />
     </PageShell>
   );

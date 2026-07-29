@@ -10,9 +10,12 @@ import * as React from "react";
 
 export default function WaitingPage() {
   const select = React.useCallback((t: Task[]) => selectByLifecycle(t, "waiting"), []);
-  const [viewMode, setViewMode] = useTaskViewMode();
+  const { mode: viewMode, setMode: setViewMode, ready: viewReady } = useTaskViewMode();
   return (
-    <PageShell title={statusLabel("waiting")} width={viewMode === "board" ? "wide" : "default"}>
+    <PageShell
+      title={statusLabel("waiting")}
+      width={viewReady && viewMode === "board" ? "wide" : "default"}
+    >
       <TaskView
         title={statusLabel("waiting")}
         description="Things you've handed off — to a person, an agent, or a process. Move them back to Focus when the ball returns; Today will nudge you when a deadline arrives."
@@ -20,6 +23,7 @@ export default function WaitingPage() {
         emptyTitle="Nothing in flight."
         viewMode={viewMode}
         onViewModeChange={setViewMode}
+        viewReady={viewReady}
       />
     </PageShell>
   );

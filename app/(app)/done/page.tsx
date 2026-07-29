@@ -13,9 +13,12 @@ import { ChevronRight } from "lucide-react";
 import * as React from "react";
 
 export default function DonePage() {
-  const [viewMode, setViewMode] = useTaskViewMode();
+  const { mode: viewMode, setMode: setViewMode, ready: viewReady } = useTaskViewMode();
   return (
-    <PageShell title={statusLabel("done")} width={viewMode === "board" ? "wide" : "default"}>
+    <PageShell
+      title={statusLabel("done")}
+      width={viewReady && viewMode === "board" ? "wide" : "default"}
+    >
       <TaskView
         title="Done"
         description="Finished work, newest first. Uncheck anything to send it back to Focus."
@@ -24,6 +27,7 @@ export default function DonePage() {
         emptyDescription="Completed tasks land here, so checking one off never loses it."
         viewMode={viewMode}
         onViewModeChange={setViewMode}
+        viewReady={viewReady}
       />
       {/* Dropped has no column by design, but this disclosure is the only
           surface for dropped tasks in the app — it stays in both modes. */}

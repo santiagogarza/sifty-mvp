@@ -32,6 +32,7 @@ export function TaskView({
   rightSlot,
   viewMode = "list",
   onViewModeChange,
+  viewReady = true,
 }: {
   eyebrow?: string;
   title: string;
@@ -42,6 +43,11 @@ export function TaskView({
   rightSlot?: React.ReactNode;
   viewMode?: TaskViewMode;
   onViewModeChange?: (mode: TaskViewMode) => void;
+  /**
+   * False while the remembered List/Board preference is still loading.
+   * Withholds content so a cold load never flashes List before Board.
+   */
+  viewReady?: boolean;
 }) {
   const { openDetail } = useFrame();
   const tasks = useStore((s) => s.tasks);
@@ -49,19 +55,22 @@ export function TaskView({
 
   const visible = React.useMemo(() => selector(tasks), [tasks, selector]);
   const board = viewMode === "board";
+  const showSkeleton = !hydrated || !viewReady;
 
   const actions =
     rightSlot || onViewModeChange ? (
       <>
         {rightSlot}
-        {onViewModeChange ? <ViewToggle mode={viewMode} onChange={onViewModeChange} /> : null}
+        {onViewModeChange && viewReady ? (
+          <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+        ) : null}
       </>
     ) : undefined;
 
   return (
     <>
       <PageHeader eyebrow={eyebrow} title={title} description={description} actions={actions} />
-      {!hydrated ? (
+      {showSkeleton ? (
         board ? (
           <BoardSkeleton />
         ) : (

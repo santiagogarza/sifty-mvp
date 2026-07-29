@@ -10,6 +10,10 @@ import * as React from "react";
  * and the back button behave; `localStorage` (keyed per route, mirroring
  * the `sifty.theme` pattern) carries the remembered preference across
  * visits. List stays the default: the board is opt-in.
+ *
+ * Until the remembered preference is known, `ready` is false so callers
+ * can withhold List/Board instead of flashing the wrong mode (and the
+ * wrong shell width) for a frame.
  */
 
 export type TaskViewMode = "list" | "board";
@@ -33,19 +37,37 @@ function readStored(pathname: string): TaskViewMode | null {
   }
 }
 
-export function useTaskViewMode(): [TaskViewMode, (mode: TaskViewMode) => void] {
+export function useTaskViewMode(): {
+  mode: TaskViewMode;
+  setMode: (mode: TaskViewMode) => void;
+  ready: boolean;
+} {
   const router = useRouter();
   const pathname = usePathname();
   const search = useSearchParams();
 
   const fromParam = parseMode(search.get(PARAM));
 
-  // The stored preference applies only after mount so the server render
-  // (which can't read localStorage) never mismatches hydration.
   const [stored, setStored] = React.useState<TaskViewMode | null>(null);
-  React.useEffect(() => {
-    setStored(readStored(pathname));
-  }, [pathname]);
+  // URL already decides — no need to wait on storage.
+  const [ready, setReady] = React.useState(() => fromParam !== null);
+
+  React.useLayoutEffect(() => {
+    if (fromParam) {
+      setReady(true);
+      return;
+    }
+    const remembered = readStored(pathname);
+    setStored(remembered);
+    // Promote a remembered board preference into the URL before paint so
+    // the shell width and content agree on the first frame the user sees.
+    if (remembered === "board") {
+      const params = new URLSearchParams(search.toString());
+      params.set(PARAM, "board");
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    }
+    setReady(true);
+  }, [pathname, fromParam, router, search]);
 
   const mode = fromParam ?? stored ?? "list";
 
@@ -64,5 +86,5 @@ export function useTaskViewMode(): [TaskViewMode, (mode: TaskViewMode) => void] 
     [router, pathname, search],
   );
 
-  return [mode, setMode];
+  return { mode, setMode, ready };
 }
