@@ -65,3 +65,20 @@ Re-review after fixes 1–5. Fix 6 (List↔Board selection preserve) intentional
 ---
 
 Found 1 issue.
+
+## Run 3 — 2026-07-29T19:22:38Z
+
+Final re-review after long-press suppress expiry (commit `53cca45`). Item 6 (List↔Board selection preserve) remains intentionally skipped — not re-raised.
+
+### Verified fixed (Run 2)
+- **Long-press suppress cannot stick** — when the timer fires, `suppressClickRef` is set and a 400ms `setTimeout` clears it, so a missed synthetic click (finger ends off the card / onto the Move-to sheet) cannot swallow the next tap. Intentional click still clears the flag early in `onClick`.
+
+### Verified still held (Run 1 fixes)
+- Selection ⊆ visible board cards via `selectedOnBoard`
+- Space in `BOARD_KEYS`
+- FOUC gate (`ready` + `useLayoutEffect` + withheld content/shell)
+- Undo timer keyed on `undoSeq` only
+
+### No remaining issues
+
+No issues found.
