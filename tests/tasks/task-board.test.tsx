@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import { TaskBoard } from "@/components/tasks/task-board";
 import type { Task } from "@/lib/domain/types";
-import { BOARD_COLUMNS, selectBoardColumns } from "@/lib/store/board";
+import {
+  BOARD_COLUMNS,
+  TODAY_BOARD,
+  selectBoardColumns,
+  selectTodayBoardColumns,
+} from "@/lib/store/board";
+import { selectTodayTasks } from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -62,6 +68,13 @@ function Board({ onOpen = () => {} }: { onOpen?: (id: string) => void }) {
   const columns = React.useMemo(() => selectBoardColumns(tasks, BOARD_COLUMNS), [tasks]);
   const dropped = React.useMemo(() => selectBoardColumns(tasks, ["dropped"])[0] ?? null, [tasks]);
   return <TaskBoard columns={columns} droppedColumn={dropped} onOpen={onOpen} />;
+}
+
+/** Mirrors how TaskView drives the Today board, including the lens gate. */
+function TodayBoard() {
+  const tasks = useStore((s) => s.tasks);
+  const columns = React.useMemo(() => selectTodayBoardColumns(selectTodayTasks(tasks)), [tasks]);
+  return <TaskBoard columns={columns} onOpen={() => {}} keepsTask={TODAY_BOARD.keepsTask} />;
 }
 
 function seed(tasks: Task[]) {
@@ -210,6 +223,27 @@ describe("moving a card by keyboard", () => {
     await user.keyboard("{Alt>}{ArrowRight}{/Alt}");
 
     expect(taskState(task.id).lifecycle).toBe("waiting");
+  });
+
+  it("does not file a Today card into Waiting when that would hide it", async () => {
+    const user = userEvent.setup();
+    const task = makeTask({
+      lifecycle: "active",
+      priorityBucket: "do_now",
+      title: "Urgent but undated",
+    });
+    seed([task]);
+    render(<TodayBoard />);
+
+    focusCard("Urgent but undated");
+    await user.keyboard("{Alt>}{ArrowRight}{/Alt}");
+
+    expect(taskState(task.id).lifecycle).toBe("active");
+    expect(
+      within(screen.getByRole("listbox", { name: "Focus" })).getByRole("option", {
+        name: "Urgent but undated",
+      }),
+    ).toBeInTheDocument();
   });
 });
 

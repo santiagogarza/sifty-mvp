@@ -88,6 +88,7 @@ export function TaskView({
           droppedColumn={droppedColumn}
           onOpen={openDetail}
           emphasisStatus={emphasisStatus}
+          keepsTask={board.keepsTask}
         />
       ) : (
         <TaskList

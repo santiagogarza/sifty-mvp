@@ -38,12 +38,15 @@ export function TaskBoard({
   droppedColumn,
   onOpen,
   emphasisStatus = null,
+  keepsTask,
 }: {
   columns: BoardColumnData[];
   /** Supplied when this board offers the Dropped disclosure. */
   droppedColumn?: BoardColumnData | null;
   onOpen: (id: string) => void;
   emphasisStatus?: Lifecycle | null;
+  /** Refuse a move that would take the task off this board (Today's lens). */
+  keepsTask?: (task: Task, next: Lifecycle) => boolean;
 }) {
   const updateTask = useStore((s) => s.updateTask);
   const [showDropped, setShowDropped] = React.useState(false);
@@ -114,13 +117,24 @@ export function TaskBoard({
     }
   };
 
+  const fileCard = (taskId: string, target: Lifecycle) => {
+    const task = taskById.get(taskId);
+    // Same column is a no-op: columns carry the list's order, not a hand-placed one.
+    if (!task || task.lifecycle === target) return;
+    if (keepsTask && !keepsTask(task, target)) return;
+    // Same flag keyboard moves set, so a remount in the target column
+    // puts focus back on the card instead of leaving it on document.
+    focusWanted.current = true;
+    setSelectedId(taskId);
+    updateTask(taskId, { lifecycle: target });
+  };
+
   const moveCard = (step: 1 | -1) => {
     const pos = locate(selectedId);
     if (!pos || !selectedId) return;
     const target = visible[pos.col + step];
     if (!target) return;
-    focusWanted.current = true;
-    updateTask(selectedId, { lifecycle: target.status });
+    fileCard(selectedId, target.status);
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -179,12 +193,9 @@ export function TaskBoard({
 
   const onDragEnd = (e: DragEndEvent) => {
     setActiveId(null);
-    const taskId = String(e.active.id);
     const target = e.over?.id as Lifecycle | undefined;
-    const task = taskById.get(taskId);
-    // Same column is a no-op: columns carry the list's order, not a hand-placed one.
-    if (!target || !task || task.lifecycle === target) return;
-    updateTask(taskId, { lifecycle: target });
+    if (!target) return;
+    fileCard(String(e.active.id), target);
   };
 
   const activeTask = activeId ? taskById.get(activeId) : null;

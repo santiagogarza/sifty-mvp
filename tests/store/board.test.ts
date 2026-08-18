@@ -2,6 +2,7 @@ import { STATUSES_IN_ORDER } from "@/lib/domain/status";
 import { LIFECYCLE, type Task } from "@/lib/domain/types";
 import {
   BOARD_COLUMNS,
+  TODAY_BOARD,
   TODAY_BOARD_COLUMNS,
   selectBoardColumns,
   selectTodayBoardColumns,
@@ -197,5 +198,14 @@ describe("today board", () => {
     const shown = selectTodayBoardColumns(list).flatMap((c) => c.tasks);
 
     expect(new Set(shown.map((t) => t.id))).toEqual(new Set(list.map((t) => t.id)));
+  });
+
+  it("refuses a move that would drop the task out of the Today lens", () => {
+    const undated = makeTask({ lifecycle: "active", priorityBucket: "do_now" });
+    expect(TODAY_BOARD.keepsTask?.(undated, "waiting")).toBe(false);
+    expect(TODAY_BOARD.keepsTask?.(undated, "inbox")).toBe(true);
+
+    const dueToday = makeTask({ lifecycle: "active", due: iso(0) });
+    expect(TODAY_BOARD.keepsTask?.(dueToday, "waiting")).toBe(true);
   });
 });

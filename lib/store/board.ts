@@ -4,6 +4,7 @@ import { STATUSES_IN_ORDER } from "@/lib/domain/status";
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import {
   type ViewArgs,
+  isTodayTask,
   selectByLifecycle,
   selectDoneTasks,
   selectDroppedTasks,
@@ -82,6 +83,13 @@ export interface BoardConfig {
   partition: (tasks: Task[], args?: ViewArgs) => BoardColumn[];
   /** Whether this board offers the "Show dropped" disclosure. */
   offersDropped: boolean;
+  /**
+   * When set, a column move is refused if the task would then fall out of
+   * this board. Today needs this: Waiting is a real column, but the lens
+   * still requires due pressure, so a do_now Focus card with no date would
+   * vanish if it were allowed through.
+   */
+  keepsTask?: (task: Task, next: Lifecycle) => boolean;
 }
 
 export const PIPELINE_BOARD: BoardConfig = {
@@ -93,4 +101,5 @@ export const PIPELINE_BOARD: BoardConfig = {
 export const TODAY_BOARD: BoardConfig = {
   partition: (tasks, args) => selectTodayBoardColumns(selectTodayTasks(tasks, args)),
   offersDropped: false,
+  keepsTask: (task, next) => isTodayTask({ ...task, lifecycle: next }),
 };
