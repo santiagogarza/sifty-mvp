@@ -3,7 +3,7 @@
 import type { Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import type * as React from "react";
+import * as React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const dnd = vi.hoisted(() => ({
@@ -20,9 +20,9 @@ vi.mock("@dnd-kit/core", () => ({
     [key: string]: unknown;
   }) => {
     dnd.context = props as Record<string, (...args: never[]) => void>;
-    return <>{children}</>;
+    return children;
   },
-  DragOverlay: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  DragOverlay: ({ children }: { children: React.ReactNode }) => children,
   PointerSensor: class PointerSensor {},
   TouchSensor: class TouchSensor {},
   useSensor: vi.fn(() => ({})),
@@ -79,9 +79,14 @@ function makeTask(patch: Partial<Task> = {}): Task {
   };
 }
 
+function BoardHarness({ onOpen }: { onOpen: (id: string) => void }) {
+  const tasks = useStore((state) => state.tasks);
+  return React.createElement(TaskBoard, { tasks, onOpen });
+}
+
 function renderBoard(tasks: Task[], onOpen = vi.fn()) {
   useStore.setState({ tasks, labels: [], hydrated: true, viewMode: "board" });
-  const view = render(<TaskBoard tasks={tasks} onOpen={onOpen} />);
+  const view = render(React.createElement(BoardHarness, { onOpen }));
   return { ...view, onOpen };
 }
 
@@ -112,7 +117,7 @@ describe("TaskBoard", () => {
     renderBoard([task]);
 
     act(() => {
-      dnd.context?.onDragEnd({
+      dnd.context?.onDragEnd?.({
         active: { id: task.id },
         over: { id: "done" },
       } as never);
@@ -123,7 +128,7 @@ describe("TaskBoard", () => {
     expect(useStore.getState().tasks[0]?.completedAt).not.toBeNull();
 
     act(() => {
-      dnd.context?.onDragEnd({
+      dnd.context?.onDragEnd?.({
         active: { id: task.id },
         over: { id: "active" },
       } as never);
@@ -142,7 +147,7 @@ describe("TaskBoard", () => {
     fireEvent.keyDown(board, { key: "ArrowRight", altKey: true });
     expect(useStore.getState().tasks[0]?.lifecycle).toBe("active");
 
-    useStore.getState().setLifecycle(task.id, "done");
+    act(() => useStore.getState().setLifecycle(task.id, "done"));
     fireEvent.keyDown(board, { key: "ArrowRight", altKey: true });
     expect(useStore.getState().tasks[0]?.lifecycle).toBe("done");
   });

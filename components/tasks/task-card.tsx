@@ -47,12 +47,15 @@ export const TaskCard = React.memo(function TaskCard({
   return (
     <div
       ref={setNodeRef}
+      {...attributes}
+      {...listeners}
       role="option"
       aria-selected={selected}
       aria-label={task.title}
       tabIndex={selected ? 0 : -1}
       style={style}
       onPointerDown={(event) => {
+        listeners?.onPointerDown?.(event);
         pointerOrigin.current = { x: event.clientX, y: event.clientY };
         moved.current = false;
         onSelect?.(task.id);
@@ -79,8 +82,6 @@ export const TaskCard = React.memo(function TaskCard({
         overlay && "w-[260px] rotate-[1deg] shadow-lg",
       )}
       data-task-id={task.id}
-      {...attributes}
-      {...listeners}
     >
       <div className="flex items-start gap-2">
         <PriorityGlyph bucket={task.priorityBucket} />
