@@ -1,5 +1,5 @@
-import { expect, test } from "@playwright/test";
 import { appendFileSync } from "node:fs";
+import { expect, test } from "@playwright/test";
 
 function agentLog(
   hypothesisId: string,
@@ -84,7 +84,8 @@ test("board move and view preference survive reloads and routes", async ({ page,
       return {
         matches: matches.length,
         classes: matches.map((element) => element.className),
-        draggingMatches: matches.filter((element) => element.classList.contains("opacity-35")).length,
+          draggingMatches: matches.filter((element) => element.classList.contains("opacity-35"))
+            .length,
       };
     }, task.id),
   );
