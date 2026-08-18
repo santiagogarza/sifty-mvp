@@ -122,6 +122,14 @@ describe("partitionByLifecycle", () => {
     expect(selectDoneTasks(today)).toEqual([]);
     expect(selectDroppedTasks(today)).toEqual([]);
   });
+
+  it("places all 200 tasks into their lifecycle columns", () => {
+    const tasks = Array.from({ length: 200 }, (_, i) =>
+      makeTask({ lifecycle: LIFECYCLE[i % LIFECYCLE.length], title: `Bulk ${i}` }),
+    );
+    const part = partitionByLifecycle(tasks);
+    expect(LIFECYCLE.reduce((n, lc) => n + part[lc].length, 0)).toBe(200);
+  });
 });
 
 describe("adjacentLifecycle", () => {
