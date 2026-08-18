@@ -9,6 +9,7 @@ import {
   selectDroppedTasks,
   selectFocusTasks,
   selectInboxTasks,
+  selectTodayTasks,
 } from "./selectors";
 
 /**
@@ -71,3 +72,25 @@ export function selectTodayBoardColumns(
     tasks: todayTasks.filter((t) => t.lifecycle === status),
   }));
 }
+
+/**
+ * How a given route builds its board. Declared as module-level constants so a
+ * view can pass one down without rebuilding the partition function on every
+ * render, the same arrangement the list views use for their selectors.
+ */
+export interface BoardConfig {
+  partition: (tasks: Task[], args?: ViewArgs) => BoardColumn[];
+  /** Whether this board offers the "Show dropped" disclosure. */
+  offersDropped: boolean;
+}
+
+export const PIPELINE_BOARD: BoardConfig = {
+  partition: (tasks, args) => selectBoardColumns(tasks, BOARD_COLUMNS, args),
+  offersDropped: true,
+};
+
+/** Today has no Dropped to disclose — the lens excludes it by definition. */
+export const TODAY_BOARD: BoardConfig = {
+  partition: (tasks, args) => selectTodayBoardColumns(selectTodayTasks(tasks, args)),
+  offersDropped: false,
+};
