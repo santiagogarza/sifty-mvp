@@ -144,6 +144,7 @@ describe("TaskBoard", () => {
     renderBoard([task]);
     const board = screen.getByRole("listbox", { name: "Task board" });
 
+    fireEvent.pointerDown(screen.getByRole("option", { name: task.title }));
     fireEvent.keyDown(board, { key: "ArrowRight", altKey: true });
     expect(useStore.getState().tasks[0]?.lifecycle).toBe("active");
 

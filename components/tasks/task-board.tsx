@@ -91,9 +91,10 @@ export function TaskBoard({
 
   React.useEffect(() => {
     if (!selectedTaskId || !selectedTaskLifecycle) return;
-    boardRef.current
-      ?.querySelector<HTMLElement>(`[data-task-id="${selectedTaskId}"]`)
-      ?.focus({ preventScroll: true });
+    const card = boardRef.current?.querySelector<HTMLElement>(`[data-task-id="${selectedTaskId}"]`);
+    if (!card) return;
+    card.focus({ preventScroll: true });
+    card.scrollIntoView({ behavior: "instant", inline: "nearest", block: "nearest" });
   }, [selectedTaskId, selectedTaskLifecycle]);
 
   const selectFirstTask = React.useCallback((): Task | undefined => {
@@ -107,10 +108,23 @@ export function TaskBoard({
   }, [partition, visibleColumns]);
 
   const onKeyDown = (event: React.KeyboardEvent) => {
-    const selected =
-      (selectedTaskId ? tasks.find((task) => task.id === selectedTaskId) : undefined) ??
-      selectFirstTask();
-    if (!selected) return;
+    const selected = selectedTaskId ? tasks.find((task) => task.id === selectedTaskId) : undefined;
+    if (!selected) {
+      if (selectFirstTask()) {
+        if (
+          event.key === "ArrowDown" ||
+          event.key === "j" ||
+          event.key === "ArrowUp" ||
+          event.key === "k" ||
+          event.key === "ArrowLeft" ||
+          event.key === "ArrowRight" ||
+          event.key === "Enter"
+        ) {
+          event.preventDefault();
+        }
+      }
+      return;
+    }
 
     const columnIndex = visibleColumns.indexOf(selected.lifecycle);
     const columnTasks = partition[selected.lifecycle];
