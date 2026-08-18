@@ -208,6 +208,21 @@ describe("TaskBoard", () => {
     expect(before).toBe("done");
   });
 
+  it("arrow keys can cross empty columns to reach a later card", async () => {
+    const user = userEvent.setup();
+    const onOpen = vi.fn();
+    const waiting = makeTask({ lifecycle: "waiting", title: "Only waiting" });
+    seed([waiting]);
+    render(<TaskBoard tasks={[waiting]} onOpen={onOpen} />);
+
+    await user.click(screen.getByRole("listbox", { name: "Task board" }));
+    await user.keyboard("{ArrowRight}{ArrowRight}");
+    expect(screen.getByTestId(`task-card-${waiting.id}`)).toHaveAttribute("aria-selected", "true");
+
+    await user.keyboard("{Enter}");
+    expect(onOpen).toHaveBeenCalledWith(waiting.id);
+  });
+
   it("board scroller allows vertical and horizontal touch panning", () => {
     seed([]);
     render(<TaskBoard tasks={[]} onOpen={vi.fn()} />);
