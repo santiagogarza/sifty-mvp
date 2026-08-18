@@ -25,7 +25,7 @@ export const TaskCard = React.memo(function TaskCard({
   onOpen?: (id: string) => void;
   onSelect?: (id: string) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: task.id,
     data: { taskId: task.id, lifecycle: task.lifecycle },
     disabled: overlay,
@@ -40,9 +40,6 @@ export const TaskCard = React.memo(function TaskCard({
   const dueLabel = formatRelativeDay(task.due);
   const dueTone = isOverdue(task.due) ? "rose" : isToday(task.due) ? "ember" : "neutral";
   const assignee = task.delegationCandidate === "person" ? assigneeDisplayValue(task) : null;
-  const style = transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
-    : undefined;
 
   return (
     <div
@@ -53,7 +50,6 @@ export const TaskCard = React.memo(function TaskCard({
       aria-selected={selected}
       aria-label={task.title}
       tabIndex={selected ? 0 : -1}
-      style={style}
       onPointerDown={(event) => {
         listeners?.onPointerDown?.(event);
         pointerOrigin.current = { x: event.clientX, y: event.clientY };
