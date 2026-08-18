@@ -25,7 +25,7 @@ export interface ViewArgs {
   search?: string;
 }
 
-function applyCommonFilters(tasks: Task[], args: ViewArgs): Task[] {
+export function applyCommonFilters(tasks: Task[], args: ViewArgs): Task[] {
   let out = tasks;
   if (args.labelId) {
     out = out.filter((t) => t.labelIds.includes(args.labelId!));
@@ -78,6 +78,23 @@ function byFocusScore(now: Date) {
     });
 }
 
+/** Shared ordering contract for list views and board columns. */
+export function sortTasksForLifecycle(tasks: Task[], lifecycle: Lifecycle): Task[] {
+  const out = [...tasks];
+  if (lifecycle === "inbox") {
+    return out.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }
+  if (lifecycle === "active") {
+    return out.sort(byFocusScore(new Date()));
+  }
+  if (lifecycle === "done") {
+    return out.sort((a, b) =>
+      (a.completedAt ?? a.updatedAt) < (b.completedAt ?? b.updatedAt) ? 1 : -1,
+    );
+  }
+  return out.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+}
+
 export function selectTodayTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
   const now = new Date();
   return applyCommonFilters(tasks, args)
@@ -86,17 +103,18 @@ export function selectTodayTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
 }
 
 export function selectInboxTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
-  return applyCommonFilters(tasks, args)
-    .filter((t) => t.lifecycle === "inbox")
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  return sortTasksForLifecycle(
+    applyCommonFilters(tasks, args).filter((t) => t.lifecycle === "inbox"),
+    "inbox",
+  );
 }
 
 /** Focus is exactly the "active" status — Inbox stays the review gate. */
 export function selectFocusTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
-  const now = new Date();
-  return applyCommonFilters(tasks, args)
-    .filter((t) => t.lifecycle === "active")
-    .sort(byFocusScore(now));
+  return sortTasksForLifecycle(
+    applyCommonFilters(tasks, args).filter((t) => t.lifecycle === "active"),
+    "active",
+  );
 }
 
 export function selectByLifecycle(
@@ -104,15 +122,17 @@ export function selectByLifecycle(
   lifecycle: Lifecycle,
   args: ViewArgs = {},
 ): Task[] {
-  return applyCommonFilters(tasks, args)
-    .filter((t) => t.lifecycle === lifecycle)
-    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  return sortTasksForLifecycle(
+    applyCommonFilters(tasks, args).filter((t) => t.lifecycle === lifecycle),
+    lifecycle,
+  );
 }
 
 export function selectDoneTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
-  return applyCommonFilters(tasks, args)
-    .filter((t) => t.lifecycle === "done")
-    .sort((a, b) => ((a.completedAt ?? a.updatedAt) < (b.completedAt ?? b.updatedAt) ? 1 : -1));
+  return sortTasksForLifecycle(
+    applyCommonFilters(tasks, args).filter((t) => t.lifecycle === "done"),
+    "done",
+  );
 }
 
 export function selectDroppedTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
