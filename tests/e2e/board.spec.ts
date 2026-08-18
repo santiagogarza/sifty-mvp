@@ -14,7 +14,6 @@ function agentLog(
 }
 
 test("board move and view preference survive reloads and routes", async ({ page, request }) => {
-  await page.setViewportSize({ width: 2200, height: 900 });
   const marker = `Board e2e ${Date.now()}`;
   const created = await request.post("/api/tasks", {
     data: {
@@ -36,9 +35,10 @@ test("board move and view preference survive reloads and routes", async ({ page,
   const doneColumn = page.locator('[data-board-column="done"]');
   await expect(card).toBeVisible();
   await doneColumn.scrollIntoViewIfNeeded();
+  await card.scrollIntoViewIfNeeded();
 
   const cardBox = await card.boundingBox();
-  const doneBox = await doneColumn.boundingBox();
+  let doneBox = await doneColumn.boundingBox();
   expect(cardBox).not.toBeNull();
   expect(doneBox).not.toBeNull();
   if (!cardBox || !doneBox) return;
@@ -89,6 +89,10 @@ test("board move and view preference survive reloads and routes", async ({ page,
     }, task.id),
   );
   // #endregion
+  await doneColumn.scrollIntoViewIfNeeded();
+  doneBox = await doneColumn.boundingBox();
+  expect(doneBox).not.toBeNull();
+  if (!doneBox) return;
   await page.mouse.move(doneBox.x + doneBox.width / 2, doneBox.y + 80, { steps: 12 });
   // #region agent log
   agentLog(
