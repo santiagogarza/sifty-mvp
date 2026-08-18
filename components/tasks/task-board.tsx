@@ -79,17 +79,13 @@ export function TaskBoard({
   );
 
   const [activeId, setActiveId] = React.useState<string | null>(null);
-  const [selected, setSelected] = React.useState<{ col: number; row: number }>({
-    col: 0,
-    row: -1,
-  });
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const boardRef = React.useRef<HTMLDivElement>(null);
   const highlightRef = React.useRef<HTMLElement | null>(null);
 
   const activeTask = activeId ? (tasks.find((t) => t.id === activeId) ?? null) : null;
-  const selectedTask = visibleColumns[selected.col]
-    ? (partitioned[visibleColumns[selected.col]!]?.[selected.row] ?? null)
-    : null;
+  const selected = locateTask(selectedId, visibleColumns, partitioned);
+  const selectedTask = taskAt(selected, visibleColumns, partitioned);
 
   React.useEffect(() => {
     if (!highlight) return;
@@ -106,7 +102,9 @@ export function TaskBoard({
   const onDragEnd = (e: DragEndEvent) => {
     setActiveId(null);
     const commit = resolveBoardDrop(String(e.active.id), e.over?.id as string | undefined, tasks);
-    if (commit) setLifecycle(commit.taskId, commit.lifecycle);
+    if (!commit) return;
+    setLifecycle(commit.taskId, commit.lifecycle);
+    setSelectedId(commit.taskId);
   };
 
   const onComplete = React.useCallback(
@@ -132,8 +130,7 @@ export function TaskBoard({
       const next = adjacentLifecycle(selectedTask.lifecycle, delta, visibleColumns);
       if (!next) return;
       setLifecycle(selectedTask.id, next);
-      const destCol = visibleColumns.indexOf(next);
-      setSelected({ col: destCol, row: 0 });
+      setSelectedId(selectedTask.id);
       return;
     }
 
@@ -141,16 +138,16 @@ export function TaskBoard({
 
     if (e.key === "ArrowLeft") {
       e.preventDefault();
-      setSelected((s) => moveSelection(s, visibleColumns, partitioned, -1, 0));
+      setSelectedId(taskIdAfterMove(selected, visibleColumns, partitioned, -1, 0));
     } else if (e.key === "ArrowRight") {
       e.preventDefault();
-      setSelected((s) => moveSelection(s, visibleColumns, partitioned, 1, 0));
+      setSelectedId(taskIdAfterMove(selected, visibleColumns, partitioned, 1, 0));
     } else if (e.key === "ArrowDown" || e.key === "j") {
       e.preventDefault();
-      setSelected((s) => moveSelection(s, visibleColumns, partitioned, 0, 1));
+      setSelectedId(taskIdAfterMove(selected, visibleColumns, partitioned, 0, 1));
     } else if (e.key === "ArrowUp" || e.key === "k") {
       e.preventDefault();
-      setSelected((s) => moveSelection(s, visibleColumns, partitioned, 0, -1));
+      setSelectedId(taskIdAfterMove(selected, visibleColumns, partitioned, 0, -1));
     }
   };
 
@@ -170,10 +167,10 @@ export function TaskBoard({
           tabIndex={0}
           onKeyDown={onKeyDown}
           className={cn(
-            "flex gap-3 overflow-x-auto pb-8 snap-x snap-proximity touch-pan-x",
+            "flex gap-3 overflow-x-auto pb-8 snap-x snap-proximity touch-pan-x touch-pan-y",
             BOARD_GUTTER_CLASS,
           )}
-          style={{ touchAction: "pan-x" }}
+          style={{ touchAction: "pan-x pan-y" }}
         >
           {visibleColumns.map((lifecycle) => (
             <BoardColumn
@@ -230,6 +227,27 @@ export function TaskBoard({
   );
 }
 
+function locateTask(
+  taskId: string | null,
+  columns: readonly Lifecycle[],
+  partitioned: Record<Lifecycle, Task[]>,
+): { col: number; row: number } {
+  if (!taskId) return { col: 0, row: -1 };
+  for (let col = 0; col < columns.length; col++) {
+    const row = (partitioned[columns[col]!] ?? []).findIndex((t) => t.id === taskId);
+    if (row >= 0) return { col, row };
+  }
+  return { col: 0, row: -1 };
+}
+
+function taskAt(
+  pos: { col: number; row: number },
+  columns: readonly Lifecycle[],
+  partitioned: Record<Lifecycle, Task[]>,
+): Task | null {
+  return columns[pos.col] ? (partitioned[columns[pos.col]!]?.[pos.row] ?? null) : null;
+}
+
 function moveSelection(
   current: { col: number; row: number },
   columns: readonly Lifecycle[],
@@ -243,4 +261,17 @@ function moveSelection(
   const startRow = current.row < 0 ? (dRow > 0 ? -1 : 0) : current.row;
   const row = Math.max(0, Math.min(list.length - 1, startRow + dRow));
   return { col, row };
+}
+
+function taskIdAfterMove(
+  current: { col: number; row: number },
+  columns: readonly Lifecycle[],
+  partitioned: Record<Lifecycle, Task[]>,
+  dCol: number,
+  dRow: number,
+): string | null {
+  return (
+    taskAt(moveSelection(current, columns, partitioned, dCol, dRow), columns, partitioned)?.id ??
+    null
+  );
 }

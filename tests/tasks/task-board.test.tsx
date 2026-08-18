@@ -116,6 +116,70 @@ describe("TaskBoard", () => {
     expect(useStore.getState().tasks[0]?.completedAt).toBeNull();
   });
 
+  it("Alt+→ keeps selection on the moved card when it is not first in Focus", async () => {
+    const user = userEvent.setup();
+    const onOpen = vi.fn();
+    const inbox = makeTask({
+      lifecycle: "inbox",
+      title: "File me",
+      priorityBucket: "schedule",
+    });
+    const focusTop = makeTask({
+      lifecycle: "active",
+      title: "Already focused",
+      priorityBucket: "do_now",
+      importance: 1,
+      urgency: 1,
+    });
+    seed([inbox, focusTop]);
+    const { rerender } = render(<TaskBoard tasks={useStore.getState().tasks} onOpen={onOpen} />);
+
+    await user.click(screen.getByRole("listbox", { name: "Task board" }));
+    await user.keyboard("{ArrowDown}");
+    await user.keyboard("{Alt>}{ArrowRight}{/Alt}");
+    expect(useStore.getState().tasks.find((t) => t.id === inbox.id)?.lifecycle).toBe("active");
+
+    rerender(<TaskBoard tasks={useStore.getState().tasks} onOpen={onOpen} />);
+    expect(screen.getByTestId(`task-card-${inbox.id}`)).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId(`task-card-${focusTop.id}`)).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+
+    await user.keyboard("{Enter}");
+    expect(onOpen).toHaveBeenCalledWith(inbox.id);
+  });
+
+  it("keeps selection on the highlighted card after it leaves its old slot", async () => {
+    const user = userEvent.setup();
+    const onOpen = vi.fn();
+    const first = makeTask({
+      lifecycle: "inbox",
+      title: "Drag me",
+      createdAt: "2026-07-22T12:00:00Z",
+    });
+    const second = makeTask({
+      lifecycle: "inbox",
+      title: "Slides up",
+      createdAt: "2026-07-21T12:00:00Z",
+    });
+    seed([first, second]);
+    const { rerender } = render(<TaskBoard tasks={useStore.getState().tasks} onOpen={onOpen} />);
+
+    await user.click(screen.getByRole("listbox", { name: "Task board" }));
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByTestId(`task-card-${first.id}`)).toHaveAttribute("aria-selected", "true");
+
+    useStore.getState().setLifecycle(first.id, "active");
+    rerender(<TaskBoard tasks={useStore.getState().tasks} onOpen={onOpen} />);
+
+    expect(screen.getByTestId(`task-card-${first.id}`)).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId(`task-card-${second.id}`)).toHaveAttribute("aria-selected", "false");
+
+    await user.keyboard("{Enter}");
+    expect(onOpen).toHaveBeenCalledWith(first.id);
+  });
+
   it("Alt+→ moves the selected card one column and is a no-op at the last visible column", async () => {
     const user = userEvent.setup();
     const task = makeTask({ lifecycle: "inbox", title: "Walk me" });
@@ -142,6 +206,14 @@ describe("TaskBoard", () => {
     await user.keyboard("{Alt>}{ArrowRight}{/Alt}");
     expect(useStore.getState().tasks[0]?.lifecycle).toBe(before);
     expect(before).toBe("done");
+  });
+
+  it("board scroller allows vertical and horizontal touch panning", () => {
+    seed([]);
+    render(<TaskBoard tasks={[]} onOpen={vi.fn()} />);
+    expect(screen.getByRole("listbox", { name: "Task board" })).toHaveStyle({
+      touchAction: "pan-x pan-y",
+    });
   });
 
   it("zero tasks renders empty columns with no placeholder commentary", () => {
