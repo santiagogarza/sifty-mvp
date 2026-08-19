@@ -70,6 +70,10 @@ export function TaskBoard({
     [visibleColumns, partitioned],
   );
   const { ghosts, dismissGhost } = useCompletionGhosts(visibleTasks);
+  const ghostsByColumn = React.useMemo(
+    () => placeGhostsInColumns(visibleTasks, ghosts),
+    [visibleTasks, ghosts],
+  );
 
   const resolved = React.useMemo(
     () =>
@@ -220,7 +224,7 @@ export function TaskBoard({
                   columnRef={(el) => {
                     columnRefs.current[colIndex] = el;
                   }}
-                  ghosts={ghosts.filter((g) => g.restoreTo === lifecycle)}
+                  ghosts={ghostsByColumn[lifecycle] ?? []}
                   onDismissGhost={dismissGhost}
                 />
               ))}
@@ -303,6 +307,43 @@ function resolveSelection(
   const colTasks = colId ? partitioned[colId] : [];
   const row = Math.min(Math.max(0, selectedRowIndex), Math.max(0, colTasks.length - 1));
   return { col, row, taskId: colTasks[row]?.id ?? null };
+}
+
+/**
+ * `useCompletionGhosts` records index in the flattened visible-task list.
+ * Map that back to a per-column splice index so a completed card stays put
+ * instead of jumping to the bottom of its column.
+ */
+function placeGhostsInColumns(
+  visibleTasks: Task[],
+  ghosts: Array<{ task: Task; index: number; restoreTo: Lifecycle }>,
+): Partial<Record<Lifecycle, Array<{ task: Task; restoreTo: Lifecycle; index: number }>>> {
+  const merged: Array<
+    { kind: "task"; task: Task } | { kind: "ghost"; task: Task; restoreTo: Lifecycle }
+  > = visibleTasks.map((task) => ({ kind: "task", task }));
+  for (const g of [...ghosts].sort((a, b) => a.index - b.index)) {
+    merged.splice(Math.min(g.index, merged.length), 0, {
+      kind: "ghost",
+      task: g.task,
+      restoreTo: g.restoreTo,
+    });
+  }
+
+  const result: Partial<
+    Record<Lifecycle, Array<{ task: Task; restoreTo: Lifecycle; index: number }>>
+  > = {};
+  const pos: Partial<Record<Lifecycle, number>> = {};
+  for (const item of merged) {
+    const col = item.kind === "ghost" ? item.restoreTo : item.task.lifecycle;
+    const at = pos[col] ?? 0;
+    pos[col] = at + 1;
+    if (item.kind === "ghost") {
+      const list = result[col] ?? [];
+      list.push({ task: item.task, restoreTo: item.restoreTo, index: at });
+      result[col] = list;
+    }
+  }
+  return result;
 }
 
 /** Commit a cross-column drop — extracted for unit tests. */

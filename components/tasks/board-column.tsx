@@ -29,7 +29,7 @@ export const BoardColumn = React.memo(function BoardColumn({
   activeTaskTabIndex: number;
   highlighted?: boolean;
   columnRef?: React.Ref<HTMLDivElement>;
-  ghosts?: Array<{ task: Task; restoreTo: Lifecycle }>;
+  ghosts?: Array<{ task: Task; restoreTo: Lifecycle; index: number }>;
   onDismissGhost?: (id: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -47,6 +47,22 @@ export const BoardColumn = React.memo(function BoardColumn({
     },
     [setNodeRef, columnRef],
   );
+
+  // Same splice as TaskList: a just-completed card stays where it was so the
+  // undo checkbox does not jump to the bottom of the column.
+  const cards = React.useMemo(() => {
+    const out: Array<
+      { kind: "task"; task: Task } | { kind: "ghost"; task: Task; restoreTo: Lifecycle }
+    > = tasks.map((task) => ({ kind: "task", task }));
+    for (const g of [...ghosts].sort((a, b) => a.index - b.index)) {
+      out.splice(Math.min(g.index, out.length), 0, {
+        kind: "ghost",
+        task: g.task,
+        restoreTo: g.restoreTo,
+      });
+    }
+    return out;
+  }, [tasks, ghosts]);
 
   return (
     <section
@@ -66,32 +82,39 @@ export const BoardColumn = React.memo(function BoardColumn({
         <span className="ml-auto text-num text-[11px] text-[var(--fg-subtle)]">{tasks.length}</span>
       </header>
       <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-2">
-        {tasks.map((task) => (
-          <TaskCard
-            key={task.id}
-            task={task}
-            labels={labels}
-            onOpen={onOpen}
-            active={task.id === activeTaskId}
-            tabIndex={task.id === activeTaskId ? activeTaskTabIndex : -1}
-          />
-        ))}
-        {ghosts.map((ghost) => (
-          <div
-            key={`ghost-${ghost.task.id}`}
-            className="ghost-collapse"
-            onAnimationEnd={(e) => {
-              if (e.animationName === "sifty-ghost-collapse") onDismissGhost?.(ghost.task.id);
-            }}
-          >
+        {cards.map((card) => {
+          if (card.kind === "ghost") {
+            const ghost = card;
+            return (
+              <div
+                key={`ghost-${ghost.task.id}`}
+                className="ghost-collapse"
+                onAnimationEnd={(e) => {
+                  if (e.animationName === "sifty-ghost-collapse") onDismissGhost?.(ghost.task.id);
+                }}
+              >
+                <TaskCard
+                  task={ghost.task}
+                  labels={labels}
+                  onOpen={onOpen}
+                  uncompleteTo={ghost.restoreTo}
+                  draggable={false}
+                />
+              </div>
+            );
+          }
+          const task = card.task;
+          return (
             <TaskCard
-              task={ghost.task}
+              key={task.id}
+              task={task}
               labels={labels}
               onOpen={onOpen}
-              uncompleteTo={ghost.restoreTo}
+              active={task.id === activeTaskId}
+              tabIndex={task.id === activeTaskId ? activeTaskTabIndex : -1}
             />
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );

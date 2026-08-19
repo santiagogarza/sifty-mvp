@@ -21,6 +21,7 @@ export const TaskCard = React.memo(function TaskCard({
   tabIndex = -1,
   isDragOverlay,
   uncompleteTo = "active",
+  draggable = true,
 }: {
   task: Task;
   labels: Label[];
@@ -29,9 +30,12 @@ export const TaskCard = React.memo(function TaskCard({
   tabIndex?: number;
   isDragOverlay?: boolean;
   uncompleteTo?: Lifecycle;
+  /** Completion ghosts are undo affordances, not board citizens. */
+  draggable?: boolean;
 }) {
   // Overlay clones must not call useDraggable — @dnd-kit already owns that id.
-  if (isDragOverlay) {
+  // Ghosts skip it too so a collapse-window click cannot start a drag.
+  if (isDragOverlay || !draggable) {
     return (
       <TaskCardView
         task={task}
@@ -39,7 +43,7 @@ export const TaskCard = React.memo(function TaskCard({
         onOpen={onOpen}
         active={active}
         tabIndex={tabIndex}
-        isDragOverlay
+        isDragOverlay={isDragOverlay}
         uncompleteTo={uncompleteTo}
       />
     );

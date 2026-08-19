@@ -230,6 +230,38 @@ describe("TaskBoard", () => {
     expect(screen.getByText("Finish this")).toBeInTheDocument();
   });
 
+  it("keeps a completed Today card in its original column spot as a ghost", () => {
+    const newer = makeTask({
+      lifecycle: "inbox",
+      title: "Newer today",
+      priorityBucket: "do_now",
+      createdAt: "2026-07-22T13:00:00Z",
+    });
+    const older = makeTask({
+      lifecycle: "inbox",
+      title: "Older today",
+      priorityBucket: "do_now",
+      createdAt: "2026-07-22T11:00:00Z",
+    });
+    seedStore([newer, older]);
+    render(<LiveBoard columns={TODAY_BOARD_COLUMNS} taskFilter={isTodayTask} onOpen={vi.fn()} />);
+
+    const inbox = screen.getByLabelText("Inbox");
+    const titles = () =>
+      within(inbox)
+        .getAllByRole("option")
+        .map((el) => el.textContent);
+
+    expect(titles()[0]).toContain("Newer today");
+    expect(titles()[1]).toContain("Older today");
+
+    fireEvent.click(within(inbox).getAllByRole("button", { name: "Mark as done" })[0]!);
+
+    expect(useStore.getState().tasks.find((t) => t.id === newer.id)!.lifecycle).toBe("done");
+    expect(titles()[0]).toContain("Newer today");
+    expect(titles()[1]).toContain("Older today");
+  });
+
   it("rejects a Today-filter drop that would hide the card", () => {
     const task = makeTask({
       lifecycle: "active",
@@ -280,6 +312,13 @@ describe("TaskCard click vs drag", () => {
     seedStore([task]);
     render(<TaskCard task={task} labels={[]} onOpen={vi.fn()} isDragOverlay />);
     expect(screen.getByText("Overlay clone")).toBeInTheDocument();
+  });
+
+  it("renders a non-draggable ghost card without a DndContext (no useDraggable)", () => {
+    const task = makeTask({ lifecycle: "done", title: "Ghost clone" });
+    seedStore([task]);
+    render(<TaskCard task={task} labels={[]} onOpen={vi.fn()} draggable={false} />);
+    expect(screen.getByText("Ghost clone")).toBeInTheDocument();
   });
 
   it("opens detail on a plain click", () => {
