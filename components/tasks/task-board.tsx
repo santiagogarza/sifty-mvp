@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { STATUSES_IN_ORDER } from "@/lib/domain/status";
 import type { Lifecycle, Task } from "@/lib/domain/types";
-import { partitionByLifecycle } from "@/lib/store/board";
+import { partitionByLifecycle, staysVisibleOnBoard } from "@/lib/store/board";
 import { useStore } from "@/lib/store/store";
 import {
   DndContext,
@@ -69,6 +69,15 @@ export function TaskBoard({
     setSelectedId(event.active.id as string);
   };
 
+  const applyLifecycle = React.useCallback(
+    (task: Task, lifecycle: Lifecycle) => {
+      if (task.lifecycle === lifecycle) return;
+      if (!staysVisibleOnBoard(task, lifecycle, Boolean(isTodayBoard))) return;
+      updateTask(task.id, { lifecycle });
+    },
+    [isTodayBoard, updateTask],
+  );
+
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveId(null);
     const { active, over } = event;
@@ -76,9 +85,7 @@ export function TaskBoard({
     if (over?.id) {
       const targetLifecycle = over.id as Lifecycle;
       const task = active.data.current?.task as Task;
-      if (task && task.lifecycle !== targetLifecycle) {
-        updateTask(task.id, { lifecycle: targetLifecycle });
-      }
+      if (task) applyLifecycle(task, targetLifecycle);
     }
   };
 
@@ -127,12 +134,11 @@ export function TaskBoard({
         if (e.key === "ArrowLeft" && columnIndex > 0) {
           e.preventDefault();
           const target = columnsToRender[columnIndex - 1];
-          if (target) updateTask(selectedId, { lifecycle: target });
+          if (target) applyLifecycle(currentTask, target);
         } else if (e.key === "ArrowRight" && columnIndex < columnsToRender.length - 1) {
           e.preventDefault();
           const target = columnsToRender[columnIndex + 1];
-          console.log("Moving task to", target);
-          if (target) updateTask(selectedId, { lifecycle: target });
+          if (target) applyLifecycle(currentTask, target);
         }
         return;
       }
@@ -178,7 +184,7 @@ export function TaskBoard({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedId, tasks, columnsToRender, partitions, onOpen, updateTask]);
+  }, [selectedId, tasks, columnsToRender, partitions, onOpen, applyLifecycle]);
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>

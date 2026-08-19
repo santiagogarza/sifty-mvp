@@ -1,6 +1,16 @@
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import { type ViewArgs, applyCommonFilters, byFocusScore, isTodayTask } from "./selectors";
 
+/** True when assigning `lifecycle` would keep the card visible on this board. */
+export function staysVisibleOnBoard(
+  task: Task,
+  lifecycle: Lifecycle,
+  isTodayBoard: boolean,
+): boolean {
+  if (!isTodayBoard) return true;
+  return isTodayTask({ ...task, lifecycle });
+}
+
 export function partitionByLifecycle(
   tasks: Task[],
   args: ViewArgs,

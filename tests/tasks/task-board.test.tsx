@@ -2,7 +2,7 @@
 import { TaskBoard } from "@/components/tasks/task-board";
 import { statusLabel } from "@/lib/domain/status";
 import type { Task } from "@/lib/domain/types";
-import { useStore, type SiftyState } from "@/lib/store/store";
+import { type SiftyState, useStore } from "@/lib/store/store";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -124,6 +124,20 @@ describe("TaskBoard", () => {
 
     // Should update to inbox
     expect(updateTask).toHaveBeenCalledWith("1", { lifecycle: "inbox" });
+  });
+
+  it("does not move a due-less Today card into waiting", async () => {
+    const user = userEvent.setup();
+    const task = makeTask("1", "active", { priorityBucket: "do_now" });
+    const updateTask = useStore((s: SiftyState) => s.updateTask);
+    vi.mocked(updateTask).mockClear();
+
+    render(<TaskBoard tasks={[task]} onOpen={vi.fn()} isTodayBoard />);
+
+    await user.click(screen.getByText("Task 1"));
+    await user.keyboard("{Alt>}{ArrowRight}{/Alt}");
+
+    expect(updateTask).not.toHaveBeenCalled();
   });
 
   it("opens detail on Enter", async () => {

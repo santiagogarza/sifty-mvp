@@ -1,5 +1,5 @@
 import type { Task } from "@/lib/domain/types";
-import { partitionByLifecycle } from "@/lib/store/board";
+import { partitionByLifecycle, staysVisibleOnBoard } from "@/lib/store/board";
 import { describe, expect, it } from "vitest";
 
 function makeTask(id: string, lifecycle: Task["lifecycle"], overrides: Partial<Task> = {}): Task {
@@ -125,5 +125,18 @@ describe("partitionByLifecycle", () => {
     expect(result.someday).toHaveLength(0);
     expect(result.done).toHaveLength(0);
     expect(result.dropped).toHaveLength(0);
+  });
+
+  it("staysVisibleOnBoard blocks Today moves that would hide the card", () => {
+    const doNow = makeTask("1", "active", { priorityBucket: "do_now" });
+    const dueToday = makeTask("2", "active", {
+      due: new Date().toISOString().slice(0, 10),
+    });
+
+    expect(staysVisibleOnBoard(doNow, "waiting", true)).toBe(false);
+    expect(staysVisibleOnBoard(doNow, "done", true)).toBe(false);
+    expect(staysVisibleOnBoard(doNow, "inbox", true)).toBe(true);
+    expect(staysVisibleOnBoard(dueToday, "waiting", true)).toBe(true);
+    expect(staysVisibleOnBoard(doNow, "waiting", false)).toBe(true);
   });
 });

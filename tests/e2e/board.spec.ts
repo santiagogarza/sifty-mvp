@@ -2,20 +2,19 @@ import { expect, test } from "@playwright/test";
 
 test.describe("Board View", () => {
   test.beforeEach(async ({ page }) => {
-    page.on('console', msg => console.log('BROWSER:', msg.text()));
     // Navigate to Inbox and create a task
     await page.goto("/inbox", { waitUntil: "networkidle" });
-    
+
     // Create a task
     await page.keyboard.press("c");
     await page.getByPlaceholder("What do you need to do?").fill("Test Kanban Task");
     await page.keyboard.press("ControlOrMeta+Enter");
-    
+
     // Wait for detail sheet to open, then close it
     await expect(page.getByRole("dialog")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).not.toBeVisible();
-    
+
     // Wait for task to appear
     await expect(page.getByText("Test Kanban Task").first()).toBeVisible();
   });
@@ -34,7 +33,7 @@ test.describe("Board View", () => {
 
     // Use keyboard to select the first card
     await page.keyboard.press("j");
-    
+
     // Verify it's selected (has ring-1)
     await expect(card).toHaveClass(/ring-1/);
 
@@ -70,16 +69,16 @@ test.describe("Board View", () => {
 
     // Dropped should not be visible initially
     await expect(page.getByText("Dropped", { exact: true })).not.toBeVisible();
-    
+
     // Click Show dropped
     await page.getByRole("button", { name: "Show dropped" }).click();
-    
+
     // Dropped should now be visible
     await expect(page.getByText("Dropped", { exact: true })).toBeVisible();
-    
+
     // Click Hide dropped
     await page.getByRole("button", { name: "Hide dropped" }).click();
-    
+
     // Dropped should be hidden again
     await expect(page.getByText("Dropped", { exact: true })).not.toBeVisible();
   });
