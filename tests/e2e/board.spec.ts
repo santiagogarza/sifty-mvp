@@ -220,6 +220,31 @@ async function completedAtFor(page: Page, title: string): Promise<string | null 
   return tasks.find((t) => t.title === title)?.completedAt;
 }
 
+test("a card is one Tab away, and Alt+arrow files it", async ({ page, request }) => {
+  const title = await seedTask(request, "inbox", "Walk me over");
+  await showBoard(page, "/inbox");
+
+  const card = column(page, "Inbox").getByRole("option", { name: title });
+  await expect(card).toBeVisible();
+
+  // Roving tabindex: the whole board is a single stop, not one per card.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press("Tab");
+  await expect(card).toBeFocused();
+
+  await page.keyboard.press("Alt+ArrowRight");
+  await expect(column(page, "Focus").getByRole("option", { name: title })).toBeVisible();
+
+  // Focus rides along, so the card can be walked further without re-finding it.
+  await expect(column(page, "Focus").getByRole("option", { name: title })).toBeFocused();
+
+  await page.keyboard.press("Alt+ArrowRight");
+  await expect(column(page, "Waiting on").getByRole("option", { name: title })).toBeVisible();
+
+  await page.keyboard.press("Alt+ArrowLeft");
+  await expect(column(page, "Focus").getByRole("option", { name: title })).toBeVisible();
+});
+
 test("dropped stays behind a disclosure", async ({ page, request }) => {
   const title = await seedTask(request, "dropped", "Let this go");
   await showBoard(page, "/done");
@@ -271,6 +296,73 @@ test("a card still opens the detail sheet on click", async ({ page, request }) =
   await expect(page).toHaveURL(/[?&]task=/);
   await expect(page.getByRole("dialog").getByText(title).first()).toBeVisible();
 });
+
+test.describe("on a phone", () => {
+  // Spelled out rather than spread from `devices`, whose descriptors also pin
+  // a browser engine and cannot be applied to a single describe block.
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test("a swipe scrolls the columns and a long press drags a card", async ({
+    page,
+    context,
+    request,
+  }) => {
+    const title = await seedTask(request, "inbox", "Touch me");
+    await showBoard(page, "/inbox");
+
+    const cdp = await context.newCDPSession(page);
+    const touch = (type: "touchStart" | "touchMove" | "touchEnd", x: number, y: number) =>
+      cdp.send("Input.dispatchTouchEvent", {
+        type,
+        touchPoints: type === "touchEnd" ? [] : [{ x, y, id: 1 }],
+      });
+
+    const scroller = page.locator("div.overflow-x-auto").first();
+    await expect.poll(() => scroller.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+
+    const card = column(page, "Inbox").getByRole("option", { name: title });
+    const box = await card.boundingBox();
+    if (!box) throw new Error("card is not laid out");
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+
+    // A swipe is a scroll, not a drag: the columns move, the card does not.
+    await touch("touchStart", x, y);
+    for (let i = 1; i <= 8; i++) await touch("touchMove", x - i * 25, y);
+    await touch("touchEnd", x - 200, y);
+
+    await expect.poll(() => scroller.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+    await expect.poll(() => lifecycleOf(page, title)).toBe("inbox");
+
+    await scroller.evaluate((el) => {
+      el.scrollLeft = 0;
+    });
+    const grab = await card.boundingBox();
+    if (!grab) throw new Error("card is not laid out");
+    const gx = grab.x + grab.width / 2;
+    const gy = grab.y + grab.height / 2;
+
+    // A long press picks the card up. Where it lands depends on how far the
+    // board auto-scrolls under the finger, so this asserts only that a touch
+    // drag files the card somewhere other than where it started.
+    await touch("touchStart", gx, gy);
+    await page.waitForTimeout(400); // clear the long-press threshold
+    for (let i = 1; i <= 12; i++) {
+      await touch("touchMove", gx + i * 20, gy);
+      await page.waitForTimeout(40);
+    }
+    await touch("touchEnd", gx + 240, gy);
+
+    await expect.poll(() => lifecycleOf(page, title), { timeout: 10_000 }).not.toBe("inbox");
+  });
+});
+
+async function lifecycleOf(page: Page, title: string): Promise<string | undefined> {
+  const res = await page.request.get("/api/tasks");
+  if (!res.ok()) return undefined;
+  const { tasks } = (await res.json()) as { tasks: { title: string; lifecycle: string }[] };
+  return tasks.find((t) => t.title === title)?.lifecycle;
+}
 
 test("column headers use the presented status names", async ({ page }) => {
   await showBoard(page, "/inbox");

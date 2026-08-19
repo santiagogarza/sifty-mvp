@@ -12,7 +12,7 @@ import {
   DragOverlay,
   type DragStartEvent,
   MeasuringStrategy,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   pointerWithin,
   useSensor,
@@ -178,13 +178,19 @@ export function TaskBoard({
   };
 
   const sensors = useSensors(
-    // Below this distance the gesture stays a click, so tapping a card still
+    // Mouse and touch are deliberately separate sensors rather than one
+    // pointer sensor. A pointer sensor answers to touch as well, and being
+    // first it claims the gesture, so the long-press below would never run:
+    // the finger would move, the browser would take the gesture for scrolling,
+    // and the drag would be cancelled before it began.
+    //
+    // Below this distance the gesture stays a click, so clicking a card still
     // opens it instead of nudging it into a neighbouring column.
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
       activationConstraint: { distance: DRAG_ACTIVATION_DISTANCE },
     }),
-    // Touch drags start on a long press. A plain swipe therefore scrolls the
-    // columns rather than picking a card up.
+    // Touch drags start on a long press, so a plain swipe scrolls the columns
+    // instead of picking a card up.
     useSensor(TouchSensor, {
       activationConstraint: { delay: 200, tolerance: 5 },
     }),
@@ -343,7 +349,7 @@ function columnAt(point: { x: number; y: number } | null): Lifecycle | null {
 }
 
 /**
- * The pointer's own position, tracked for as long as a button is held.
+ * Where the pointer or finger currently is.
  *
  * dnd-kit only learns where the pointer is from moves that arrive *after* the
  * one which started the drag. When a single event both crosses the activation
@@ -351,33 +357,39 @@ function columnAt(point: { x: number; y: number } | null): Lifecycle | null {
  * load, which is exactly what a board carrying a couple hundred cards causes —
  * the drag ends reporting a zero delta and no target, and the card silently
  * stays put. Losing a deliberate move that way is worse than the cost of
- * watching the pointer, so the drop point comes from here when dnd-kit has
- * nothing to offer.
+ * watching the pointer, so the drop point comes from here.
+ *
+ * Touch is tracked separately rather than relying on the compatibility pointer
+ * events, because a touch drag calls preventDefault and those stop arriving —
+ * which would leave the last known position back where the finger started.
  */
 function usePointerPosition(): React.RefObject<{ x: number; y: number } | null> {
   const pointer = React.useRef<{ x: number; y: number } | null>(null);
 
   React.useEffect(() => {
-    const track = (e: PointerEvent) => {
-      pointer.current = { x: e.clientX, y: e.clientY };
+    const set = (x: number, y: number) => {
+      pointer.current = { x, y };
     };
-    const start = (e: PointerEvent) => {
-      track(e);
-      window.addEventListener("pointermove", track, { passive: true });
-    };
-    const stop = (e: PointerEvent) => {
-      track(e);
-      window.removeEventListener("pointermove", track);
+    const trackMouse = (e: PointerEvent) => set(e.clientX, e.clientY);
+    const trackTouch = (e: TouchEvent) => {
+      const t = e.touches[0] ?? e.changedTouches[0];
+      if (t) set(t.clientX, t.clientY);
     };
 
-    window.addEventListener("pointerdown", start, { passive: true });
-    window.addEventListener("pointerup", stop, { passive: true });
-    window.addEventListener("pointercancel", stop, { passive: true });
+    const opts = { passive: true, capture: true } as const;
+    window.addEventListener("pointerdown", trackMouse, opts);
+    window.addEventListener("pointermove", trackMouse, opts);
+    window.addEventListener("pointerup", trackMouse, opts);
+    window.addEventListener("touchstart", trackTouch, opts);
+    window.addEventListener("touchmove", trackTouch, opts);
+    window.addEventListener("touchend", trackTouch, opts);
     return () => {
-      window.removeEventListener("pointerdown", start);
-      window.removeEventListener("pointerup", stop);
-      window.removeEventListener("pointercancel", stop);
-      window.removeEventListener("pointermove", track);
+      window.removeEventListener("pointerdown", trackMouse, opts);
+      window.removeEventListener("pointermove", trackMouse, opts);
+      window.removeEventListener("pointerup", trackMouse, opts);
+      window.removeEventListener("touchstart", trackTouch, opts);
+      window.removeEventListener("touchmove", trackTouch, opts);
+      window.removeEventListener("touchend", trackTouch, opts);
     };
   }, []);
 
