@@ -5,10 +5,22 @@ import { expect, test } from "@playwright/test";
  * A regression once reduced the circle's handler to `stopPropagation()` only,
  * so clicks no longer toggled lifecycle — the task never got marked done,
  * while completing from the detail sheet still worked.
+ *
+ * Captures its own Inbox task so the spec does not depend on `SIFTY_DEMO_SEED`
+ * (CI never sets that flag; createTask starts tasks in Inbox, not Focus).
  */
 test("clicking a list-row circle marks the task done", async ({ page }) => {
-  await page.goto("/focus", { waitUntil: "networkidle" });
-  await page.waitForTimeout(1000);
+  await page.goto("/inbox", { waitUntil: "networkidle" });
+
+  const marker = `List-row complete ${Date.now()}`;
+  await page.keyboard.press("c");
+  await page.getByPlaceholder("What do you need to do?").fill(marker);
+  await page.keyboard.press("ControlOrMeta+Enter");
+
+  // Capture opens the detail sheet; dismiss it so the click hits the list-row
+  // circle, not the sheet's own complete control (which never regressed).
+  await page.getByRole("button", { name: "Close" }).click();
+  await expect(page.getByText(marker.slice(0, 30)).first()).toBeVisible();
 
   const doneCount = () =>
     page.evaluate(() => {
