@@ -262,6 +262,46 @@ describe("TaskBoard", () => {
     expect(titles()[1]).toContain("Older today");
   });
 
+  it("keeps sequential completion ghosts in the column order the user just saw", () => {
+    const first = makeTask({
+      lifecycle: "inbox",
+      title: "First today",
+      priorityBucket: "do_now",
+      createdAt: "2026-07-22T13:00:00Z",
+    });
+    const second = makeTask({
+      lifecycle: "inbox",
+      title: "Second today",
+      priorityBucket: "do_now",
+      createdAt: "2026-07-22T12:00:00Z",
+    });
+    const third = makeTask({
+      lifecycle: "inbox",
+      title: "Third today",
+      priorityBucket: "do_now",
+      createdAt: "2026-07-22T11:00:00Z",
+    });
+    seedStore([first, second, third]);
+    render(<LiveBoard columns={TODAY_BOARD_COLUMNS} taskFilter={isTodayTask} onOpen={vi.fn()} />);
+
+    const inbox = screen.getByLabelText("Inbox");
+    const titles = () =>
+      within(inbox)
+        .getAllByRole("option")
+        .map((el) => el.textContent);
+
+    expect(titles()[0]).toContain("First today");
+    expect(titles()[1]).toContain("Second today");
+    expect(titles()[2]).toContain("Third today");
+
+    fireEvent.click(within(inbox).getAllByRole("button", { name: "Mark as done" })[0]!);
+    fireEvent.click(within(inbox).getAllByRole("button", { name: "Mark as done" })[0]!);
+
+    expect(titles()[0]).toContain("First today");
+    expect(titles()[1]).toContain("Second today");
+    expect(titles()[2]).toContain("Third today");
+  });
+
   it("rejects a Today-filter drop that would hide the card", () => {
     const task = makeTask({
       lifecycle: "active",

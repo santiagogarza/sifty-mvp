@@ -321,7 +321,11 @@ function placeGhostsInColumns(
   const merged: Array<
     { kind: "task"; task: Task } | { kind: "ghost"; task: Task; restoreTo: Lifecycle }
   > = visibleTasks.map((task) => ({ kind: "task", task }));
-  for (const g of [...ghosts].sort((a, b) => a.index - b.index)) {
+  // Each index is a snapshot of the ghost-free list at that completion.
+  // Replay last-completed first so earlier ghosts still land at the index
+  // they recorded. Sorting by index and splicing forward reverses two
+  // top-to-bottom completes (both tend to record 0).
+  for (const g of [...ghosts].reverse()) {
     merged.splice(Math.min(g.index, merged.length), 0, {
       kind: "ghost",
       task: g.task,
