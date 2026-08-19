@@ -321,7 +321,8 @@ function dropTarget(
   point: { x: number; y: number } | null,
   over: string | number | undefined,
 ): Lifecycle | null {
-  return columnAt(point) ?? (over as Lifecycle | undefined) ?? null;
+  if (!point) return (over as Lifecycle | undefined) ?? null;
+  return columnAt(point);
 }
 
 /** Which column, if any, sits under a point on screen. */
