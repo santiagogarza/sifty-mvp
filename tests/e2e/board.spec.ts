@@ -84,6 +84,19 @@ test("dragging a card to another column survives refresh and sync", async ({ pag
   await expect(column(page, "Focus").getByText(title)).toBeVisible();
 });
 
+test("Done board mode does not stack a second Dropped disclosure under the kanban", async ({
+  page,
+}) => {
+  const title = `Done dropped ${uniq()}`;
+  await createTask(page.request, { title, lifecycle: "dropped" });
+
+  await page.goto("/done", { waitUntil: "networkidle" });
+  await switchToBoard(page);
+
+  await expect(page.getByRole("button", { name: /show dropped/i })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /^dropped/i })).toHaveCount(0);
+});
+
 test("the Dropped column stays behind the Show dropped disclosure", async ({ page }) => {
   const title = `Board dropped ${uniq()}`;
   await createTask(page.request, { title, lifecycle: "dropped" });

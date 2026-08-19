@@ -166,12 +166,21 @@ export function TaskBoard({
   }, [selectedId, visibleTasks, visibleColumns]);
 
   // Selection follows into the card's new column after a move; keep focus
-  // on the (remounted) element so the keyboard flow never drops.
+  // on the (remounted) element so the keyboard flow never drops. Remount
+  // typically sends focus to body (or a detached node), so treat "no live
+  // focus outside the board" as a restore — not only focus still inside.
   React.useEffect(() => {
     if (!selectedId || !selectedPos) return;
     const el = cardRefs.current.get(selectedId);
     if (!el) return;
-    if (document.activeElement !== el && boardRef.current?.contains(document.activeElement)) {
+    const active = document.activeElement;
+    const boardHasFocus = !!boardRef.current?.contains(active);
+    const focusLost =
+      !active ||
+      active === document.body ||
+      active === document.documentElement ||
+      !document.contains(active);
+    if (el !== active && (boardHasFocus || focusLost)) {
       el.focus({ preventScroll: true });
     }
     el.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -221,7 +230,8 @@ export function TaskBoard({
   const moveSelectedCard = (direction: -1 | 1) => {
     if (!selectedId || !selectedPos) return;
     const target = adjacentColumn(visibleColumns, visibleColumns[selectedPos.column]!, direction);
-    if (target) setLifecycle(selectedId, target);
+    const drop = target ? resolveDrop(tasks, selectedId, target, { filter: lens.filter }) : null;
+    if (drop) setLifecycle(drop.taskId, drop.lifecycle);
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -260,7 +270,9 @@ export function TaskBoard({
   // never fight the pointer.
   const onDragEnd = (e: DragEndEvent) => {
     setActiveId(null);
-    const drop = resolveDrop(tasks, String(e.active.id), e.over?.id ?? null);
+    const drop = resolveDrop(tasks, String(e.active.id), e.over?.id ?? null, {
+      filter: lens.filter,
+    });
     if (drop) setLifecycle(drop.taskId, drop.lifecycle);
   };
 
