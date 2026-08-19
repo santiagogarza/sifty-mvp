@@ -18,6 +18,7 @@ export default function DonePage() {
         title="Done"
         description="Finished work, newest first. Uncheck anything to send it back to Focus."
         selector={selectDoneTasks}
+        highlightColumn="done"
         emptyTitle="Nothing finished yet."
         emptyDescription="Completed tasks land here, so checking one off never loses it."
       />

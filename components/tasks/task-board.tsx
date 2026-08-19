@@ -1,0 +1,291 @@
+"use client";
+
+import { statusLabel } from "@/lib/domain/status";
+import { STATUSES_IN_ORDER } from "@/lib/domain/status";
+import type { Lifecycle, Task } from "@/lib/domain/types";
+import { partitionByLifecycle } from "@/lib/store/board";
+import { useStore } from "@/lib/store/store";
+import { cn } from "@/lib/utils/cn";
+import {
+  DndContext,
+  type DragEndEvent,
+  DragOverlay,
+  type DragStartEvent,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { ChevronRight } from "lucide-react";
+import * as React from "react";
+import { BoardColumn } from "./board-column";
+import { BoardDragProvider, useBoardDragGuard } from "./board-drag-context";
+import { TaskCard } from "./task-card";
+
+export function TaskBoard({
+  tasks,
+  columns,
+  onOpen,
+  taskFilter,
+  highlightColumn,
+  labelId,
+  search,
+}: {
+  tasks: Task[];
+  columns: readonly Lifecycle[];
+  onOpen: (id: string) => void;
+  taskFilter?: (task: Task, now: Date) => boolean;
+  highlightColumn?: Lifecycle;
+  labelId?: string | null;
+  search?: string;
+}) {
+  const labels = useStore((s) => s.labels);
+  const setLifecycle = useStore((s) => s.setLifecycle);
+
+  const [showDropped, setShowDropped] = React.useState(false);
+  const [activeDragId, setActiveDragId] = React.useState<string | null>(null);
+  const suppressClickRef = React.useRef<(taskId: string) => void>(() => {});
+  const [selectedColIndex, setSelectedColIndex] = React.useState(0);
+  const [selectedRowIndex, setSelectedRowIndex] = React.useState(0);
+
+  const boardRef = React.useRef<HTMLDivElement>(null);
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  const columnRefs = React.useRef<(HTMLDivElement | null)[]>([]);
+
+  const visibleColumns = React.useMemo(() => {
+    const base = [...columns];
+    if (showDropped && !base.includes("dropped")) base.push("dropped");
+    return base;
+  }, [columns, showDropped]);
+
+  const partitioned = React.useMemo(
+    () => partitionByLifecycle(tasks, { labelId, search, taskFilter }, visibleColumns),
+    [tasks, labelId, search, taskFilter, visibleColumns],
+  );
+
+  const activeTask = React.useMemo(
+    () => (activeDragId ? tasks.find((t) => t.id === activeDragId) : undefined),
+    [tasks, activeDragId],
+  );
+
+  const droppedCount = React.useMemo(
+    () => partitionByLifecycle(tasks, { labelId, search, taskFilter }).dropped.length,
+    [tasks, labelId, search, taskFilter],
+  );
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+  );
+
+  const onDragStart = (event: DragStartEvent) => {
+    setActiveDragId(String(event.active.id));
+  };
+
+  const onDragEnd = (event: DragEndEvent) => {
+    const taskId = String(event.active.id);
+    setActiveDragId(null);
+    handleBoardDragEnd(event, tasks, visibleColumns, setLifecycle);
+    suppressClickRef.current(taskId);
+  };
+
+  const selectedTaskId = React.useMemo(() => {
+    const col = visibleColumns[selectedColIndex];
+    if (!col) return null;
+    const colTasks = partitioned[col];
+    return colTasks[selectedRowIndex]?.id ?? null;
+  }, [visibleColumns, selectedColIndex, selectedRowIndex, partitioned]);
+
+  React.useEffect(() => {
+    if (!highlightColumn) return;
+    const idx = visibleColumns.indexOf(highlightColumn);
+    if (idx >= 0) setSelectedColIndex(idx);
+    const col = scrollRef.current?.querySelector(`[data-lifecycle="${highlightColumn}"]`);
+    col?.scrollIntoView?.({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, [highlightColumn, visibleColumns]);
+
+  React.useEffect(() => {
+    const col = visibleColumns[selectedColIndex];
+    if (!col) return;
+    const count = partitioned[col].length;
+    if (selectedRowIndex >= count) {
+      setSelectedRowIndex(Math.max(0, count - 1));
+    }
+  }, [partitioned, visibleColumns, selectedColIndex, selectedRowIndex]);
+
+  const moveSelection = (dCol: number, dRow: number) => {
+    if (dCol !== 0) {
+      setSelectedColIndex((ci) => Math.min(visibleColumns.length - 1, Math.max(0, ci + dCol)));
+      setSelectedRowIndex(0);
+      return;
+    }
+    if (dRow !== 0) {
+      setSelectedRowIndex((ri) => {
+        const col = visibleColumns[selectedColIndex];
+        const max = col ? partitioned[col].length - 1 : 0;
+        return Math.min(max, Math.max(0, ri + dRow));
+      });
+    }
+  };
+
+  const moveTaskOneColumn = (direction: -1 | 1) => {
+    if (!selectedTaskId) return;
+    const task = tasks.find((t) => t.id === selectedTaskId);
+    if (!task) return;
+    const order = visibleColumns;
+    const currentIdx = order.indexOf(task.lifecycle);
+    if (currentIdx < 0) return;
+    const nextIdx = currentIdx + direction;
+    if (nextIdx < 0 || nextIdx >= order.length) return;
+    setLifecycle(selectedTaskId, order[nextIdx]!);
+    setSelectedColIndex(nextIdx);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (visibleColumns.length === 0) return;
+
+    if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      e.preventDefault();
+      moveTaskOneColumn(e.key === "ArrowLeft" ? -1 : 1);
+      return;
+    }
+
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      moveSelection(-1, 0);
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      moveSelection(1, 0);
+    } else if (e.key === "ArrowDown" || e.key === "j") {
+      e.preventDefault();
+      moveSelection(0, 1);
+    } else if (e.key === "ArrowUp" || e.key === "k") {
+      e.preventDefault();
+      moveSelection(0, -1);
+    } else if (e.key === "Enter" && selectedTaskId) {
+      e.preventDefault();
+      onOpen(selectedTaskId);
+    }
+  };
+
+  React.useEffect(() => {
+    boardRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  return (
+    <BoardDragProvider>
+      <BoardDragProviderBridge register={suppressClickRef} />
+      <div className="flex flex-col gap-3">
+      <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+        <div
+          ref={boardRef}
+          role="listbox"
+          tabIndex={0}
+          aria-label="Task board"
+          onKeyDown={onKeyDown}
+          onPointerDown={(e) => {
+            if (e.target === e.currentTarget) boardRef.current?.focus();
+          }}
+          className="rounded-[var(--radius-lg)] focus:outline-none"
+        >
+          <div
+            ref={scrollRef}
+            className="flex gap-3 overflow-x-auto pb-2 touch-pan-x"
+            style={{ touchAction: "pan-x" }}
+          >
+            {visibleColumns.map((lifecycle, colIndex) => (
+              <BoardColumn
+                key={lifecycle}
+                lifecycle={lifecycle}
+                tasks={partitioned[lifecycle]}
+                labels={labels}
+                onOpen={onOpen}
+                activeTaskId={selectedTaskId}
+                activeTaskTabIndex={0}
+                highlighted={highlightColumn === lifecycle}
+                columnRef={(el) => {
+                  columnRefs.current[colIndex] = el;
+                }}
+              />
+            ))}
+          </div>
+        </div>
+        <DragOverlay dropAnimation={null}>
+          {activeTask ? (
+            <TaskCard task={activeTask} labels={labels} onOpen={onOpen} isDragOverlay />
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+
+      {columns.includes("done") && droppedCount > 0 ? (
+        <div className="border-t border-[var(--border)] pt-3">
+          <button
+            type="button"
+            onClick={() => setShowDropped((v) => !v)}
+            aria-expanded={showDropped}
+            className="flex w-full items-center justify-between text-[12.5px] text-[var(--fg-muted)] hover:text-[var(--fg)]"
+          >
+            <span>
+              {statusLabel("dropped")}{" "}
+              <span className="text-num text-[11.5px] text-[var(--fg-subtle)]">{droppedCount}</span>
+            </span>
+            <ChevronRight
+              size={13}
+              className={cn(
+                "transition-transform duration-200 ease-[var(--ease-product)]",
+                showDropped && "rotate-90",
+              )}
+            />
+          </button>
+        </div>
+      ) : null}
+      </div>
+    </BoardDragProvider>
+  );
+}
+
+function BoardDragProviderBridge({
+  register,
+}: {
+  register: React.MutableRefObject<(taskId: string) => void>;
+}) {
+  const { suppressClickForTask } = useBoardDragGuard();
+  React.useEffect(() => {
+    register.current = suppressClickForTask;
+  }, [register, suppressClickForTask]);
+  return null;
+}
+
+/** Commit a cross-column drop — extracted for unit tests. */
+export function handleBoardDragEnd(
+  event: { active: { id: string | number }; over: { id: string | number } | null },
+  tasks: Task[],
+  visibleColumns: readonly Lifecycle[],
+  setLifecycle: (taskId: string, lifecycle: Lifecycle) => void,
+): void {
+  const taskId = String(event.active.id);
+  const overId = event.over?.id;
+  if (!overId) return;
+
+  const targetLifecycle = String(overId) as Lifecycle;
+  const task = tasks.find((t) => t.id === taskId);
+  if (!task || task.lifecycle === targetLifecycle) return;
+  if (!visibleColumns.includes(targetLifecycle)) return;
+
+  setLifecycle(taskId, targetLifecycle);
+}
+
+/** Resolve keyboard column move for tests. */
+export function resolveColumnMove(
+  lifecycle: Lifecycle,
+  visibleColumns: readonly Lifecycle[],
+  direction: -1 | 1,
+): Lifecycle | null {
+  const idx = visibleColumns.indexOf(lifecycle);
+  if (idx < 0) return null;
+  const next = idx + direction;
+  if (next < 0 || next >= visibleColumns.length) return null;
+  return visibleColumns[next] ?? null;
+}
+
+export { STATUSES_IN_ORDER };

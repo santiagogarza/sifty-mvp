@@ -1,7 +1,12 @@
 import path from "node:path";
+import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  plugins: [react()],
+  esbuild: {
+    jsx: "automatic",
+  },
   test: {
     // Default to node — most tests are server logic, jose / Buffer / Uint8Array
     // checks misbehave under jsdom because realm-bound globals don't match.
