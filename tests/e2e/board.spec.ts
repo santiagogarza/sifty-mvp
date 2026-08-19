@@ -51,9 +51,24 @@ async function showBoard(page: Page, route: string): Promise<void> {
  * until the column stops moving, and only then released.
  */
 async function dragCard(page: Page, card: Locator, target: Locator): Promise<void> {
-  const from = await card.boundingBox();
   const viewport = page.viewportSize();
-  if (!from || !viewport) throw new Error("card is not laid out");
+  if (!viewport) throw new Error("no viewport");
+
+  // Columns grow taller than the window once a workspace has real volume, so
+  // neither end of the drag can be assumed to be on screen.
+  await card.scrollIntoViewIfNeeded();
+  const from = await card.boundingBox();
+  if (!from) throw new Error("card is not laid out");
+
+  /** The on-screen part of an element, or null when none of it is visible. */
+  const visiblePart = (box: { x: number; y: number; width: number; height: number }) => {
+    const left = Math.max(box.x, 8);
+    const right = Math.min(box.x + box.width, viewport.width - 8);
+    const top = Math.max(box.y, 8);
+    const bottom = Math.min(box.y + box.height, viewport.height - 8);
+    if (right <= left || bottom <= top) return null;
+    return { x: (left + right) / 2, y: (top + bottom) / 2 };
+  };
 
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
   await page.mouse.down();
@@ -61,23 +76,32 @@ async function dragCard(page: Page, card: Locator, target: Locator): Promise<voi
   await page.mouse.move(from.x + from.width / 2 + 12, from.y + from.height / 2, { steps: 4 });
 
   let previousX: number | null = null;
-  for (let attempt = 0; attempt < 10; attempt++) {
+  let landed = false;
+  for (let attempt = 0; attempt < 20; attempt++) {
     const to = await target.boundingBox();
     if (!to) throw new Error("target column is not laid out");
+    const point = visiblePart(to);
 
-    // Stay inside the column and inside the window: the pointer cannot leave
-    // the viewport, and aiming past the column's own edge would miss it.
-    const tx = Math.min(to.x + to.width / 2, to.x + to.width - 8, viewport.width - 8);
-    const ty = to.y + Math.min(60, to.height / 2);
-    if (tx <= to.x) throw new Error("target column is not reachable on screen");
+    if (!point) {
+      // The column is still off screen. Hold the pointer against the edge it
+      // lies beyond and let the board auto-scroll, exactly as a user would.
+      const edgeX = to.x > 0 ? viewport.width - 12 : 12;
+      await page.mouse.move(edgeX, viewport.height / 2, { steps: 4 });
+      await page.waitForTimeout(150);
+      continue;
+    }
 
-    await page.mouse.move(tx, ty, { steps: 8 });
-    await page.waitForTimeout(100);
+    await page.mouse.move(point.x, point.y, { steps: 8 });
+    await page.waitForTimeout(120);
 
     const settled = await target.boundingBox();
-    if (settled && previousX !== null && Math.abs(settled.x - previousX) < 1) break;
+    if (settled && previousX !== null && Math.abs(settled.x - previousX) < 1) {
+      landed = true;
+      break;
+    }
     previousX = settled?.x ?? null;
   }
+  if (!landed) throw new Error("target column never settled under the pointer");
 
   await page.mouse.up();
 }
@@ -100,6 +124,28 @@ test("dragging a card to another column re-files it and the move survives a relo
   await page.reload({ waitUntil: "networkidle" });
 
   await expect(column(page, "Waiting on").getByRole("option", { name: title })).toBeVisible();
+  await expect(column(page, "Inbox").getByRole("option", { name: title })).toHaveCount(0);
+});
+
+test("a drag delivered as a single pointer move still lands", async ({ page, request }) => {
+  const title = await seedTask(request, "inbox", "Flick me over");
+  await showBoard(page, "/inbox");
+
+  const card = column(page, "Inbox").getByRole("option", { name: title });
+  await expect(card).toBeVisible();
+  const from = await card.boundingBox();
+  const to = await column(page, "Focus").boundingBox();
+  if (!from || !to) throw new Error("board is not laid out");
+
+  // One move that both starts the drag and arrives, which is what a coalesced
+  // pointer stream looks like. dnd-kit reports a zero delta here, so the board
+  // has to fall back to the pointer's real position or the move is swallowed.
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + to.width / 2, to.y + 50);
+  await page.mouse.up();
+
+  await expect(column(page, "Focus").getByRole("option", { name: title })).toBeVisible();
   await expect(column(page, "Inbox").getByRole("option", { name: title })).toHaveCount(0);
 });
 
@@ -139,10 +185,13 @@ test("dragging into Done completes the task, and dragging back out reopens it", 
   page,
   request,
 }) => {
-  const title = await seedTask(request, "active", "Finish me");
-  await showBoard(page, "/focus");
+  // Seeded into Inbox, whose newest-first ordering puts it at the top of the
+  // column: a card buried under a hundred others is a scrolling test, not a
+  // completion test.
+  const title = await seedTask(request, "inbox", "Finish me");
+  await showBoard(page, "/inbox");
 
-  const card = column(page, "Focus").getByRole("option", { name: title });
+  const card = column(page, "Inbox").getByRole("option", { name: title });
   await expect(card).toBeVisible();
 
   await dragCard(page, card, column(page, "Done"));
@@ -153,11 +202,12 @@ test("dragging into Done completes the task, and dragging back out reopens it", 
   await expect(inDone.getByRole("button", { name: "Mark as not done" })).toBeVisible();
   await expect.poll(() => completedAtFor(page, title), { timeout: 10_000 }).not.toBeNull();
 
-  await dragCard(page, inDone, column(page, "Focus"));
+  // Done sorts newest-completed first, so the card is at the top to grab again.
+  await dragCard(page, inDone, column(page, "Waiting on"));
 
-  const backInFocus = column(page, "Focus").getByRole("option", { name: title });
-  await expect(backInFocus).toBeVisible();
-  await expect(backInFocus.getByRole("button", { name: "Mark as done" })).toBeVisible();
+  const reopened = column(page, "Waiting on").getByRole("option", { name: title });
+  await expect(reopened).toBeVisible();
+  await expect(reopened.getByRole("button", { name: "Mark as done" })).toBeVisible();
   await expect.poll(() => completedAtFor(page, title), { timeout: 10_000 }).toBeNull();
 });
 

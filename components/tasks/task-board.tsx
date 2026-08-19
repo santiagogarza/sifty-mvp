@@ -11,6 +11,7 @@ import {
   type DragEndEvent,
   DragOverlay,
   type DragStartEvent,
+  MeasuringStrategy,
   PointerSensor,
   TouchSensor,
   pointerWithin,
@@ -49,6 +50,7 @@ export function TaskBoard({
   keepsTask?: (task: Task, next: Lifecycle) => boolean;
 }) {
   const updateTask = useStore((s) => s.updateTask);
+  const pointer = usePointerPosition();
   const [showDropped, setShowDropped] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [activeId, setActiveId] = React.useState<string | null>(null);
@@ -192,7 +194,7 @@ export function TaskBoard({
 
   const onDragEnd = (e: DragEndEvent) => {
     setActiveId(null);
-    const target = e.over?.id as Lifecycle | undefined;
+    const target = dropTarget(pointer.current, e.over?.id);
     if (!target) return;
     fileCard(String(e.active.id), target);
   };
@@ -211,8 +213,10 @@ export function TaskBoard({
         `Picked up ${taskByIdRef.current.get(String(active.id))?.title ?? "task"}.`,
       onDragOver: ({ over }) => (over ? `Over ${statusLabel(over.id as Lifecycle)}.` : undefined),
       onDragEnd: ({ active, over }) => {
-        if (!over) return "Left where it was.";
-        const target = over.id as Lifecycle;
+        // Resolved the same way the drop itself is, or the live region could
+        // name a column the card did not go to.
+        const target = dropTarget(pointer.current, over?.id);
+        if (!target) return "Left where it was.";
         const task = taskByIdRef.current.get(String(active.id));
         return willFile(task, target, keepsTaskRef.current)
           ? `Filed under ${statusLabel(target)}.`
@@ -220,13 +224,14 @@ export function TaskBoard({
       },
       onDragCancel: () => "Cancelled. The task stayed where it was.",
     }),
-    [],
+    [pointer],
   );
 
   return (
     <DndContext
       sensors={sensors}
       collisionDetection={pointerWithin}
+      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onDragCancel={() => setActiveId(null)}
@@ -305,6 +310,77 @@ function DroppedDisclosure({
       </span>
     </button>
   );
+}
+
+/**
+ * The column a drop belongs to. Where the pointer actually is beats where
+ * dnd-kit last believed it was, so the geometry wins and `over` is the
+ * fallback for when there is no pointer to consult.
+ */
+function dropTarget(
+  point: { x: number; y: number } | null,
+  over: string | number | undefined,
+): Lifecycle | null {
+  return columnAt(point) ?? (over as Lifecycle | undefined) ?? null;
+}
+
+/** Which column, if any, sits under a point on screen. */
+function columnAt(point: { x: number; y: number } | null): Lifecycle | null {
+  if (!point) return null;
+  for (const node of document.querySelectorAll<HTMLElement>("[data-column-status]")) {
+    const rect = node.getBoundingClientRect();
+    if (
+      point.x >= rect.left &&
+      point.x <= rect.right &&
+      point.y >= rect.top &&
+      point.y <= rect.bottom
+    ) {
+      return (node.dataset.columnStatus as Lifecycle) ?? null;
+    }
+  }
+  return null;
+}
+
+/**
+ * The pointer's own position, tracked for as long as a button is held.
+ *
+ * dnd-kit only learns where the pointer is from moves that arrive *after* the
+ * one which started the drag. When a single event both crosses the activation
+ * distance and lands on another column — browsers coalesce pointer moves under
+ * load, which is exactly what a board carrying a couple hundred cards causes —
+ * the drag ends reporting a zero delta and no target, and the card silently
+ * stays put. Losing a deliberate move that way is worse than the cost of
+ * watching the pointer, so the drop point comes from here when dnd-kit has
+ * nothing to offer.
+ */
+function usePointerPosition(): React.RefObject<{ x: number; y: number } | null> {
+  const pointer = React.useRef<{ x: number; y: number } | null>(null);
+
+  React.useEffect(() => {
+    const track = (e: PointerEvent) => {
+      pointer.current = { x: e.clientX, y: e.clientY };
+    };
+    const start = (e: PointerEvent) => {
+      track(e);
+      window.addEventListener("pointermove", track, { passive: true });
+    };
+    const stop = (e: PointerEvent) => {
+      track(e);
+      window.removeEventListener("pointermove", track);
+    };
+
+    window.addEventListener("pointerdown", start, { passive: true });
+    window.addEventListener("pointerup", stop, { passive: true });
+    window.addEventListener("pointercancel", stop, { passive: true });
+    return () => {
+      window.removeEventListener("pointerdown", start);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      window.removeEventListener("pointermove", track);
+    };
+  }, []);
+
+  return pointer;
 }
 
 /**

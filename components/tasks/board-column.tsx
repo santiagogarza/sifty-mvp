@@ -70,6 +70,7 @@ export const BoardColumn = React.memo(function BoardColumn({
         ref={setNodeRef}
         role="listbox"
         aria-label={meta.label}
+        data-column-status={status}
         // Focus lands on a card, never here; -1 keeps the listbox reachable
         // programmatically without adding a tab stop per column.
         tabIndex={-1}
