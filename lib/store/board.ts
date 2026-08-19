@@ -34,17 +34,17 @@ function sortColumn(lifecycle: Lifecycle, tasks: Task[], now: Date): Task[] {
       return sorted.sort(
         (a, b) =>
           focusScore({
-            bucket: b.priorityBucket,
-            importance: b.importance,
-            urgency: b.urgency,
-            due: b.due,
-            now,
-          }) -
-          focusScore({
             bucket: a.priorityBucket,
             importance: a.importance,
             urgency: a.urgency,
             due: a.due,
+            now,
+          }) -
+          focusScore({
+            bucket: b.priorityBucket,
+            importance: b.importance,
+            urgency: b.urgency,
+            due: b.due,
             now,
           }),
       );
@@ -87,6 +87,22 @@ export function partitionByLifecycle(
   }
 
   return result;
+}
+
+/**
+ * True when moving `task` to `nextLifecycle` would still show it on this board
+ * (column is visible and the optional lens filter still passes).
+ */
+export function wouldRemainOnBoard(
+  task: Task,
+  nextLifecycle: Lifecycle,
+  visibleColumns: readonly Lifecycle[],
+  taskFilter?: (task: Task, now: Date) => boolean,
+  now = new Date(),
+): boolean {
+  if (!visibleColumns.includes(nextLifecycle)) return false;
+  if (!taskFilter) return true;
+  return taskFilter({ ...task, lifecycle: nextLifecycle }, now);
 }
 
 /** Columns visible on the Today board — the three lifecycles Today can surface. */

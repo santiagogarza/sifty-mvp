@@ -18,6 +18,8 @@ export const BoardColumn = React.memo(function BoardColumn({
   activeTaskTabIndex,
   highlighted,
   columnRef,
+  ghosts = [],
+  onDismissGhost,
 }: {
   lifecycle: Lifecycle;
   tasks: Task[];
@@ -27,6 +29,8 @@ export const BoardColumn = React.memo(function BoardColumn({
   activeTaskTabIndex: number;
   highlighted?: boolean;
   columnRef?: React.Ref<HTMLDivElement>;
+  ghosts?: Array<{ task: Task; restoreTo: Lifecycle }>;
+  onDismissGhost?: (id: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: lifecycle,
@@ -71,6 +75,22 @@ export const BoardColumn = React.memo(function BoardColumn({
             active={task.id === activeTaskId}
             tabIndex={task.id === activeTaskId ? activeTaskTabIndex : -1}
           />
+        ))}
+        {ghosts.map((ghost) => (
+          <div
+            key={`ghost-${ghost.task.id}`}
+            className="ghost-collapse"
+            onAnimationEnd={(e) => {
+              if (e.animationName === "sifty-ghost-collapse") onDismissGhost?.(ghost.task.id);
+            }}
+          >
+            <TaskCard
+              task={ghost.task}
+              labels={labels}
+              onOpen={onOpen}
+              uncompleteTo={ghost.restoreTo}
+            />
+          </div>
         ))}
       </div>
     </section>

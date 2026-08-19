@@ -20,6 +20,7 @@ export const TaskCard = React.memo(function TaskCard({
   active,
   tabIndex = -1,
   isDragOverlay,
+  uncompleteTo = "active",
 }: {
   task: Task;
   labels: Label[];
@@ -27,13 +28,97 @@ export const TaskCard = React.memo(function TaskCard({
   active?: boolean;
   tabIndex?: number;
   isDragOverlay?: boolean;
+  uncompleteTo?: Lifecycle;
 }) {
-  const updateTask = useStore((s) => s.updateTask);
-  const { shouldSuppressClick } = useBoardDragGuard();
+  // Overlay clones must not call useDraggable — @dnd-kit already owns that id.
+  if (isDragOverlay) {
+    return (
+      <TaskCardView
+        task={task}
+        labels={labels}
+        onOpen={onOpen}
+        active={active}
+        tabIndex={tabIndex}
+        isDragOverlay
+        uncompleteTo={uncompleteTo}
+      />
+    );
+  }
+  return (
+    <DraggableTaskCard
+      task={task}
+      labels={labels}
+      onOpen={onOpen}
+      active={active}
+      tabIndex={tabIndex}
+      uncompleteTo={uncompleteTo}
+    />
+  );
+});
+
+function DraggableTaskCard({
+  task,
+  labels,
+  onOpen,
+  active,
+  tabIndex = -1,
+  uncompleteTo = "active",
+}: {
+  task: Task;
+  labels: Label[];
+  onOpen: (id: string) => void;
+  active?: boolean;
+  tabIndex?: number;
+  uncompleteTo?: Lifecycle;
+}) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
     data: { task, lifecycle: task.lifecycle },
   });
+
+  const style = transform
+    ? { transform: `translate3d(${Math.round(transform.x)}px, ${Math.round(transform.y)}px, 0)` }
+    : undefined;
+
+  return (
+    <TaskCardView
+      task={task}
+      labels={labels}
+      onOpen={onOpen}
+      active={active}
+      tabIndex={tabIndex}
+      uncompleteTo={uncompleteTo}
+      dnd={{ setNodeRef, listeners, attributes, style, isDragging }}
+    />
+  );
+}
+
+function TaskCardView({
+  task,
+  labels,
+  onOpen,
+  active,
+  tabIndex = -1,
+  isDragOverlay,
+  uncompleteTo = "active",
+  dnd,
+}: {
+  task: Task;
+  labels: Label[];
+  onOpen: (id: string) => void;
+  active?: boolean;
+  tabIndex?: number;
+  isDragOverlay?: boolean;
+  uncompleteTo?: Lifecycle;
+  dnd?: Pick<
+    ReturnType<typeof useDraggable>,
+    "setNodeRef" | "listeners" | "attributes" | "isDragging"
+  > & {
+    style?: React.CSSProperties;
+  };
+}) {
+  const updateTask = useStore((s) => s.updateTask);
+  const { shouldSuppressClick } = useBoardDragGuard();
 
   const labelMap = React.useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels]);
   const taskLabels = task.labelIds.map((id) => labelMap.get(id)).filter(Boolean) as Label[];
@@ -51,22 +136,19 @@ export const TaskCard = React.memo(function TaskCard({
   const onComplete = (e: React.MouseEvent) => {
     e.stopPropagation();
     updateTask(task.id, {
-      lifecycle: task.lifecycle === "done" ? "active" : "done",
+      lifecycle: task.lifecycle === "done" ? uncompleteTo : "done",
     });
   };
 
   const isDone = task.lifecycle === "done";
-
-  const style = transform
-    ? { transform: `translate3d(${Math.round(transform.x)}px, ${Math.round(transform.y)}px, 0)` }
-    : undefined;
+  const isDragging = dnd?.isDragging ?? false;
 
   return (
     <div
-      ref={setNodeRef}
-      style={style}
-      {...listeners}
-      {...attributes}
+      ref={dnd?.setNodeRef}
+      style={dnd?.style}
+      {...(dnd?.listeners ?? {})}
+      {...(dnd?.attributes ?? {})}
       role="option"
       aria-selected={active}
       tabIndex={tabIndex}
@@ -154,6 +236,6 @@ export const TaskCard = React.memo(function TaskCard({
       )}
     </div>
   );
-});
+}
 
 export type TaskCardUncompleteTo = Lifecycle;

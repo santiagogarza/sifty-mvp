@@ -36,10 +36,13 @@ function DroppedSection() {
   const { openDetail } = useFrame();
   const tasks = useStore((s) => s.tasks);
   const hydrated = useStore((s) => s.hydrated);
+  const viewMode = useStore((s) => s.viewMode);
   const [expanded, setExpanded] = React.useState(false);
 
   const dropped = React.useMemo(() => selectDroppedTasks(tasks), [tasks]);
-  if (!hydrated || dropped.length === 0) return null;
+  // Board mode has its own dropped disclosure on TaskBoard; keep this list
+  // control for list mode only so the two don't stack on Done.
+  if (viewMode === "board" || !hydrated || dropped.length === 0) return null;
 
   return (
     <section className="mt-8 mb-10 pt-4 border-t border-[var(--border)]">

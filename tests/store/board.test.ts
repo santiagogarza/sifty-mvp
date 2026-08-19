@@ -4,7 +4,9 @@ import {
   TODAY_BOARD_COLUMNS,
   isTodayTask,
   partitionByLifecycle,
+  wouldRemainOnBoard,
 } from "@/lib/store/board";
+import { selectFocusTasks } from "@/lib/store/selectors";
 import { describe, expect, it } from "vitest";
 
 const NOW = new Date("2026-07-22T12:00:00Z");
@@ -128,5 +130,49 @@ describe("partitionByLifecycle", () => {
     expect(partitioned.someday).toHaveLength(0);
     expect(partitioned.done).toHaveLength(0);
     expect(partitioned.dropped).toHaveLength(0);
+  });
+
+  it("Focus column sorts by focusScore ascending, matching the Focus list", () => {
+    const high = makeTask({
+      lifecycle: "active",
+      priorityBucket: "do_now",
+      importance: 0.9,
+      urgency: 0.9,
+    });
+    const mid = makeTask({
+      lifecycle: "active",
+      priorityBucket: "schedule",
+      importance: 0.6,
+      urgency: 0.3,
+    });
+    const low = makeTask({
+      lifecycle: "active",
+      priorityBucket: "drop",
+      importance: 0.1,
+      urgency: 0.1,
+    });
+    const partitioned = partitionByLifecycle([low, high, mid], {}, DEFAULT_BOARD_COLUMNS, NOW);
+    expect(partitioned.active.map((t) => t.id)).toEqual([high.id, mid.id, low.id]);
+    expect(partitioned.active.map((t) => t.id)).toEqual(
+      selectFocusTasks([low, high, mid]).map((t) => t.id),
+    );
+  });
+});
+
+describe("wouldRemainOnBoard", () => {
+  it("rejects a due-less do_now move into waiting under the Today filter", () => {
+    const task = makeTask({ lifecycle: "active", priorityBucket: "do_now" });
+    expect(wouldRemainOnBoard(task, "waiting", TODAY_BOARD_COLUMNS, isTodayTask, NOW)).toBe(false);
+    expect(wouldRemainOnBoard(task, "inbox", TODAY_BOARD_COLUMNS, isTodayTask, NOW)).toBe(true);
+  });
+
+  it("allows a due-today task to enter waiting on Today", () => {
+    const task = makeTask({ lifecycle: "active", due: iso(0), priorityBucket: "do_now" });
+    expect(wouldRemainOnBoard(task, "waiting", TODAY_BOARD_COLUMNS, isTodayTask, NOW)).toBe(true);
+  });
+
+  it("rejects a move into done when Done is not a visible column", () => {
+    const task = makeTask({ lifecycle: "active", priorityBucket: "do_now" });
+    expect(wouldRemainOnBoard(task, "done", TODAY_BOARD_COLUMNS, isTodayTask, NOW)).toBe(false);
   });
 });
