@@ -231,7 +231,8 @@ export function TaskBoard({
               aria-expanded={false}
               onClick={() => setShowDropped(true)}
               className={cn(
-                "flex w-32 shrink-0 items-center justify-center gap-1.5 rounded-[var(--radius-lg)] border border-dashed",
+                "flex h-11 w-32 shrink-0 items-center justify-center gap-1.5 self-start",
+                "rounded-[var(--radius-lg)] border border-dashed",
                 "text-[12px] text-[var(--fg-muted)] hover:border-[var(--border-strong)] hover:text-[var(--fg)]",
               )}
             >
