@@ -173,7 +173,7 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
             }
             aria-label={isDone ? "Mark as not done" : "Mark as done"}
             className={cn(
-              "group relative mt-1 -m-1.5 flex size-8 shrink-0 items-center justify-center",
+              "group relative -mt-0.5 -mx-1.5 -mb-1.5 flex size-8 shrink-0 items-center justify-center",
               "transition-all duration-150 ease-[var(--ease-product)]",
             )}
           >

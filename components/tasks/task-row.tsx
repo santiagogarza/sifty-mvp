@@ -90,7 +90,7 @@ export const TaskRow = React.forwardRef<
         className={cn(
           // 32px hit target on the real <button> — ::after padding looked
           // tappable but clicks in the outer ring hit the row and open detail.
-          "group relative -m-1.5 flex size-8 shrink-0 items-center justify-center",
+          "group/complete relative -m-1.5 flex size-8 shrink-0 items-center justify-center",
           "transition-all duration-150 ease-[var(--ease-product)]",
         )}
       >
@@ -99,7 +99,7 @@ export const TaskRow = React.forwardRef<
             "size-5 rounded-full border flex items-center justify-center",
             "transition-all duration-150 ease-[var(--ease-product)]",
             !isDone &&
-              "bg-[var(--surface-muted)] border-[var(--fg-muted)]/40 group-hover:bg-[var(--surface-hover)] group-hover:border-[var(--accent)]",
+              "bg-[var(--surface-muted)] border-[var(--fg-muted)]/40 group-hover/complete:bg-[var(--surface-hover)] group-hover/complete:border-[var(--accent)]",
             isDone && "bg-[var(--done)] border-[var(--done)]",
           )}
         >
