@@ -120,8 +120,7 @@ export function TaskBoard({
   const fileCard = (taskId: string, target: Lifecycle) => {
     const task = taskById.get(taskId);
     // Same column is a no-op: columns carry the list's order, not a hand-placed one.
-    if (!task || task.lifecycle === target) return;
-    if (keepsTask && !keepsTask(task, target)) return;
+    if (!willFile(task, target, keepsTask)) return;
     // Same flag keyboard moves set, so a remount in the target column
     // puts focus back on the card instead of leaving it on document.
     focusWanted.current = true;
@@ -204,13 +203,21 @@ export function TaskBoard({
   // through a ref rather than closing over a stale partition.
   const taskByIdRef = React.useRef(taskById);
   taskByIdRef.current = taskById;
+  const keepsTaskRef = React.useRef(keepsTask);
+  keepsTaskRef.current = keepsTask;
   const announcements = React.useMemo<Announcements>(
     () => ({
       onDragStart: ({ active }) =>
         `Picked up ${taskByIdRef.current.get(String(active.id))?.title ?? "task"}.`,
       onDragOver: ({ over }) => (over ? `Over ${statusLabel(over.id as Lifecycle)}.` : undefined),
-      onDragEnd: ({ over }) =>
-        over ? `Filed under ${statusLabel(over.id as Lifecycle)}.` : "Left where it was.",
+      onDragEnd: ({ active, over }) => {
+        if (!over) return "Left where it was.";
+        const target = over.id as Lifecycle;
+        const task = taskByIdRef.current.get(String(active.id));
+        return willFile(task, target, keepsTaskRef.current)
+          ? `Filed under ${statusLabel(target)}.`
+          : "Left where it was.";
+      },
       onDragCancel: () => "Cancelled. The task stayed where it was.",
     }),
     [],
@@ -298,6 +305,19 @@ function DroppedDisclosure({
       </span>
     </button>
   );
+}
+
+/**
+ * Whether `fileCard` would actually call `updateTask`. The live-region copy
+ * uses the same gate so a refused Today drop is not announced as filed.
+ */
+function willFile(
+  task: Task | undefined,
+  target: Lifecycle,
+  gate?: (task: Task, next: Lifecycle) => boolean,
+): boolean {
+  if (!task || task.lifecycle === target) return false;
+  return !gate || gate(task, target);
 }
 
 /**
