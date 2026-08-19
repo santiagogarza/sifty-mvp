@@ -47,7 +47,6 @@ import * as React from "react";
 import { AiThinking } from "./ai-status";
 import { PriorityGlyph } from "./priority-glyph";
 import { StatusIcon } from "./status-icon";
-import { INCOMPLETE_CIRCLE_BORDER } from "./task-row";
 
 /**
  * The detail sheet is where the AI's work becomes user-visible and editable.
@@ -173,14 +172,12 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
               })
             }
             aria-label={isDone ? "Mark as not done" : "Mark as done"}
-            // See INCOMPLETE_CIRCLE_BORDER: the global unlayered border-color
-            // reset defeats a Tailwind border class here, so set it inline.
-            style={isDone ? undefined : { borderColor: INCOMPLETE_CIRCLE_BORDER }}
             className={cn(
               "relative mt-1 size-5 rounded-full border flex items-center justify-center shrink-0",
               "after:absolute after:-inset-1.5 after:content-['']",
               "transition-all duration-150 ease-[var(--ease-product)]",
-              !isDone && "bg-[var(--surface-muted)] hover:bg-[var(--surface-hover)]",
+              !isDone &&
+                "bg-[var(--surface-muted)] border-[var(--fg-muted)]/40 hover:bg-[var(--surface-hover)] hover:border-[var(--accent)]",
               isDone && "bg-[var(--done)] border-[var(--done)]",
             )}
           >

@@ -3,21 +3,13 @@
 import { Badge } from "@/components/ui/badge";
 import { assigneeDisplayValue } from "@/lib/domain/assignee";
 import type { Label, Lifecycle, Task } from "@/lib/domain/types";
+import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import { formatRelativeDay, isOverdue, isToday } from "@/lib/utils/dates";
 import { Check } from "lucide-react";
 import * as React from "react";
 import { AiStatusInline } from "./ai-status";
 import { PriorityGlyph } from "./priority-glyph";
-
-/**
- * Border color for the incomplete completion circle. Set via inline style
- * (not a Tailwind class) because the global unlayered `* { border-color }`
- * reset outranks layered border utilities and would otherwise flatten it to
- * the near-invisible `--border`. `--fg-muted` at 55% reads as a calm but
- * clearly present ring in both themes.
- */
-export const INCOMPLETE_CIRCLE_BORDER = "color-mix(in oklab, var(--fg-muted) 55%, transparent)";
 
 /**
  * Single task row.
@@ -45,6 +37,8 @@ export const TaskRow = React.forwardRef<
     uncompleteTo?: Lifecycle;
   }
 >(function TaskRow({ task, onOpen, active, labels, tabIndex = -1, uncompleteTo = "active" }, ref) {
+  const updateTask = useStore((s) => s.updateTask);
+
   const labelMap = React.useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels]);
   const taskLabels = task.labelIds.map((id) => labelMap.get(id)).filter(Boolean) as Label[];
 
@@ -59,7 +53,14 @@ export const TaskRow = React.forwardRef<
       : "neutral";
 
   const onComplete = (e: React.MouseEvent) => {
+    // stopPropagation keeps the row's onClick (open detail) from firing; the
+    // updateTask call is what actually toggles completion. Both must stay:
+    // dropping the toggle turns the circle into a dead control while the
+    // detail sheet (which has its own toggle) still works.
     e.stopPropagation();
+    updateTask(task.id, {
+      lifecycle: task.lifecycle === "done" ? uncompleteTo : "done",
+    });
   };
 
   const isDone = task.lifecycle === "done";
@@ -90,19 +91,14 @@ export const TaskRow = React.forwardRef<
         type="button"
         onClick={onComplete}
         aria-label={isDone ? "Mark as not done" : "Mark as done"}
-        // The border color is set inline for the incomplete state: the global
-        // unlayered `* { border-color: var(--border) }` reset in globals.css
-        // outranks Tailwind's layered border utilities, so a `border-…` class
-        // here silently renders as the near-invisible `--border`, leaving the
-        // circle unclickable-looking. An inline value beats the reset.
-        style={isDone ? undefined : { borderColor: INCOMPLETE_CIRCLE_BORDER }}
         className={cn(
           // The visible circle is 20px; the ::after pseudo pads the hit
           // target to ~32px (Fitts) without changing the layout.
           "relative size-5 rounded-full border flex items-center justify-center",
           "after:absolute after:-inset-1.5 after:content-['']",
           "transition-all duration-150 ease-[var(--ease-product)]",
-          !isDone && "bg-[var(--surface-muted)] hover:bg-[var(--surface-hover)]",
+          !isDone &&
+            "bg-[var(--surface-muted)] border-[var(--fg-muted)]/40 hover:bg-[var(--surface-hover)] hover:border-[var(--accent)]",
           isDone && "bg-[var(--done)] border-[var(--done)]",
         )}
       >
