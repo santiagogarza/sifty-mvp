@@ -15,6 +15,7 @@ export default function WaitingPage() {
         title={statusLabel("waiting")}
         description="Things you've handed off — to a person, an agent, or a process. Move them back to Focus when the ball returns; Today will nudge you when a deadline arrives."
         selector={select}
+        highlightColumn="waiting"
         emptyTitle="Nothing in flight."
       />
     </PageShell>

@@ -11,6 +11,7 @@ export default function FocusPage() {
         title="Focus"
         description="Work you've committed to, sorted by Sifty's read on what to do next. Sliding the priority moves things; letting AI re-triage rebalances."
         selector={selectFocusTasks}
+        highlightColumn="active"
         emptyTitle="Nothing in Focus."
         emptyDescription="Move tasks here from Inbox when you're ready to commit to them."
       />
