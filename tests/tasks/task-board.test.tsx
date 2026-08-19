@@ -9,7 +9,7 @@ import { TaskBoard } from "@/components/tasks/task-board";
 import { TaskCard } from "@/components/tasks/task-card";
 import { STATUSES_IN_ORDER, statusLabel } from "@/lib/domain/status";
 import type { Task } from "@/lib/domain/types";
-import { droppableId, resolveBoardDrop } from "@/lib/store/board";
+import { TODAY_BOARD_COLUMNS, droppableId, resolveBoardDrop } from "@/lib/store/board";
 import { useStore } from "@/lib/store/store";
 
 vi.mock("next/navigation", () => ({
@@ -206,6 +206,50 @@ describe("TaskBoard", () => {
     await user.keyboard("{Alt>}{ArrowRight}{/Alt}");
     expect(useStore.getState().tasks[0]?.lifecycle).toBe(before);
     expect(before).toBe("done");
+  });
+
+  it("does not highlight another card when the selected task leaves the board", async () => {
+    const user = userEvent.setup();
+    const onOpen = vi.fn();
+    const first = makeTask({
+      lifecycle: "inbox",
+      title: "Complete me",
+      createdAt: "2026-07-22T12:00:00Z",
+    });
+    const second = makeTask({
+      lifecycle: "inbox",
+      title: "Stays behind",
+      createdAt: "2026-07-21T12:00:00Z",
+    });
+    seed([first, second]);
+    const { rerender } = render(
+      <TaskBoard
+        tasks={useStore.getState().tasks}
+        onOpen={onOpen}
+        columns={TODAY_BOARD_COLUMNS}
+        allowDropped={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("listbox", { name: "Task board" }));
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByTestId(`task-card-${first.id}`)).toHaveAttribute("aria-selected", "true");
+
+    useStore.getState().setLifecycle(first.id, "done");
+    rerender(
+      <TaskBoard
+        tasks={useStore.getState().tasks.filter((t) => t.lifecycle !== "done")}
+        onOpen={onOpen}
+        columns={TODAY_BOARD_COLUMNS}
+        allowDropped={false}
+      />,
+    );
+
+    expect(screen.queryByTestId(`task-card-${first.id}`)).toBeNull();
+    expect(screen.getByTestId(`task-card-${second.id}`)).toHaveAttribute("aria-selected", "false");
+
+    await user.keyboard("{Enter}");
+    expect(onOpen).not.toHaveBeenCalled();
   });
 
   it("arrow keys can cross empty columns to reach a later card", async () => {

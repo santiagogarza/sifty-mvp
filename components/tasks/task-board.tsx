@@ -248,7 +248,7 @@ function locateTask(
     const row = (partitioned[columns[col]!] ?? []).findIndex((t) => t.id === taskId);
     if (row >= 0) return { col, row };
   }
-  return fallback;
+  return { col: 0, row: -1 };
 }
 
 function taskAt(
