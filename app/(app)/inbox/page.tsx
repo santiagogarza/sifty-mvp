@@ -11,6 +11,7 @@ export default function InboxPage() {
         title="Inbox"
         description="Newly captured tasks. Review, then move them into Focus, Waiting on, or Someday — or just leave them; Today will pull what matters."
         selector={selectInboxTasks}
+        emphasizedColumn="inbox"
         emptyTitle="Inbox zero."
         emptyDescription="Capture anything on your mind. Sifty will organize it before you next check."
       />
