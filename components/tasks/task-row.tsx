@@ -88,17 +88,23 @@ export const TaskRow = React.forwardRef<
         onClick={onComplete}
         aria-label={isDone ? "Mark as not done" : "Mark as done"}
         className={cn(
-          // The visible circle is 20px; the ::after pseudo pads the hit
-          // target to ~32px (Fitts) without changing the layout.
-          "relative size-5 rounded-full border flex items-center justify-center",
-          "after:absolute after:-inset-1.5 after:content-['']",
+          // 32px hit target on the real <button> — ::after padding looked
+          // tappable but clicks in the outer ring hit the row and open detail.
+          "group relative -m-1.5 flex size-8 shrink-0 items-center justify-center",
           "transition-all duration-150 ease-[var(--ease-product)]",
-          !isDone &&
-            "bg-[var(--surface-muted)] border-[var(--fg-muted)]/40 hover:bg-[var(--surface-hover)] hover:border-[var(--accent)]",
-          isDone && "bg-[var(--done)] border-[var(--done)]",
         )}
       >
-        {isDone ? <Check size={12} className="text-white" strokeWidth={3} /> : null}
+        <span
+          className={cn(
+            "size-5 rounded-full border flex items-center justify-center",
+            "transition-all duration-150 ease-[var(--ease-product)]",
+            !isDone &&
+              "bg-[var(--surface-muted)] border-[var(--fg-muted)]/40 group-hover:bg-[var(--surface-hover)] group-hover:border-[var(--accent)]",
+            isDone && "bg-[var(--done)] border-[var(--done)]",
+          )}
+        >
+          {isDone ? <Check size={12} className="text-white" strokeWidth={3} /> : null}
+        </span>
       </button>
 
       <PriorityGlyph bucket={task.priorityBucket} />
