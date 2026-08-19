@@ -14,8 +14,8 @@ import {
   selectFocusTasks,
   selectInboxTasks,
 } from "@/lib/store/selectors";
-import { makeTask } from "../helpers/tasks";
 import { describe, expect, it } from "vitest";
+import { makeTask } from "../helpers/tasks";
 
 /**
  * Board contract: columns are exactly the stored lifecycle values, filters

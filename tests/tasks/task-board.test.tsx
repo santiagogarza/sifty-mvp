@@ -69,7 +69,9 @@ function layoutColumns() {
 function columnCenterX(lifecycle: string): number {
   const index = screen
     .getAllByRole("group")
-    .findIndex((el) => el.getAttribute("aria-label") === `${statusLabel(lifecycle as never)} column`);
+    .findIndex(
+      (el) => el.getAttribute("aria-label") === `${statusLabel(lifecycle as never)} column`,
+    );
   return index * 260 + 124;
 }
 
@@ -93,8 +95,9 @@ describe("column headers", () => {
     renderBoard([makeTask({ lifecycle: "active", title: "Ship the board" })]);
 
     expect(screen.getByRole("group", { name: "Focus column" })).toBeInTheDocument();
-    expect(within(screen.getByRole("group", { name: "Focus column" })).getByText("Focus"))
-      .toBeInTheDocument();
+    expect(
+      within(screen.getByRole("group", { name: "Focus column" })).getByText("Focus"),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Active")).toBeNull();
     expect(screen.queryByText("In progress")).toBeNull();
     expect(screen.queryByText("Backlog")).toBeNull();
@@ -150,10 +153,14 @@ describe("drag and drop", () => {
     layoutColumns();
     const updateTask = vi.spyOn(useStore.getState(), "updateTask");
 
-    dragCard(screen.getByRole("option"), { x: columnCenterX("active"), y: 60 }, {
-      x: columnCenterX("done"),
-      y: 60,
-    });
+    dragCard(
+      screen.getByRole("option"),
+      { x: columnCenterX("active"), y: 60 },
+      {
+        x: columnCenterX("done"),
+        y: 60,
+      },
+    );
 
     expect(updateTask).toHaveBeenCalledWith(task.id, { lifecycle: "done" });
     expect(storeTask(task.id).lifecycle).toBe("done");
@@ -169,10 +176,14 @@ describe("drag and drop", () => {
     renderBoard([task]);
     layoutColumns();
 
-    dragCard(screen.getByRole("option"), { x: columnCenterX("done"), y: 60 }, {
-      x: columnCenterX("active"),
-      y: 60,
-    });
+    dragCard(
+      screen.getByRole("option"),
+      { x: columnCenterX("done"), y: 60 },
+      {
+        x: columnCenterX("active"),
+        y: 60,
+      },
+    );
 
     expect(storeTask(task.id).lifecycle).toBe("active");
     expect(storeTask(task.id).completedAt).toBeNull();
@@ -185,10 +196,14 @@ describe("drag and drop", () => {
     const updateTask = vi.spyOn(useStore.getState(), "updateTask");
     const before = storeTask(task.id);
 
-    dragCard(screen.getByRole("option"), { x: columnCenterX("active"), y: 60 }, {
-      x: columnCenterX("active"),
-      y: 200,
-    });
+    dragCard(
+      screen.getByRole("option"),
+      { x: columnCenterX("active"), y: 60 },
+      {
+        x: columnCenterX("active"),
+        y: 200,
+      },
+    );
 
     expect(updateTask).not.toHaveBeenCalled();
     // Not even a touch: the store object is untouched, so nothing syncs.
@@ -272,16 +287,25 @@ describe("keyboard model", () => {
   });
 
   it("navigates selection with arrows and opens the selected card with Enter", () => {
-    const first = makeTask({ lifecycle: "inbox", title: "First", createdAt: "2026-07-22T10:00:00Z" });
-    const second = makeTask({ lifecycle: "inbox", title: "Second", createdAt: "2026-07-22T09:00:00Z" });
+    const first = makeTask({
+      lifecycle: "inbox",
+      title: "First",
+      createdAt: "2026-07-22T10:00:00Z",
+    });
+    const second = makeTask({
+      lifecycle: "inbox",
+      title: "Second",
+      createdAt: "2026-07-22T09:00:00Z",
+    });
     const focus = makeTask({ lifecycle: "active", title: "Focused" });
     const { onOpen } = renderBoard([first, second, focus]);
     const board = boardListbox();
 
     fireEvent.keyDown(board, { key: "ArrowDown" });
     fireEvent.keyDown(board, { key: "ArrowDown" });
-    expect(within(screen.getByRole("group", { name: "Inbox column" }))
-      .getAllByRole("option")[1]).toHaveAttribute("aria-selected", "true");
+    expect(
+      within(screen.getByRole("group", { name: "Inbox column" })).getAllByRole("option")[1],
+    ).toHaveAttribute("aria-selected", "true");
 
     fireEvent.keyDown(board, { key: "ArrowRight" });
     fireEvent.keyDown(board, { key: "Enter" });
