@@ -2,6 +2,7 @@
 
 import { PageShell } from "@/components/app-shell/page-shell";
 import { TaskView } from "@/components/tasks/task-view";
+import { TODAY_BOARD } from "@/lib/store/board";
 import { selectTodayTasks } from "@/lib/store/selectors";
 import * as React from "react";
 
@@ -39,6 +40,7 @@ export default function TodayPage() {
         title="What matters today"
         description="Overdue, due today, and anything Sifty believes belongs in your top of mind."
         selector={selectTodayTasks}
+        board={TODAY_BOARD}
         emptyTitle="Nothing pressing today."
         emptyDescription="When something needs your attention, it'll show up here. Until then, enjoy the quiet."
       />
