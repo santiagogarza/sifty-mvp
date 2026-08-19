@@ -173,15 +173,21 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
             }
             aria-label={isDone ? "Mark as not done" : "Mark as done"}
             className={cn(
-              "relative mt-1 size-5 rounded-full border flex items-center justify-center shrink-0",
-              "after:absolute after:-inset-1.5 after:content-['']",
+              "group relative -mt-0.5 -mx-1.5 -mb-1.5 flex size-8 shrink-0 items-center justify-center",
               "transition-all duration-150 ease-[var(--ease-product)]",
-              !isDone &&
-                "bg-[var(--surface-muted)] border-[var(--fg-muted)]/40 hover:bg-[var(--surface-hover)] hover:border-[var(--accent)]",
-              isDone && "bg-[var(--done)] border-[var(--done)]",
             )}
           >
-            {isDone ? <Check size={12} className="text-white" strokeWidth={3} /> : null}
+            <span
+              className={cn(
+                "size-5 rounded-full border flex items-center justify-center",
+                "transition-all duration-150 ease-[var(--ease-product)]",
+                !isDone &&
+                  "bg-[var(--surface-muted)] border-[var(--fg-muted)]/40 group-hover:bg-[var(--surface-hover)] group-hover:border-[var(--accent)]",
+                isDone && "bg-[var(--done)] border-[var(--done)]",
+              )}
+            >
+              {isDone ? <Check size={12} className="text-white" strokeWidth={3} /> : null}
+            </span>
           </button>
 
           <input
