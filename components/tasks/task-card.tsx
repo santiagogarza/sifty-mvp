@@ -70,7 +70,7 @@ export const TaskCard = React.memo(function TaskCard({
         onOpen?.(task.id);
       }}
       className={cn(
-        "surface-card touch-pan-x select-none p-3 shadow-sm",
+        "surface-card touch-[pan-x_pan-y] select-none p-3 shadow-sm",
         "transition-[border-color,background-color,opacity,box-shadow] duration-150 ease-[var(--ease-product)]",
         "hover:border-[var(--border-strong)] hover:bg-[var(--surface-muted)]",
         selected && "border-[var(--accent)] ring-1 ring-[var(--accent)]/20",
