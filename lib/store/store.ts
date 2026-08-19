@@ -16,6 +16,7 @@ import {
 import { id } from "@/lib/utils/ids";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { emitCompletion } from "./completion-events";
 
 /**
  * Client store: optimistic source of truth for the UI, persisted to
@@ -187,6 +188,7 @@ export const useStore = create<SiftyState>()(
         },
 
         updateTask: (id, patch, opts) => {
+          const before = get().tasks.find((t) => t.id === id);
           set((s) => ({
             tasks: s.tasks.map((t) => {
               if (t.id !== id) return t;
@@ -219,6 +221,16 @@ export const useStore = create<SiftyState>()(
               return next;
             }),
           }));
+          const after = get().tasks.find((t) => t.id === id);
+          if (before && after && (before.lifecycle === "done") !== (after.lifecycle === "done")) {
+            emitCompletion({
+              id: after.id,
+              kind: "task",
+              taskId: after.id,
+              title: after.title,
+              done: after.lifecycle === "done",
+            });
+          }
           notifyTask(id, { created: false });
         },
 
@@ -242,6 +254,18 @@ export const useStore = create<SiftyState>()(
                   },
             ),
           }));
+          const subtask = get()
+            .tasks.find((t) => t.id === taskId)
+            ?.subtasks.find((st) => st.id === subtaskId);
+          if (subtask) {
+            emitCompletion({
+              id: subtask.id,
+              kind: "subtask",
+              taskId,
+              title: subtask.title,
+              done: subtask.done,
+            });
+          }
           notifyTask(taskId, { created: false });
         },
 
