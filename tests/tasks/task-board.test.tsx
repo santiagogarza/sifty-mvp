@@ -4,7 +4,7 @@ import { STATUSES_IN_ORDER, statusLabel } from "@/lib/domain/status";
 import type { Task } from "@/lib/domain/types";
 import { type BoardLens, TODAY_BOARD_LENS } from "@/lib/store/board";
 import { useStore } from "@/lib/store/store";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeTask } from "../helpers/tasks";
@@ -302,6 +302,40 @@ describe("keyboard model", () => {
     const moved = screen.getByRole("option");
     expect(moved).toHaveFocus();
     expect(board.contains(document.activeElement)).toBe(true);
+  });
+
+  it("does not steal focus when a store update leaves the board unfocused", () => {
+    const selected = makeTask({ lifecycle: "inbox", title: "Stay selected" });
+    const other = makeTask({ lifecycle: "active", title: "Unrelated" });
+    renderBoard([selected, other]);
+    const board = boardListbox();
+
+    fireEvent.keyDown(board, { key: "ArrowDown" });
+    const card = within(screen.getByRole("group", { name: "Inbox column" })).getByRole("option");
+    card.focus();
+    expect(card).toHaveFocus();
+
+    // Clicking column padding / headers leaves focus on body.
+    card.blur();
+    expect(
+      document.activeElement === document.body ||
+        document.activeElement === document.documentElement,
+    ).toBe(true);
+
+    act(() => {
+      useStore.setState({
+        tasks: [
+          selected,
+          { ...other, title: "Unrelated, synced", updatedAt: "2026-07-22T13:00:00Z" },
+        ],
+      });
+    });
+
+    expect(card).not.toHaveFocus();
+    expect(
+      document.activeElement === document.body ||
+        document.activeElement === document.documentElement,
+    ).toBe(true);
   });
 
   it("navigates selection with arrows and opens the selected card with Enter", () => {

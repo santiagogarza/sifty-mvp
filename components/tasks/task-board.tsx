@@ -128,6 +128,7 @@ export function TaskBoard({
   const cardRefs = React.useRef(new Map<string, HTMLDivElement>());
   const columnRefs = React.useRef(new Map<Lifecycle, HTMLElement>());
   const didInitialFocus = React.useRef(false);
+  const focusedCardElRef = React.useRef<HTMLDivElement | null>(null);
 
   const setCardRef = React.useCallback((id: string, el: HTMLDivElement | null) => {
     if (el) cardRefs.current.set(id, el);
@@ -167,24 +168,28 @@ export function TaskBoard({
 
   // Selection follows into the card's new column after a move; keep focus
   // on the (remounted) element so the keyboard flow never drops. Remount
-  // typically sends focus to body (or a detached node), so treat "no live
-  // focus outside the board" as a restore — not only focus still inside.
+  // detaches the previous card node — restore only then, or when focus is
+  // still inside the board. Focus on body after a chrome click is not a
+  // remount signal, and store writes must not yank it back.
+  const selectedColumn = selectedPos?.column;
+  const selectedIndex = selectedPos?.index;
   React.useEffect(() => {
-    if (!selectedId || !selectedPos) return;
+    if (!selectedId || selectedColumn == null || selectedIndex == null) return;
     const el = cardRefs.current.get(selectedId);
     if (!el) return;
     const active = document.activeElement;
     const boardHasFocus = !!boardRef.current?.contains(active);
-    const focusLost =
-      !active ||
-      active === document.body ||
-      active === document.documentElement ||
-      !document.contains(active);
-    if (el !== active && (boardHasFocus || focusLost)) {
+    const previous = focusedCardElRef.current;
+    const remounted = previous != null && previous !== el && !document.contains(previous);
+    focusedCardElRef.current = el;
+    const shouldRestore = boardHasFocus || remounted;
+    if (el !== active && shouldRestore) {
       el.focus({ preventScroll: true });
     }
-    el.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [selectedId, selectedPos]);
+    if (shouldRestore) {
+      el.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+  }, [selectedId, selectedColumn, selectedIndex]);
 
   const selectFirstCard = () => {
     const startAt = focusLifecycle ? Math.max(0, visibleColumns.indexOf(focusLifecycle)) : 0;
