@@ -80,13 +80,16 @@ export function partitionByLifecycle(
 
 /**
  * Resolve a drag-drop into the status mutation it means, or null when the
- * drop is a no-op (no target, unknown target, or the card is already in
- * the target column — within-column position is derived, not stored).
+ * drop is a no-op (no target, unknown target, the card is already in the
+ * target column — within-column position is derived, not stored — or a
+ * lens filter would hide the card after the move).
  */
 export function resolveDrop(
   tasks: readonly Task[],
   activeId: string,
   overId: string | number | null | undefined,
+  args: Pick<BoardArgs, "filter"> = {},
+  now = new Date(),
 ): { taskId: string; lifecycle: Lifecycle } | null {
   if (overId == null) return null;
   const target = String(overId);
@@ -94,6 +97,7 @@ export function resolveDrop(
   const lifecycle = target as Lifecycle;
   const task = tasks.find((t) => t.id === activeId);
   if (!task || task.lifecycle === lifecycle) return null;
+  if (args.filter && !args.filter({ ...task, lifecycle }, now)) return null;
   return { taskId: task.id, lifecycle };
 }
 

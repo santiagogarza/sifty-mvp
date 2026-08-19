@@ -149,6 +149,19 @@ describe("resolveDrop", () => {
     expect(resolveDrop(tasks, focusTask.id, "not-a-status")).toBeNull();
     expect(resolveDrop(tasks, "task_missing", "done")).toBeNull();
   });
+
+  it("is a no-op when a lens filter would hide the card after the move", () => {
+    const urgent = makeTask({ lifecycle: "active", priorityBucket: "do_now" });
+    expect(resolveDrop([urgent], urgent.id, "waiting", { filter: isTodayTask }, NOW)).toBeNull();
+  });
+
+  it("allows a Today-lens drop into Waiting when a due date still forces Today", () => {
+    const dueToday = makeTask({ lifecycle: "active", due: iso(0), priorityBucket: "do_now" });
+    expect(resolveDrop([dueToday], dueToday.id, "waiting", { filter: isTodayTask }, NOW)).toEqual({
+      taskId: dueToday.id,
+      lifecycle: "waiting",
+    });
+  });
 });
 
 describe("adjacentColumn", () => {

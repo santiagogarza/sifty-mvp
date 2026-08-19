@@ -2,8 +2,9 @@
 import { TaskBoard } from "@/components/tasks/task-board";
 import { STATUSES_IN_ORDER, statusLabel } from "@/lib/domain/status";
 import type { Task } from "@/lib/domain/types";
+import { type BoardLens, TODAY_BOARD_LENS } from "@/lib/store/board";
 import { useStore } from "@/lib/store/store";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeTask } from "../helpers/tasks";
@@ -37,10 +38,10 @@ beforeEach(() => {
 // Tests share one jsdom document, so let that window lapse between them.
 afterEach(() => new Promise((resolve) => setTimeout(resolve, 60)));
 
-function renderBoard(tasks: Task[]) {
+function renderBoard(tasks: Task[], lens?: BoardLens) {
   useStore.setState({ tasks });
   const onOpen = vi.fn();
-  const utils = render(<TaskBoard onOpen={onOpen} />);
+  const utils = render(<TaskBoard onOpen={onOpen} {...(lens ? { lens } : {})} />);
   return { onOpen, ...utils };
 }
 
@@ -286,6 +287,63 @@ describe("keyboard model", () => {
     expect(storeTask(task.id).lifecycle).toBe("dropped");
   });
 
+  it("keeps focus on the listbox through an Alt+arrow move, pointing at the moved card", () => {
+    const task = makeTask({ lifecycle: "inbox", title: "Keep focus" });
+    renderBoard([task]);
+    const board = boardListbox();
+
+    board.focus();
+    fireEvent.keyDown(board, { key: "ArrowDown" });
+    expect(board).toHaveFocus();
+    expect(board).toHaveAttribute("aria-activedescendant", `board-card-${task.id}`);
+
+    fireEvent.keyDown(board, { key: "ArrowRight", altKey: true });
+    expect(storeTask(task.id).lifecycle).toBe("active");
+
+    // The card remounted in a new column: under the aria-activedescendant
+    // model the listbox never gives up focus, so the keyboard flow holds.
+    expect(board).toHaveFocus();
+    expect(board).toHaveAttribute("aria-activedescendant", `board-card-${task.id}`);
+    expect(
+      within(screen.getByRole("group", { name: "Focus column" })).getByRole("option"),
+    ).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("does not steal focus or selection when a store update lands while the board is unfocused", () => {
+    const selected = makeTask({ lifecycle: "inbox", title: "Stay selected" });
+    const other = makeTask({ lifecycle: "active", title: "Unrelated" });
+    renderBoard([selected, other]);
+    const board = boardListbox();
+
+    board.focus();
+    fireEvent.keyDown(board, { key: "ArrowDown" });
+    expect(board).toHaveFocus();
+
+    // Clicking chrome outside the board parks focus on body — that's the
+    // user's choice, and a background sync write must not override it.
+    board.blur();
+    expect(
+      document.activeElement === document.body ||
+        document.activeElement === document.documentElement,
+    ).toBe(true);
+
+    act(() => {
+      useStore.setState({
+        tasks: [
+          selected,
+          { ...other, title: "Unrelated, synced", updatedAt: "2026-07-22T13:00:00Z" },
+        ],
+      });
+    });
+
+    expect(board).not.toHaveFocus();
+    expect(
+      document.activeElement === document.body ||
+        document.activeElement === document.documentElement,
+    ).toBe(true);
+    expect(board).toHaveAttribute("aria-activedescendant", `board-card-${selected.id}`);
+  });
+
   it("navigates selection with arrows and opens the selected card with Enter", () => {
     const first = makeTask({
       lifecycle: "inbox",
@@ -310,5 +368,46 @@ describe("keyboard model", () => {
     fireEvent.keyDown(board, { key: "ArrowRight" });
     fireEvent.keyDown(board, { key: "Enter" });
     expect(onOpen).toHaveBeenCalledWith(focus.id);
+  });
+});
+
+describe("Today lens", () => {
+  it("does not file a do_now card into Waiting when that would hide it", () => {
+    const task = makeTask({
+      lifecycle: "active",
+      title: "Urgent, no due",
+      priorityBucket: "do_now",
+    });
+    renderBoard([task], TODAY_BOARD_LENS);
+    layoutColumns();
+    const updateTask = vi.spyOn(useStore.getState(), "updateTask");
+
+    dragCard(
+      screen.getByRole("option"),
+      { x: columnCenterX("active"), y: 60 },
+      { x: columnCenterX("waiting"), y: 60 },
+    );
+
+    expect(updateTask).not.toHaveBeenCalled();
+    expect(storeTask(task.id).lifecycle).toBe("active");
+    expect(
+      within(screen.getByRole("group", { name: "Focus column" })).getByText("Urgent, no due"),
+    ).toBeInTheDocument();
+  });
+
+  it("treats Alt+ArrowRight into Waiting as a no-op when the card would leave Today", () => {
+    const task = makeTask({
+      lifecycle: "active",
+      title: "Stay visible",
+      priorityBucket: "do_now",
+    });
+    renderBoard([task], TODAY_BOARD_LENS);
+    const board = screen.getByRole("listbox", { name: "Task board" });
+
+    fireEvent.keyDown(board, { key: "ArrowDown" });
+    fireEvent.keyDown(board, { key: "ArrowRight", altKey: true });
+
+    expect(storeTask(task.id).lifecycle).toBe("active");
+    expect(screen.getByText("Stay visible")).toBeInTheDocument();
   });
 });

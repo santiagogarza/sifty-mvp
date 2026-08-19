@@ -167,11 +167,16 @@ export function TaskBoard({
 
   // Selection follows into the card's new column after a move. Focus stays
   // on the listbox itself (aria-activedescendant), so the remount can never
-  // drop keyboard focus — only keep the card in view.
+  // drop keyboard focus — only keep the card in view. Keyed on position
+  // primitives, not the position object: unrelated store writes rebuild the
+  // partition (and the object) without moving the selection, and must not
+  // scroll a card the user deliberately scrolled away from back into view.
+  const selectedColumn = selectedPos?.column;
+  const selectedIndex = selectedPos?.index;
   React.useEffect(() => {
-    if (!selectedId || !selectedPos) return;
+    if (!selectedId || selectedColumn == null || selectedIndex == null) return;
     cardRefs.current.get(selectedId)?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [selectedId, selectedPos]);
+  }, [selectedId, selectedColumn, selectedIndex]);
 
   const selectFirstCard = () => {
     const startAt = focusLifecycle ? Math.max(0, visibleColumns.indexOf(focusLifecycle)) : 0;
@@ -217,7 +222,8 @@ export function TaskBoard({
   const moveSelectedCard = (direction: -1 | 1) => {
     if (!selectedId || !selectedPos) return;
     const target = adjacentColumn(visibleColumns, visibleColumns[selectedPos.column]!, direction);
-    if (target) setLifecycle(selectedId, target);
+    const drop = target ? resolveDrop(tasks, selectedId, target, { filter: lens.filter }) : null;
+    if (drop) setLifecycle(drop.taskId, drop.lifecycle);
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -256,7 +262,9 @@ export function TaskBoard({
   // never fight the pointer.
   const onDragEnd = (e: DragEndEvent) => {
     setActiveId(null);
-    const drop = resolveDrop(tasks, String(e.active.id), e.over?.id ?? null);
+    const drop = resolveDrop(tasks, String(e.active.id), e.over?.id ?? null, {
+      filter: lens.filter,
+    });
     if (drop) setLifecycle(drop.taskId, drop.lifecycle);
   };
 
