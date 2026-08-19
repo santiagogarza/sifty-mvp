@@ -125,7 +125,11 @@ export const TaskCard = React.forwardRef<HTMLDivElement, TaskCardProps>(function
             updateTask(task.id, { lifecycle: isDone ? "active" : "done" });
           }}
           // Without this the press would arm a drag on the card behind it.
+          // MouseSensor listens on mousedown and TouchSensor on touchstart,
+          // so those have to be stopped as well as pointerdown.
           onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
           aria-label={isDone ? "Mark as not done" : "Mark as done"}
           className={cn(
             "relative mt-px size-4 shrink-0 rounded-full border flex items-center justify-center",
