@@ -165,16 +165,12 @@ export function TaskBoard({
     return null;
   }, [selectedId, visibleTasks, visibleColumns]);
 
-  // Selection follows into the card's new column after a move; keep focus
-  // on the (remounted) element so the keyboard flow never drops.
+  // Selection follows into the card's new column after a move. Focus stays
+  // on the listbox itself (aria-activedescendant), so the remount can never
+  // drop keyboard focus — only keep the card in view.
   React.useEffect(() => {
     if (!selectedId || !selectedPos) return;
-    const el = cardRefs.current.get(selectedId);
-    if (!el) return;
-    if (document.activeElement !== el && boardRef.current?.contains(document.activeElement)) {
-      el.focus({ preventScroll: true });
-    }
-    el.scrollIntoView({ block: "nearest", inline: "nearest" });
+    cardRefs.current.get(selectedId)?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [selectedId, selectedPos]);
 
   const selectFirstCard = () => {
@@ -280,6 +276,7 @@ export function TaskBoard({
           role="listbox"
           aria-label="Task board"
           tabIndex={0}
+          aria-activedescendant={selectedId && selectedPos ? `board-card-${selectedId}` : undefined}
           onKeyDown={onKeyDown}
           className={cn(
             "flex gap-3 overflow-x-auto pb-10 snap-x snap-proximity focus:outline-none",

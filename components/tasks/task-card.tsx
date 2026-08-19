@@ -63,9 +63,16 @@ export const TaskCard = React.memo(function TaskCard({
       ref={setRefs}
       {...listeners}
       {...attributes}
+      // The board uses the aria-activedescendant pattern: the listbox keeps
+      // focus and points at this id, so cards are never tab stops and a
+      // remount (moving columns) can never drop keyboard focus.
+      id={`board-card-${task.id}`}
       role="option"
       aria-selected={selected}
-      tabIndex={-1}
+      // Not focusable (overrides the useDraggable default of 0): a click
+      // focuses the listbox ancestor instead, so a card that then moves
+      // columns (and unmounts) can never take keyboard focus down with it.
+      tabIndex={undefined}
       onPointerDownCapture={() => {
         wasDragged.current = false;
         onSelect(task.id);
@@ -141,6 +148,9 @@ export function TaskCardContent({
         <button
           type="button"
           onClick={onComplete}
+          // Completing sends the card to another column and unmounts this
+          // button; don't let the press move focus into it first.
+          onMouseDown={(e) => e.preventDefault()}
           aria-label={isDone ? "Mark as not done" : "Mark as done"}
           className={cn(
             // Visible circle is 16px; the ::after pseudo pads the hit target
