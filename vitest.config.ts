@@ -2,6 +2,9 @@ import path from "node:path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // The app tsconfig uses `jsx: "preserve"` (a Next.js requirement), which
+  // the test transformer would honor verbatim — transform TSX here instead.
+  oxc: { jsx: { runtime: "automatic" } },
   test: {
     // Default to node — most tests are server logic, jose / Buffer / Uint8Array
     // checks misbehave under jsdom because realm-bound globals don't match.
