@@ -162,7 +162,10 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-5">
+      <div
+        data-testid="detail-scroll"
+        className="min-h-0 flex-1 overflow-y-auto px-4 sm:px-5 py-5"
+      >
         <div className="flex items-start gap-3">
           <button
             type="button"
