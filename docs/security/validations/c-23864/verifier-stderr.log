@@ -1,0 +1,1 @@
+ASSERTION FAILED: next@15.1.4 is still in CVE-2026-23864 range >=15.1.0 <15.1.12 (expected patched >= 15.1.12 on the 15.1 line, or otherwise outside that range). 15.1.4 < 15.1.12.
