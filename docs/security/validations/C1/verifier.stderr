@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/tmp/security-review/validate_cve_2026_23869.py", line 39, in <module>
+    assert parse(next_ver) >= (15, 5, 15), (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: CVE-2026-23869: next@15.1.4 is in affected range >=13.0.0 <15.5.15; expected >=15.5.15
