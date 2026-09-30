@@ -78,6 +78,21 @@ export function TaskList({
     setSelectedIds((old) => (old.size === 0 ? old : new Set()));
   }, []);
 
+  // Escape clears the selection from anywhere on the page. Shift+click
+  // suppresses the row's mousedown focus (to block native text selection),
+  // so focus may sit outside the listbox — a window listener is the only
+  // reliable place. Skips events something else already handled (e.g. the
+  // detail sheet closing itself), and never closes or navigates the page.
+  const hasSelection = selectedIds.size > 0;
+  React.useEffect(() => {
+    if (!hasSelection) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !e.defaultPrevented) clearSelection();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [hasSelection, clearSelection]);
+
   const handleSelect = React.useCallback(
     (id: string, { shift }: { shift: boolean }) => {
       if (shift) {
