@@ -77,7 +77,7 @@ export const TaskRow = React.forwardRef<
     <div
       ref={ref}
       role="option"
-      aria-selected={selected || active}
+      aria-selected={!!selected}
       tabIndex={tabIndex}
       onMouseDown={(e) => {
         // Shift+click means "extend selection" — suppress the browser's
