@@ -56,6 +56,40 @@ export function TaskList({
     rowRefs.current[activeIndex]?.focus({ preventScroll: true });
   }, [activeIndex]);
 
+  /**
+   * Focus the row at `index`, clamped to the last row; with no rows, focus
+   * the container so keys still route here and Tab reaches the empty state.
+   */
+  const focusRowAt = (index: number) => {
+    if (tasks.length === 0) {
+      setActiveIndex(-1);
+      listRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    const i = Math.min(Math.max(index, 0), tasks.length - 1);
+    setActiveIndex(i);
+    const row = rowRefs.current[i];
+    row?.focus({ preventScroll: row ? isInViewport(row) : true });
+  };
+
+  // Id of the row holding DOM focus. Removing a focused node drops focus to
+  // <body> without a usable blur, so this is what tells us to recover.
+  const focusedRowId = React.useRef<string | null>(null);
+  const prevTasksRef = React.useRef(tasks);
+
+  // Layout effect so focus moves before the next keystroke can hit <body>.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs per tasks change only
+  React.useLayoutEffect(() => {
+    const prev = prevTasksRef.current;
+    prevTasksRef.current = tasks;
+    const id = focusedRowId.current;
+    if (prev === tasks || !id || tasks.some((t) => t.id === id)) return;
+    focusedRowId.current = null;
+    const active = document.activeElement;
+    const focusLost = !active || active === document.body || !active.isConnected;
+    if (focusLost) focusRowAt(prev.findIndex((t) => t.id === id));
+  }, [tasks]);
+
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (tasks.length === 0) return;
     if (e.key === "ArrowDown" || e.key === "j") {
@@ -88,22 +122,32 @@ export function TaskList({
     return out;
   }, [tasks, ghosts]);
 
-  if (rows.length === 0 && emptyState) {
-    return <>{emptyState}</>;
-  }
+  // The same element stays mounted when the list empties so focus parked on
+  // it survives; it just stops being a listbox and a tab stop.
+  const showEmpty = rows.length === 0 && emptyState != null;
 
   return (
     <div
       ref={listRef}
-      role="listbox"
-      tabIndex={0}
-      aria-label="Tasks"
+      role={showEmpty ? undefined : "listbox"}
+      tabIndex={showEmpty ? -1 : 0}
+      aria-label={showEmpty ? undefined : "Tasks"}
       onKeyDown={onKeyDown}
+      onFocus={(e) => {
+        const i = rowRefs.current.findIndex((r) => r?.contains(e.target));
+        focusedRowId.current = i >= 0 ? (tasks[i]?.id ?? null) : null;
+      }}
+      onBlur={(e) => {
+        if (e.relatedTarget && !e.currentTarget.contains(e.relatedTarget)) {
+          focusedRowId.current = null;
+        }
+      }}
       onPointerDown={(e) => {
         if (e.target === e.currentTarget) listRef.current?.focus();
       }}
       className="flex flex-col rounded-[var(--radius-lg)] focus:outline-none"
     >
+      {showEmpty ? emptyState : null}
       {rows.map((row, i) => {
         const divider =
           i < rows.length - 1 ? <div className="ml-9 h-px bg-[var(--border)] opacity-60" /> : null;
@@ -148,6 +192,11 @@ export function TaskList({
       })}
     </div>
   );
+}
+
+function isInViewport(el: HTMLElement): boolean {
+  const r = el.getBoundingClientRect();
+  return r.top >= 0 && r.bottom <= window.innerHeight;
 }
 
 interface CompletionGhost {
