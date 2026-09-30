@@ -1,8 +1,10 @@
 "use client";
 
+import { useKeySequence } from "@/components/app-shell/keyboard";
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
 import * as React from "react";
+import { snoozeTask } from "./snooze-picker";
 import { TaskRow } from "./task-row";
 
 /**
@@ -38,6 +40,7 @@ export function TaskList({
   const listRef = React.useRef<HTMLDivElement>(null);
   const rowRefs = React.useRef<(HTMLDivElement | null)[]>([]);
   const didInitialFocus = React.useRef(false);
+  const handleSequence = useKeySequence();
 
   const { ghosts, dismissGhost } = useCompletionGhosts(tasks);
 
@@ -58,6 +61,16 @@ export function TaskList({
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (tasks.length === 0) return;
+    const active = tasks[activeIndex];
+    if (
+      active &&
+      handleSequence(e, {
+        "s t": () => snoozeTask(active.id, "tomorrow"),
+        "s w": () => snoozeTask(active.id, "next_week"),
+      })
+    ) {
+      return;
+    }
     if (e.key === "ArrowDown" || e.key === "j") {
       e.preventDefault();
       setActiveIndex((i) => Math.min(tasks.length - 1, Math.max(0, i + 1)));

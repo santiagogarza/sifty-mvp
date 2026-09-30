@@ -9,6 +9,7 @@ import { DEFAULT_MODEL_ID, MODEL_OPTIONS } from "@/lib/ai/models";
 import { useStore } from "@/lib/store/store";
 import { resetLocalWorkspace } from "@/lib/store/sync";
 import { cn } from "@/lib/utils/cn";
+import { DEFAULT_SNOOZE_MORNING_HOUR, SNOOZE_MORNING_HOURS } from "@/lib/utils/snooze";
 import { Check, Cpu, CreditCard, LogOut, Monitor, Moon, Sun } from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
@@ -29,6 +30,9 @@ export function SettingsClient({ account }: { account: SettingsAccount }) {
   const hydrated = useStore((s) => s.hydrated);
   const activeModelId = hydrated ? preferredModelId : DEFAULT_MODEL_ID;
   const activeModel = MODEL_OPTIONS.find((m) => m.id === activeModelId) ?? MODEL_OPTIONS[0]!;
+  const snoozeMorningHour = useStore((s) => s.snoozeMorningHour);
+  const setSnoozeMorningHour = useStore((s) => s.setSnoozeMorningHour);
+  const activeMorningHour = hydrated ? snoozeMorningHour : DEFAULT_SNOOZE_MORNING_HOUR;
   const [signingOut, setSigningOut] = React.useState(false);
 
   const signOut = async () => {
@@ -121,6 +125,33 @@ export function SettingsClient({ account }: { account: SettingsAccount }) {
       </SectionCard>
 
       <SectionCard
+        title="Snooze"
+        description="Tomorrow and Next week snooze a task until this hour, in your local time."
+      >
+        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 max-w-2xl">
+          {SNOOZE_MORNING_HOURS.map((hour) => {
+            const active = hour === activeMorningHour;
+            return (
+              <button
+                key={hour}
+                type="button"
+                onClick={() => setSnoozeMorningHour(hour)}
+                aria-pressed={active}
+                className={cn(
+                  "rounded-[var(--radius-md)] border px-2 py-2 text-[13px] text-[var(--fg)] transition-colors",
+                  active
+                    ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+                    : "border-[var(--border)] hover:bg-[var(--surface-hover)]",
+                )}
+              >
+                {formatHour(hour)}
+              </button>
+            );
+          })}
+        </div>
+      </SectionCard>
+
+      <SectionCard
         title="AI model"
         description="Triage runs through the AI Gateway. Pick a model that matches your trade-off between speed and depth. Edits you make are protected from being overwritten."
       >
@@ -192,6 +223,10 @@ export function SettingsClient({ account }: { account: SettingsAccount }) {
       </SectionCard>
     </PageShell>
   );
+}
+
+function formatHour(hour: number): string {
+  return new Date(2000, 0, 1, hour).toLocaleTimeString(undefined, { hour: "numeric" });
 }
 
 function accountDescription(account: SettingsAccount): string {
