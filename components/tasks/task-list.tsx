@@ -72,9 +72,13 @@ export function TaskList({
     row?.focus({ preventScroll: row ? isInViewport(row) : true });
   };
 
-  // Id of the row holding DOM focus. Removing a focused node drops focus to
-  // <body> without a usable blur, so this is what tells us to recover.
+  // Last row to hold focus, kept while focus is elsewhere (e.g. the detail
+  // sheet). Removing a focused node drops focus to <body> without a usable
+  // blur, so this is what tells us to recover.
   const focusedRowId = React.useRef<string | null>(null);
+  // Neighbor to focus when focus next returns to the container, for rows that
+  // left while focus was outside the list.
+  const pendingFocusIndex = React.useRef<number | null>(null);
   const prevTasksRef = React.useRef(tasks);
 
   // Layout effect so focus moves before the next keystroke can hit <body>.
@@ -85,9 +89,10 @@ export function TaskList({
     const id = focusedRowId.current;
     if (prev === tasks || !id || tasks.some((t) => t.id === id)) return;
     focusedRowId.current = null;
+    const index = prev.findIndex((t) => t.id === id);
     const active = document.activeElement;
-    const focusLost = !active || active === document.body || !active.isConnected;
-    if (focusLost) focusRowAt(prev.findIndex((t) => t.id === id));
+    if (!active || active === document.body || !active.isConnected) focusRowAt(index);
+    else pendingFocusIndex.current = index;
   }, [tasks]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -134,13 +139,14 @@ export function TaskList({
       aria-label={showEmpty ? undefined : "Tasks"}
       onKeyDown={onKeyDown}
       onFocus={(e) => {
+        const pending = pendingFocusIndex.current;
+        pendingFocusIndex.current = null;
+        if (e.target === e.currentTarget && pending !== null) {
+          focusRowAt(pending);
+          return;
+        }
         const i = rowRefs.current.findIndex((r) => r?.contains(e.target));
         focusedRowId.current = i >= 0 ? (tasks[i]?.id ?? null) : null;
-      }}
-      onBlur={(e) => {
-        if (e.relatedTarget && !e.currentTarget.contains(e.relatedTarget)) {
-          focusedRowId.current = null;
-        }
       }}
       onPointerDown={(e) => {
         if (e.target === e.currentTarget) listRef.current?.focus();

@@ -191,7 +191,7 @@ describe("TaskList focus recovery", () => {
     expect(row("Task 3")).toHaveFocus();
   });
 
-  it("does not pull focus back when the user has moved focus elsewhere", async () => {
+  it("does not pull focus back while focus is elsewhere, then resumes on the neighbor", async () => {
     seed(2);
     const user = userEvent.setup();
     render(
@@ -206,7 +206,13 @@ describe("TaskList focus recovery", () => {
     await user.click(input);
 
     setLifecycle("t1", "done");
-
     expect(input).toHaveFocus();
+
+    // The detail sheet hands focus back to the container on close when its
+    // opener row is gone; the list then picks the neighbor.
+    act(() => screen.getByRole("listbox").focus());
+    expect(row("Task 2")).toHaveFocus();
+    await user.keyboard("k");
+    expect(row("Task 2")).toHaveFocus();
   });
 });
