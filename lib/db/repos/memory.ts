@@ -200,6 +200,7 @@ export function createMemoryRepos(): MemoryReposHandle {
         priorityBucket: "unset",
         effort: "small",
         due: null,
+        snoozedUntil: null,
         delegationCandidate: "unsure",
         assigneeName: null,
         confidence: 0,

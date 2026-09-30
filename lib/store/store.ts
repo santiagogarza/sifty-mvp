@@ -14,6 +14,7 @@ import {
   type TaskEditableField,
 } from "@/lib/domain/types";
 import { id } from "@/lib/utils/ids";
+import { DEFAULT_SNOOZE_MORNING_HOUR, normalizeMorningHour } from "@/lib/utils/snooze";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
@@ -62,9 +63,12 @@ interface SiftyState {
   labels: Label[];
   memories: Memory[];
   preferredModelId: string;
+  /** Local hour that snooze quick actions resolve to. */
+  snoozeMorningHour: number;
 
   setHydrated: (v: boolean) => void;
   setPreferredModelId: (modelId: string) => void;
+  setSnoozeMorningHour: (hour: number) => void;
 
   createTask: (input: { sourceText: string; sourceContext?: string | null }) => Task;
   updateTask: (
@@ -126,7 +130,7 @@ interface SiftyState {
   ensureLabel: (name: string) => Label;
 }
 
-const VERSION = 3;
+const VERSION = 4;
 
 export const useStore = create<SiftyState>()(
   persist(
@@ -142,9 +146,11 @@ export const useStore = create<SiftyState>()(
         labels: [],
         memories: [],
         preferredModelId: DEFAULT_MODEL_ID,
+        snoozeMorningHour: DEFAULT_SNOOZE_MORNING_HOUR,
 
         setHydrated: (v) => set({ hydrated: v }),
         setPreferredModelId: (modelId) => set({ preferredModelId: modelId }),
+        setSnoozeMorningHour: (hour) => set({ snoozeMorningHour: normalizeMorningHour(hour) }),
 
         createTask: ({ sourceText, sourceContext }) => {
           const now = new Date().toISOString();
@@ -168,6 +174,7 @@ export const useStore = create<SiftyState>()(
             priorityBucket: "unset",
             effort: "small",
             due: null,
+            snoozedUntil: null,
             delegationCandidate: "unsure",
             assigneeName: null,
             confidence: 0,
@@ -400,6 +407,7 @@ export const useStore = create<SiftyState>()(
         labels: s.labels,
         memories: s.memories,
         preferredModelId: s.preferredModelId,
+        snoozeMorningHour: s.snoozeMorningHour,
       }),
       migrate: (persisted, version) => {
         const state = persisted as Partial<SiftyState>;
@@ -408,6 +416,9 @@ export const useStore = create<SiftyState>()(
         }
         if (version < 3 && state.tasks) {
           state.tasks = state.tasks.map((t) => ({ ...t, assigneeName: t.assigneeName ?? null }));
+        }
+        if (version < 4 && state.tasks) {
+          state.tasks = state.tasks.map((t) => ({ ...t, snoozedUntil: t.snoozedUntil ?? null }));
         }
         return state as SiftyState;
       },

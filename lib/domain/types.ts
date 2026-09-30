@@ -104,6 +104,9 @@ export interface Task {
   /** ISO date or null. Day-precision; Sifty doesn't track times in MVP. */
   due: ISODate | null;
 
+  /** Hidden from views until this instant; full timestamp, unlike `due`. */
+  snoozedUntil: ISODate | null;
+
   delegationCandidate: DelegationCandidate;
   /** User-assigned person; independent of AI delegation recommendation. */
   assigneeName: string | null;
