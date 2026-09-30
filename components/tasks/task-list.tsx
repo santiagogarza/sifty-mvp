@@ -1,7 +1,10 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+import { statusLabel } from "@/lib/domain/status";
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
+import { rangeSelection } from "@/lib/utils/selection";
 import * as React from "react";
 import { TaskRow } from "./task-row";
 
@@ -10,6 +13,12 @@ import { TaskRow } from "./task-row";
  * shortcuts work from the page without tabbing into a row first. Scoped to
  * the surrounding container so multiple lists can coexist without fighting
  * over the active row.
+ *
+ * Multi-selection (SIF-22): plain click selects a single row (the anchor);
+ * Shift+click selects the contiguous range from the anchor through the
+ * clicked row in visible order. With 2+ rows selected a bulk bar offers
+ * "Move to Someday". Escape clears. Selection lives here — per view — and
+ * is pruned whenever tasks leave the visible list, so no stale ids linger.
  *
  * Completion ghosts: checking a task off filters it out of most views
  * instantly, which reads as deletion. A just-completed task therefore stays
@@ -34,12 +43,60 @@ export function TaskList({
   autoFocus?: boolean;
 }) {
   const labels = useStore((s) => s.labels);
+  const moveTasksToLifecycle = useStore((s) => s.moveTasksToLifecycle);
   const [activeIndex, setActiveIndex] = React.useState<number>(-1);
   const listRef = React.useRef<HTMLDivElement>(null);
   const rowRefs = React.useRef<(HTMLDivElement | null)[]>([]);
   const didInitialFocus = React.useRef(false);
 
+  const [selectedIds, setSelectedIds] = React.useState<ReadonlySet<string>>(new Set());
+  // Anchor = last plain-clicked row. Only read at click time, so a ref
+  // avoids re-rendering the list on every anchor change.
+  const anchorRef = React.useRef<string | null>(null);
+
   const { ghosts, dismissGhost } = useCompletionGhosts(tasks);
+
+  const visibleIds = React.useMemo(() => tasks.map((t) => t.id), [tasks]);
+
+  // Prune selection when tasks leave the view (completed, moved, filtered):
+  // ids must never outlive their row or a later bulk move would touch
+  // tasks the user can no longer see.
+  React.useEffect(() => {
+    if (anchorRef.current && !visibleIds.includes(anchorRef.current)) {
+      anchorRef.current = null;
+    }
+    setSelectedIds((old) => {
+      if (old.size === 0) return old;
+      const visible = new Set(visibleIds);
+      const next = new Set([...old].filter((id) => visible.has(id)));
+      return next.size === old.size ? old : next;
+    });
+  }, [visibleIds]);
+
+  const clearSelection = React.useCallback(() => {
+    anchorRef.current = null;
+    setSelectedIds((old) => (old.size === 0 ? old : new Set()));
+  }, []);
+
+  const handleSelect = React.useCallback(
+    (id: string, { shift }: { shift: boolean }) => {
+      if (shift) {
+        setSelectedIds(new Set(rangeSelection(visibleIds, anchorRef.current, id)));
+        // Shift+click with no anchor selects just the row; it also becomes
+        // the anchor so the next Shift+click ranges from it.
+        anchorRef.current ??= id;
+      } else {
+        anchorRef.current = id;
+        setSelectedIds(new Set([id]));
+      }
+    },
+    [visibleIds],
+  );
+
+  const moveSelectedToSomeday = () => {
+    moveTasksToLifecycle([...selectedIds], "someday");
+    clearSelection();
+  };
 
   React.useEffect(() => {
     if (activeIndex >= tasks.length) setActiveIndex(tasks.length - 1);
@@ -68,6 +125,11 @@ export function TaskList({
       e.preventDefault();
       const t = tasks[activeIndex];
       if (t) onOpen(t.id);
+    } else if (e.key === "Escape" && selectedIds.size > 0) {
+      // Only claim Escape while a selection exists, so it keeps doing
+      // whatever it does elsewhere (e.g. closing the detail sheet).
+      e.preventDefault();
+      clearSelection();
     }
   };
 
@@ -93,59 +155,113 @@ export function TaskList({
   }
 
   return (
-    <div
-      ref={listRef}
-      role="listbox"
-      tabIndex={0}
-      aria-label="Tasks"
-      onKeyDown={onKeyDown}
-      onPointerDown={(e) => {
-        if (e.target === e.currentTarget) listRef.current?.focus();
-      }}
-      className="flex flex-col rounded-[var(--radius-lg)] focus:outline-none"
-    >
-      {rows.map((row, i) => {
-        const divider =
-          i < rows.length - 1 ? <div className="ml-9 h-px bg-[var(--border)] opacity-60" /> : null;
-        if (row.kind === "ghost") {
-          return (
-            <div
-              key={`ghost-${row.task.id}`}
-              className="ghost-collapse"
-              onAnimationEnd={(e) => {
-                // Unmount exactly when the collapse finishes, so the CSS
-                // timing is the single source of truth.
-                if (e.animationName === "sifty-ghost-collapse") dismissGhost(row.task.id);
-              }}
-            >
-              <div>
-                <TaskRow
-                  task={row.task}
-                  labels={labels}
-                  onOpen={onOpen}
-                  uncompleteTo={row.restoreTo}
-                />
-                {divider}
+    <>
+      <div
+        ref={listRef}
+        role="listbox"
+        aria-multiselectable="true"
+        tabIndex={0}
+        aria-label="Tasks"
+        onKeyDown={onKeyDown}
+        onPointerDown={(e) => {
+          if (e.target === e.currentTarget) listRef.current?.focus();
+        }}
+        className="flex flex-col rounded-[var(--radius-lg)] focus:outline-none"
+      >
+        {rows.map((row, i) => {
+          const divider =
+            i < rows.length - 1 ? (
+              <div className="ml-9 h-px bg-[var(--border)] opacity-60" />
+            ) : null;
+          if (row.kind === "ghost") {
+            return (
+              <div
+                key={`ghost-${row.task.id}`}
+                className="ghost-collapse"
+                onAnimationEnd={(e) => {
+                  // Unmount exactly when the collapse finishes, so the CSS
+                  // timing is the single source of truth.
+                  if (e.animationName === "sifty-ghost-collapse") dismissGhost(row.task.id);
+                }}
+              >
+                <div>
+                  <TaskRow
+                    task={row.task}
+                    labels={labels}
+                    onOpen={onOpen}
+                    uncompleteTo={row.restoreTo}
+                  />
+                  {divider}
+                </div>
               </div>
+            );
+          }
+          return (
+            <div key={row.task.id} className="animate-fade-in">
+              <TaskRow
+                ref={(el) => {
+                  rowRefs.current[row.navIndex] = el;
+                }}
+                task={row.task}
+                labels={labels}
+                active={row.navIndex === activeIndex}
+                tabIndex={row.navIndex === activeIndex ? 0 : -1}
+                onOpen={onOpen}
+                selected={selectedIds.has(row.task.id)}
+                onSelect={handleSelect}
+              />
+              {divider}
             </div>
           );
-        }
-        return (
-          <div key={row.task.id} className="animate-fade-in">
-            <TaskRow
-              ref={(el) => {
-                rowRefs.current[row.navIndex] = el;
-              }}
-              task={row.task}
-              labels={labels}
-              active={row.navIndex === activeIndex}
-              tabIndex={row.navIndex === activeIndex ? 0 : -1}
-              onOpen={onOpen}
-            />
-            {divider}
-          </div>
-        );
-      })}
+        })}
+      </div>
+      {selectedIds.size >= 2 ? (
+        <BulkBar
+          count={selectedIds.size}
+          onMoveToSomeday={moveSelectedToSomeday}
+          onClear={clearSelection}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * Calm bulk-action bar: floats bottom-center only while 2+ rows are
+ * selected, one primary action, everything on the existing surface scale.
+ */
+function BulkBar({
+  count,
+  onMoveToSomeday,
+  onClear,
+}: {
+  count: number;
+  onMoveToSomeday: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div
+      role="toolbar"
+      aria-label="Selection actions"
+      className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 animate-fade-in"
+    >
+      <div
+        className={[
+          "flex items-center gap-2 rounded-[var(--radius-lg)]",
+          "border border-[var(--border)] bg-[var(--surface)] py-1.5 pl-4 pr-1.5",
+          "shadow-[0_8px_24px_oklch(0%_0_0/0.12),0_1px_2px_oklch(0%_0_0/0.08)]",
+        ].join(" ")}
+      >
+        <span aria-live="polite" className="text-[13px] tabular-nums text-[var(--fg-muted)] mr-1">
+          {count} selected
+        </span>
+        <Button size="sm" variant="ghost" onClick={onClear}>
+          Clear
+        </Button>
+        <Button size="sm" variant="primary" onClick={onMoveToSomeday}>
+          Move to {statusLabel("someday")}
+        </Button>
+      </div>
     </div>
   );
 }
