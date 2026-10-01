@@ -269,9 +269,19 @@ pnpm test:e2e
 | `/` | Open command palette |
 | `⌘K` / `^K` | Open command palette |
 | `⌘↵` | Submit capture |
-| `↑/↓` (`j`/`k`) | Navigate task list |
+| `↑/↓` (`j`/`k`) | Navigate task list, or within a board column |
+| `←/→` | Board: move selection between columns |
+| `⌥←/⌥→` (`Alt+←/→`) | Board: move the selected card one column |
 | `Enter` | Open the highlighted task |
 | `Esc` | Close any overlay |
+
+Every task view has a List/Board toggle in the page header. Board mode
+renders the pipeline statuses as kanban columns — drag a card between
+columns to change its status (click still opens the task; on touch,
+long-press to pick a card up and swipe to scroll). Dropped stays behind a
+trailing "Show dropped" control, and the Today board keeps the Today lens
+over its Inbox/Focus/Waiting on columns. The preference is remembered per
+device.
 
 ## License
 
