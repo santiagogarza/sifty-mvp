@@ -7,8 +7,8 @@ import type { Lifecycle } from "./types";
  * The stored enum (`inbox | active | waiting | someday | done | dropped`)
  * is a wire/DB contract and never changes shape. Everything user-facing —
  * the sidebar, the Status picker in the task sheet, the filing strip, and
- * a future Kanban board — reads labels, descriptions, order, and routes
- * from this map so the vocabulary can never drift between surfaces.
+ * the board — reads labels, descriptions, order, and routes from this map
+ * so the vocabulary can never drift between surfaces.
  *
  * Notable mapping: the stored value `active` is presented as "Focus", the
  * same word as the sidebar view, so moving a task to Focus visibly lands
@@ -19,7 +19,7 @@ export interface StatusMeta {
   label: string;
   /** One-line meaning, shown in the Status picker. */
   description: string;
-  /** Pipeline order: sidebar order and future Kanban column order. */
+  /** Pipeline order: sidebar order and board column order. */
   order: number;
   /** View route for this status, or null when it has no page (dropped). */
   href: string | null;
@@ -64,7 +64,7 @@ export const STATUS_META: Record<Lifecycle, StatusMeta> = {
   },
 };
 
-/** All statuses in pipeline order — the sidebar and future Kanban columns. */
+/** All statuses in pipeline order — the Status picker and the board columns. */
 export const STATUSES_IN_ORDER: readonly Lifecycle[] = (
   Object.keys(STATUS_META) as Lifecycle[]
 ).sort((a, b) => STATUS_META[a].order - STATUS_META[b].order);

@@ -62,9 +62,12 @@ interface SiftyState {
   labels: Label[];
   memories: Memory[];
   preferredModelId: string;
+  /** The list page the board's "List" toggle returns to. Not persisted. */
+  lastListHref: string;
 
   setHydrated: (v: boolean) => void;
   setPreferredModelId: (modelId: string) => void;
+  setLastListHref: (href: string) => void;
 
   createTask: (input: { sourceText: string; sourceContext?: string | null }) => Task;
   updateTask: (
@@ -142,9 +145,11 @@ export const useStore = create<SiftyState>()(
         labels: [],
         memories: [],
         preferredModelId: DEFAULT_MODEL_ID,
+        lastListHref: "/today",
 
         setHydrated: (v) => set({ hydrated: v }),
         setPreferredModelId: (modelId) => set({ preferredModelId: modelId }),
+        setLastListHref: (href) => set({ lastListHref: href }),
 
         createTask: ({ sourceText, sourceContext }) => {
           const now = new Date().toISOString();
