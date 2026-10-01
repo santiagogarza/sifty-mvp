@@ -271,6 +271,7 @@ pnpm test:e2e
 | `⌘↵` | Submit capture |
 | `↑/↓` (`j`/`k`) | Navigate task list |
 | `Enter` | Open the highlighted task |
+| `Alt+←` / `Alt+→` | Move selected task one column left/right (Board view) |
 | `Esc` | Close any overlay |
 
 ## License
