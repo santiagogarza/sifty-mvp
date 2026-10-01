@@ -1,5 +1,5 @@
 {
-  "install": "corepack enable && pnpm install && pnpm test:e2e:install",
+  "install": "corepack enable\npnpm install",
   "terminals": [
     {
       "name": "dev",
