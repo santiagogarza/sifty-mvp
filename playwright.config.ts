@@ -6,16 +6,18 @@ const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
 // Cloud egress resets TLS to storage.googleapis.com, so Playwright cannot
 // download Chrome for Testing here. Use the image's Google Chrome when it is
 // on PATH. CI has no such binary and still uses the Chromium it installs.
-function chromeChannel(): "chrome" | undefined {
+function systemChrome(): string | undefined {
   try {
-    execFileSync("google-chrome", ["--version"], { stdio: "ignore" });
-    return "chrome";
+    return (
+      execFileSync("which", ["google-chrome"], { encoding: "utf8" }).trim() ||
+      undefined
+    );
   } catch {
     return undefined;
   }
 }
 
-const channel = chromeChannel();
+const executablePath = systemChrome();
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -34,7 +36,7 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
-        ...(channel ? { channel } : {}),
+        ...(executablePath ? { launchOptions: { executablePath } } : {}),
       },
     },
   ],
