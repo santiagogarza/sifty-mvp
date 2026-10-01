@@ -66,6 +66,29 @@ Sifty optimises three things, in this order:
    confidence are visible in the detail sheet so you can disagree on
    evidence, not vibes.
 
+## Board view
+
+Every task view toggles between **List** and **Board**. The choice is one
+global preference, persisted with the rest of the store.
+
+The board is a view over the same tasks and the same `lifecycle` field — no
+new statuses, no migration. Columns are `STATUSES_IN_ORDER`, and their labels
+and icons come from `STATUS_META` / `STATUS_ICONS`, the same source the
+sidebar and the Status picker read, so the three surfaces cannot drift.
+Dropping a card calls `updateTask({ lifecycle })` — the Status picker's own
+mutation — so `completedAt`, `editedFields`, and background sync all behave
+identically to editing status in the detail sheet.
+
+Two consequences worth knowing:
+
+- Ordering inside a column is the corresponding list's ordering. Tasks carry
+  no hand-placed position, so dropping a card elsewhere in the column it
+  already occupies does nothing.
+- Today is a lens, not a status. Its board keeps the lens and shows only the
+  statuses `isTodayTask` admits (Inbox, Focus, Waiting on); every other route
+  shows the full pipeline. Dropped has no route of its own and stays behind a
+  "Show dropped" disclosure, matching the Done page.
+
 ## Production architecture
 
 ```
@@ -86,7 +109,8 @@ middleware.ts                  # gates /today, /focus, /inbox, /waiting,
 
 components/
   app-shell/                   # frame, sidebar, top bar, palette, bottom nav
-  tasks/                       # capture, list, row, detail sheet, ai status
+  tasks/                       # capture, list, row, board, card, detail
+                               # sheet, ai status, view-mode toggle
   auth/auth-form.tsx           # sign-in / sign-up shared form
   billing/billing-panel.tsx    # checkout + portal + tier display
   ui/                          # primitives
@@ -269,7 +293,9 @@ pnpm test:e2e
 | `/` | Open command palette |
 | `⌘K` / `^K` | Open command palette |
 | `⌘↵` | Submit capture |
-| `↑/↓` (`j`/`k`) | Navigate task list |
+| `↑/↓` (`j`/`k`) | Navigate task list, or a board column |
+| `←/→` | Move between board columns |
+| `⌥←/→` (`Alt`) | Move the selected card one column, changing its status |
 | `Enter` | Open the highlighted task |
 | `Esc` | Close any overlay |
 

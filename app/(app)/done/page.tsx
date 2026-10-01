@@ -28,17 +28,19 @@ export default function DonePage() {
 
 /**
  * Dropped tasks live behind a disclosure at the end of Done — kept for
- * reference, never given a nav item of their own. Renders nothing when
- * there is nothing dropped.
+ * reference, never given a nav item of their own. Hidden in board mode:
+ * the board already offers the same disclosure as a column. Renders
+ * nothing when there is nothing dropped.
  */
 function DroppedSection() {
   const { openDetail } = useFrame();
   const tasks = useStore((s) => s.tasks);
   const hydrated = useStore((s) => s.hydrated);
+  const viewMode = useStore((s) => s.viewMode);
   const [expanded, setExpanded] = React.useState(false);
 
   const dropped = React.useMemo(() => selectDroppedTasks(tasks), [tasks]);
-  if (!hydrated || dropped.length === 0) return null;
+  if (!hydrated || viewMode === "board" || dropped.length === 0) return null;
 
   return (
     <section className="mt-8 mb-10 pt-4 border-t border-[var(--border)]">
