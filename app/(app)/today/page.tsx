@@ -2,6 +2,7 @@
 
 import { PageShell } from "@/components/app-shell/page-shell";
 import { TaskView } from "@/components/tasks/task-view";
+import { TODAY_BOARD_COLUMNS } from "@/lib/store/board";
 import { selectTodayTasks } from "@/lib/store/selectors";
 import * as React from "react";
 
@@ -41,6 +42,9 @@ export default function TodayPage() {
         selector={selectTodayTasks}
         emptyTitle="Nothing pressing today."
         emptyDescription="When something needs your attention, it'll show up here. Until then, enjoy the quiet."
+        boardColumns={TODAY_BOARD_COLUMNS}
+        boardTasks={selectTodayTasks}
+        allowDropped={false}
       />
     </PageShell>
   );
