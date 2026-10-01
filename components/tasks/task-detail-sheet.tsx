@@ -74,10 +74,29 @@ export function TaskDetailSheet({
 }) {
   const task = useStore((s) => s.tasks.find((t) => t.id === taskId));
   const open = !!taskId && !!task;
+  const opener = React.useRef<{ el: Element; container: HTMLElement | null } | null>(null);
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
-      <SheetContent aria-describedby={undefined}>
+      <SheetContent
+        aria-describedby={undefined}
+        onOpenAutoFocus={() => {
+          const el = document.activeElement;
+          opener.current = el
+            ? { el, container: el.parentElement?.closest<HTMLElement>("[tabindex]") ?? null }
+            : null;
+        }}
+        onCloseAutoFocus={(e) => {
+          // Completing or re-filing the task can remove its row while the
+          // sheet is open; Radix would then restore focus to a detached node,
+          // i.e. <body>. Hand it to the row's list, which picks a neighbor.
+          const from = opener.current;
+          opener.current = null;
+          if (!from || from.el.isConnected || !from.container?.isConnected) return;
+          e.preventDefault();
+          from.container.focus({ preventScroll: true });
+        }}
+      >
         {task ? (
           <>
             <VisuallyHidden>
