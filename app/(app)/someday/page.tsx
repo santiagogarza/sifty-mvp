@@ -14,6 +14,7 @@ export default function SomedayPage() {
         title="Someday"
         description="A quiet shelf for ideas that aren't urgent. Revisit when the season is right."
         selector={select}
+        emphasizedColumn="someday"
         emptyTitle="Empty shelf."
       />
     </PageShell>
