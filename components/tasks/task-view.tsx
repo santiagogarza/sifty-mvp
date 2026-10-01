@@ -4,6 +4,7 @@ import { useFrame } from "@/components/app-shell/app-frame";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Task } from "@/lib/domain/types";
+import { useSnoozeWakeTick } from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
 import * as React from "react";
 import { TaskEmptyState } from "./empty-state";
@@ -35,7 +36,9 @@ export function TaskView({
   const tasks = useStore((s) => s.tasks);
   const hydrated = useStore((s) => s.hydrated);
 
-  const visible = React.useMemo(() => selector(tasks), [tasks, selector]);
+  const wake = useSnoozeWakeTick(tasks);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: wake forces a recompute when a snooze ends.
+  const visible = React.useMemo(() => selector(tasks), [tasks, selector, wake]);
 
   return (
     <>

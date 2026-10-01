@@ -262,6 +262,7 @@ function taskPatchBody(task: Task): Record<string, unknown> {
     priorityBucket: task.priorityBucket,
     effort: task.effort,
     due: task.due,
+    snoozedUntil: task.snoozedUntil,
     delegationCandidate: task.delegationCandidate,
     assigneeName: normalizeAssigneeName(clipOrNull(task.assigneeName, TASK_LIMITS.assigneeName)),
     confidence: task.confidence,

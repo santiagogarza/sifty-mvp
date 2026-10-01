@@ -48,3 +48,46 @@ export function GlobalKeyboard({
 
   return null;
 }
+
+/** How long a sequence prefix (the `s` in `s t`) stays armed. */
+const SEQUENCE_TIMEOUT_MS = 1000;
+
+export type KeySequenceMap = Record<string, () => void>;
+
+/**
+ * Multi-key shortcuts like `s t`. Keys in a sequence are space-separated.
+ * Returns a keydown handler that reports whether it consumed the key, so
+ * callers can fall through to their single-key shortcuts.
+ */
+export function useKeySequence(): (
+  e: { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; preventDefault(): void },
+  sequences: KeySequenceMap,
+) => boolean {
+  const pending = React.useRef<{ keys: string; at: number } | null>(null);
+
+  return React.useCallback((e, sequences) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) {
+      pending.current = null;
+      return false;
+    }
+    const armed =
+      pending.current && Date.now() - pending.current.at < SEQUENCE_TIMEOUT_MS
+        ? pending.current.keys
+        : null;
+    const candidate = armed ? `${armed} ${e.key}` : e.key;
+    pending.current = null;
+
+    const exact = sequences[candidate];
+    if (exact && candidate.includes(" ")) {
+      e.preventDefault();
+      exact();
+      return true;
+    }
+    if (Object.keys(sequences).some((seq) => seq.startsWith(`${candidate} `))) {
+      e.preventDefault();
+      pending.current = { keys: candidate, at: Date.now() };
+      return true;
+    }
+    return false;
+  }, []);
+}

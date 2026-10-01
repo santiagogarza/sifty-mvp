@@ -45,6 +45,7 @@ export const TaskPatchSchema = z
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .nullable()
       .optional(),
+    snoozedUntil: z.string().datetime({ offset: true }).nullable().optional(),
     delegationCandidate: z.enum(DELEGATION_CANDIDATE).optional(),
     assigneeName: z
       .string()

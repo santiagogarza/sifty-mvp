@@ -130,6 +130,7 @@ describe("task sync contract", () => {
       priorityBucket: "schedule",
       effort: "small",
       due: null,
+      snoozedUntil: "2026-10-05T13:00:00.000Z",
       delegationCandidate: "self",
       assigneeName: null,
       confidence: 0.7,
@@ -154,6 +155,7 @@ describe("task sync contract", () => {
     expect(persisted?.title).toBe("Edited title");
     expect(persisted?.sourceContext).toBe("Answer: yes, by Friday");
     expect(persisted?.editedFields).toEqual(["title"]);
+    expect(persisted?.snoozedUntil).toBe("2026-10-05T13:00:00.000Z");
   });
 
   it("memory create accepts the client id and full shape", async () => {
