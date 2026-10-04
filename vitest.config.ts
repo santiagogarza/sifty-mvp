@@ -2,6 +2,12 @@ import path from "node:path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // Vitest's SSR parse rejects JSX unless Oxc rewrites it first.
+  oxc: {
+    jsx: {
+      runtime: "automatic",
+    },
+  },
   test: {
     // Default to node — most tests are server logic, jose / Buffer / Uint8Array
     // checks misbehave under jsdom because realm-bound globals don't match.

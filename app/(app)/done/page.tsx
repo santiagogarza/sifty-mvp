@@ -4,6 +4,7 @@ import { useFrame } from "@/components/app-shell/app-frame";
 import { PageShell } from "@/components/app-shell/page-shell";
 import { TaskList } from "@/components/tasks/task-list";
 import { TaskView } from "@/components/tasks/task-view";
+import { useRouteViewMode } from "@/components/tasks/use-view-mode";
 import { statusLabel } from "@/lib/domain/status";
 import { selectDoneTasks, selectDroppedTasks } from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
@@ -12,8 +13,10 @@ import { ChevronRight } from "lucide-react";
 import * as React from "react";
 
 export default function DonePage() {
+  const [mode] = useRouteViewMode();
+  const board = mode === "board";
   return (
-    <PageShell title={statusLabel("done")}>
+    <PageShell title={statusLabel("done")} wide={board}>
       <TaskView
         title="Done"
         description="Finished work, newest first. Uncheck anything to send it back to Focus."
@@ -21,7 +24,7 @@ export default function DonePage() {
         emptyTitle="Nothing finished yet."
         emptyDescription="Completed tasks land here, so checking one off never loses it."
       />
-      <DroppedSection />
+      {board ? null : <DroppedSection />}
     </PageShell>
   );
 }
