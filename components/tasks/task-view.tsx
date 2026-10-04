@@ -85,7 +85,10 @@ export function TaskView({
             lens={boardScope === "today" ? "today" : undefined}
             onOpen={openDetail}
             onCapture={(lifecycle) =>
-              openCapture(lifecycle === "inbox" ? undefined : { fileTo: lifecycle })
+              openCapture({
+                fileTo: lifecycle === "inbox" ? undefined : lifecycle,
+                dueToday: boardScope === "today",
+              })
             }
           />
         </div>

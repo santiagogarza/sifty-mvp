@@ -37,6 +37,7 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
   const search = useSearchParams();
   const [captureOpen, setCaptureOpen] = React.useState(false);
   const [captureFileTo, setCaptureFileTo] = React.useState<Lifecycle | null>(null);
+  const [captureDueToday, setCaptureDueToday] = React.useState(false);
   const [commandOpen, setCommandOpen] = React.useState(false);
 
   // Pulls the server snapshot into the store on mount and reconciles; a
@@ -45,8 +46,9 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
 
   const detailTaskId = search.get("task");
 
-  const openCapture = React.useCallback((opts?: { fileTo?: Lifecycle }) => {
+  const openCapture = React.useCallback((opts?: CaptureOptions) => {
     setCaptureFileTo(opts?.fileTo ?? null);
+    setCaptureDueToday(opts?.dueToday ?? false);
     setCaptureOpen(true);
   }, []);
   const openCommand = React.useCallback(() => setCommandOpen(true), []);
@@ -86,9 +88,13 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
       <CaptureDialog
         open={captureOpen}
         fileTo={captureFileTo}
+        dueToday={captureDueToday}
         onOpenChange={(next) => {
           setCaptureOpen(next);
-          if (!next) setCaptureFileTo(null);
+          if (!next) {
+            setCaptureFileTo(null);
+            setCaptureDueToday(false);
+          }
         }}
       />
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} onCapture={openCapture} />
@@ -106,9 +112,15 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
   );
 }
 
+interface CaptureOptions {
+  fileTo?: Lifecycle;
+  /** Captured from the Today board: due today so the Today lens keeps it. */
+  dueToday?: boolean;
+}
+
 interface FrameApi {
   openDetail: (id: string) => void;
-  openCapture: (opts?: { fileTo?: Lifecycle }) => void;
+  openCapture: (opts?: CaptureOptions) => void;
   openCommand: () => void;
 }
 

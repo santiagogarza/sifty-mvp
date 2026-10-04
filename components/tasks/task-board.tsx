@@ -162,7 +162,10 @@ export function TaskBoard({
     // focusNonce changes when a card is filed. The id stays the same, but
     // the node is new — without this, Enter after a keyboard file does nothing.
     if (focusNonce < 0) return;
-    cardRefs.current.get(selectedId)?.focus({ preventScroll: false });
+    const card = cardRefs.current.get(selectedId);
+    // A lens can hide the filed card; keep focus on the board so keys still work.
+    if (card) card.focus({ preventScroll: false });
+    else boardRef.current?.focus({ preventScroll: true });
   }, [focusNonce, selectedId]);
 
   const onDragStart = (e: DragStartEvent) => {
@@ -213,8 +216,10 @@ export function TaskBoard({
         selectFirst(columns, setSelectedId);
         return;
       }
-      const column = columns[position.column + delta];
-      if (!column || column.tasks.length === 0) return;
+      let index = position.column + delta;
+      while (columns[index]?.tasks.length === 0) index += delta;
+      const column = columns[index];
+      if (!column) return;
       const row = Math.min(position.row, column.tasks.length - 1);
       setSelectedId(column.tasks[row]?.id ?? null);
       return;

@@ -32,6 +32,7 @@ export function CaptureDialog({
   open,
   onOpenChange,
   fileTo = null,
+  dueToday = false,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -41,9 +42,12 @@ export function CaptureDialog({
    * action, into this status.
    */
   fileTo?: Lifecycle | null;
+  /** Set when capturing from the Today board, so the Today lens keeps the task. */
+  dueToday?: boolean;
 }) {
   const { openDetail } = useFrame();
   const createTask = useStore((s) => s.createTask);
+  const updateTask = useStore((s) => s.updateTask);
   const setLifecycle = useStore((s) => s.setLifecycle);
   const [text, setText] = React.useState("");
   const [context, setContext] = React.useState("");
@@ -66,6 +70,7 @@ export function CaptureDialog({
       sourceText: text,
       sourceContext: context.trim() || null,
     });
+    if (dueToday) updateTask(task.id, { due: localIsoDate(new Date()) }, { editedFields: ["due"] });
     if (fileTo && fileTo !== "inbox") setLifecycle(task.id, fileTo);
     onOpenChange(false);
     // Open the sheet on the next frame so this dialog's close (and its
@@ -143,4 +148,10 @@ export function CaptureDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function localIsoDate(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
 }
