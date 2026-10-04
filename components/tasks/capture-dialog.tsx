@@ -22,6 +22,9 @@ import * as React from "react";
  *   3. Visible landing: the task sheet opens on the new task so the user
  *      watches Sifty organize it — and can edit or file it right away.
  *      Never blocking: Esc dismisses, triage continues in the background.
+ *      Dismissing keeps the draft for the next open; only a successful
+ *      capture or an explicit Discard clears it. The draft is session state
+ *      only — never persisted or synced.
  *   4. Optional context, never required: a separate "Add context" affordance
  *      reveals a second textarea so the empty state stays calm.
  */
@@ -40,15 +43,28 @@ export function CaptureDialog({
   const [showContext, setShowContext] = React.useState(false);
   const textRef = React.useRef<HTMLTextAreaElement>(null);
 
+  const hasDraft = text.length > 0 || context.length > 0;
+
   React.useEffect(() => {
-    if (!open) {
-      setText("");
-      setContext("");
-      setShowContext(false);
-    } else {
-      requestAnimationFrame(() => textRef.current?.focus());
-    }
+    if (!open) return;
+    requestAnimationFrame(() => {
+      const el = textRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
   }, [open]);
+
+  const clearDraft = () => {
+    setText("");
+    setContext("");
+    setShowContext(false);
+  };
+
+  const discard = () => {
+    clearDraft();
+    onOpenChange(false);
+  };
 
   const submit = () => {
     if (!text.trim()) return;
@@ -56,6 +72,7 @@ export function CaptureDialog({
       sourceText: text,
       sourceContext: context.trim() || null,
     });
+    clearDraft();
     onOpenChange(false);
     // Open the sheet on the next frame so this dialog's close (and its
     // focus restore) doesn't fight the sheet's focus trap.
@@ -108,14 +125,25 @@ export function CaptureDialog({
         </div>
 
         <div className="flex items-center justify-between gap-2 border-t border-[var(--border)] px-5 py-3 bg-[var(--surface-muted)]">
-          <button
-            type="button"
-            onClick={() => setShowContext((v) => !v)}
-            className="text-[12.5px] text-[var(--fg-muted)] hover:text-[var(--fg)] transition-colors flex items-center gap-1.5"
-          >
-            <ArrowUpRight size={12} />
-            {showContext ? "Hide context" : "Add context"}
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => setShowContext((v) => !v)}
+              className="text-[12.5px] text-[var(--fg-muted)] hover:text-[var(--fg)] transition-colors flex items-center gap-1.5"
+            >
+              <ArrowUpRight size={12} />
+              {showContext ? "Hide context" : "Add context"}
+            </button>
+            {hasDraft ? (
+              <button
+                type="button"
+                onClick={discard}
+                className="text-[12.5px] text-[var(--fg-subtle)] hover:text-[var(--fg)] transition-colors"
+              >
+                Discard
+              </button>
+            ) : null}
+          </div>
           <div className="flex items-center gap-3">
             <span className="hidden sm:flex items-center gap-1.5 text-[11.5px] text-[var(--fg-subtle)]">
               <Kbd>⌘</Kbd>
