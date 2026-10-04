@@ -84,6 +84,7 @@ export function BoardView({
   const containerRef = React.useRef<HTMLDivElement>(null);
   const cardRefs = React.useRef(new Map<string, HTMLDivElement>());
   const didInitialFocus = React.useRef(false);
+  const focusingProgrammatically = React.useRef(false);
   const undoTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   // A drop releases the pointer over some card (often the lifted card's own
   // ghost); the click that follows must not open the sheet.
@@ -112,7 +113,9 @@ export function BoardView({
   React.useEffect(() => {
     if (!hasTasks || didInitialFocus.current) return;
     didInitialFocus.current = true;
+    focusingProgrammatically.current = true;
     containerRef.current?.focus({ preventScroll: true });
+    focusingProgrammatically.current = false;
   }, [hasTasks]);
 
   // Focus follows the selection, including after a card changes column and
@@ -199,6 +202,14 @@ export function BoardView({
     const column = columns.find((c) => c.tasks.length > 0);
     const first = column?.tasks[0];
     if (first) setSelectedId(first.id);
+  };
+
+  // Tabbing onto the board lands on a card, so keyboard focus is shown by
+  // the card's border rather than a ring around the whole board. Mouse
+  // focus (clicking empty board) and the mount autofocus select nothing.
+  const onContainerFocus = (e: React.FocusEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget || selectedId || focusingProgrammatically.current) return;
+    if (e.currentTarget.matches(":focus-visible")) selectFirst();
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -319,8 +330,11 @@ export function BoardView({
       aria-label="Board"
       tabIndex={0}
       onKeyDown={onKeyDown}
-      className="focus:outline-none"
-      style={{ "--board-top": `${boardTop}px` } as React.CSSProperties}
+      onFocus={onContainerFocus}
+      // Inline because the global `:focus-visible` outline is unlayered and
+      // so outranks the `focus:outline-none` utility; a ring around the whole
+      // board on mount autofocus is the one thing we never want here.
+      style={{ "--board-top": `${boardTop}px`, outline: "none" } as React.CSSProperties}
     >
       <DndContext
         sensors={sensors}
