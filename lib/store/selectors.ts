@@ -1,6 +1,7 @@
 "use client";
 
 import { focusScore } from "@/lib/domain/priority";
+import { STATUS_VIEWS, type StatusView } from "@/lib/domain/status";
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import { dayDelta, isOverdue } from "@/lib/utils/dates";
 import { useMemo } from "react";
@@ -117,6 +118,36 @@ export function selectDoneTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
 
 export function selectDroppedTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
   return selectByLifecycle(tasks, "dropped", args);
+}
+
+export interface BoardColumn extends StatusView {
+  tasks: Task[];
+}
+
+/**
+ * Board columns are the status views — same statuses, order, labels, and
+ * per-view sort as the sidebar — so a card sits in the same place and
+ * order whether you look at the list or the board. Dropped has no view and
+ * so no column.
+ */
+export function selectBoardColumns(tasks: Task[], args: ViewArgs = {}): BoardColumn[] {
+  return STATUS_VIEWS.map((view) => ({
+    ...view,
+    tasks: selectViewTasks(tasks, view.status, args),
+  }));
+}
+
+function selectViewTasks(tasks: Task[], status: Lifecycle, args: ViewArgs): Task[] {
+  switch (status) {
+    case "inbox":
+      return selectInboxTasks(tasks, args);
+    case "active":
+      return selectFocusTasks(tasks, args);
+    case "done":
+      return selectDoneTasks(tasks, args);
+    default:
+      return selectByLifecycle(tasks, status, args);
+  }
 }
 
 export interface TaskCounts {
