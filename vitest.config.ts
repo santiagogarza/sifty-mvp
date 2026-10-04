@@ -13,6 +13,10 @@ export default defineConfig({
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
     exclude: ["tests/e2e/**", "node_modules/**", ".next/**"],
   },
+  // tsconfig sets jsx: "preserve" so Next owns the JSX transform in the app
+  // build. Vite has no such compiler downstream, so component tests need the
+  // transform re-enabled here or every .tsx test fails to parse.
+  oxc: { jsx: { runtime: "automatic" } },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "."),
