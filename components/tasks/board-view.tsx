@@ -24,6 +24,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import * as React from "react";
+import { create } from "zustand";
 import { BoardCard } from "./board-card";
 import { BoardColumn, EMPTY_DROP_AREA_PX } from "./board-column";
 import { StatusIcon } from "./status-icon";
@@ -45,6 +46,31 @@ interface Lifted {
   id: string;
   from: Lifecycle;
 }
+
+// Each status route mounts its own `BoardView`, so undo and the remembered
+// pre-done status live at module scope to survive sidebar navigation.
+const useUndoStore = create<{ undo: UndoRecord | null }>(() => ({ undo: null }));
+let undoTimer: ReturnType<typeof setTimeout> | null = null;
+
+function armUndo(record: UndoRecord) {
+  if (undoTimer) clearTimeout(undoTimer);
+  useUndoStore.setState({ undo: record });
+  undoTimer = setTimeout(() => {
+    undoTimer = null;
+    useUndoStore.setState({ undo: null });
+  }, UNDO_WINDOW_MS);
+}
+
+function clearUndo() {
+  if (undoTimer) clearTimeout(undoTimer);
+  undoTimer = null;
+  useUndoStore.setState({ undo: null });
+}
+
+// Status a task had before it was completed, so unchecking a Done card puts
+// it back where it came from. Unknown → Focus, matching `TaskRow`'s
+// `uncompleteTo` default.
+const priorStatus = new Map<string, Lifecycle>();
 
 /**
  * Board layout over the same tasks and the same `lifecycle` field as the
@@ -79,20 +105,14 @@ export function BoardView({
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [lifted, setLifted] = React.useState<Lifted | null>(null);
   const [overStatus, setOverStatus] = React.useState<Lifecycle | null>(null);
-  const [undo, setUndo] = React.useState<UndoRecord | null>(null);
+  const undo = useUndoStore((s) => s.undo);
 
   const containerRef = React.useRef<HTMLDivElement>(null);
   const cardRefs = React.useRef(new Map<string, HTMLDivElement>());
   const didInitialFocus = React.useRef(false);
-  const undoTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   // A drop releases the pointer over some card (often the lifted card's own
   // ghost); the click that follows must not open the sheet.
   const dragJustEnded = React.useRef(false);
-
-  // Status a task had before this session completed it, so unchecking a
-  // Done card puts it back where it came from. Unknown → Focus, matching
-  // `TaskRow`'s `uncompleteTo` default.
-  const priorRef = React.useRef(new Map<string, Lifecycle>());
 
   const position = React.useMemo(() => {
     const map = new Map<string, { col: number; row: number }>();
@@ -112,6 +132,7 @@ export function BoardView({
   React.useEffect(() => {
     if (!hasTasks || didInitialFocus.current) return;
     didInitialFocus.current = true;
+    if (document.activeElement !== document.body) return;
     containerRef.current?.focus({ preventScroll: true });
   }, [hasTasks]);
 
@@ -131,57 +152,34 @@ export function BoardView({
     el.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [selectedId, selectedColumn]);
 
-  React.useEffect(
-    () => () => {
-      if (undoTimer.current) clearTimeout(undoTimer.current);
-    },
-    [],
-  );
-
-  const armUndo = React.useCallback((record: UndoRecord) => {
-    if (undoTimer.current) clearTimeout(undoTimer.current);
-    setUndo(record);
-    undoTimer.current = setTimeout(() => {
-      undoTimer.current = null;
-      setUndo(null);
-    }, UNDO_WINDOW_MS);
-  }, []);
-
-  const clearUndo = React.useCallback(() => {
-    if (undoTimer.current) clearTimeout(undoTimer.current);
-    undoTimer.current = null;
-    setUndo(null);
-  }, []);
-
   const performUndo = React.useCallback(() => {
     if (!undo) return;
     const task = useStore.getState().tasks.find((t) => t.id === undo.id);
     // Only revert what we moved; if something else re-filed it since, leave it.
     if (task && task.lifecycle === undo.next) {
-      if (undo.prev === "done") priorRef.current.delete(undo.id);
       updateTask(undo.id, { lifecycle: undo.prev });
     }
     clearUndo();
-  }, [undo, updateTask, clearUndo]);
+  }, [undo, updateTask]);
 
   /** The one status write. Same-column is a no-op: no write, no pill. */
   const moveTask = React.useCallback(
     (id: string, to: Lifecycle): boolean => {
       const task = useStore.getState().tasks.find((t) => t.id === id);
       if (!task || task.lifecycle === to) return false;
-      if (to === "done") priorRef.current.set(id, task.lifecycle);
+      if (to === "done") priorStatus.set(id, task.lifecycle);
       setLifecycle(id, to);
       armUndo({ id, prev: task.lifecycle, next: to });
       return true;
     },
-    [setLifecycle, armUndo],
+    [setLifecycle],
   );
 
   const onComplete = React.useCallback(
     (id: string) => {
       const task = useStore.getState().tasks.find((t) => t.id === id);
       if (!task) return;
-      if (task.lifecycle === "done") moveTask(id, priorRef.current.get(id) ?? "active");
+      if (task.lifecycle === "done") moveTask(id, priorStatus.get(id) ?? "active");
       else moveTask(id, "done");
     },
     [moveTask],
