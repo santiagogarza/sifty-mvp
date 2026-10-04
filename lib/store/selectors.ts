@@ -1,6 +1,7 @@
 "use client";
 
 import { focusScore } from "@/lib/domain/priority";
+import { STATUS_VIEWS } from "@/lib/domain/status";
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import { dayDelta, isOverdue } from "@/lib/utils/dates";
 import { useMemo } from "react";
@@ -107,6 +108,57 @@ export function selectByLifecycle(
   return applyCommonFilters(tasks, args)
     .filter((t) => t.lifecycle === lifecycle)
     .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+}
+
+/**
+ * Board columns, left to right. Derived from the statuses that have a view,
+ * so the board, the sidebar, and the Status picker share one order and the
+ * `dropped` status (no route) never becomes a column.
+ */
+export const BOARD_LIFECYCLES = STATUS_VIEWS.map((view) => view.status);
+export type BoardLifecycle = (typeof BOARD_LIFECYCLES)[number];
+
+export interface BoardColumn {
+  lifecycle: BoardLifecycle;
+  tasks: Task[];
+}
+
+export interface BoardViewArgs extends ViewArgs {
+  /**
+   * `today` keeps only tasks the Today lens would show, then partitions them
+   * by their real lifecycle. Someday and Done stay empty by construction.
+   */
+  lens?: "today";
+}
+
+/**
+ * Group tasks into kanban columns. Each column keeps the sort its list
+ * counterpart uses, so switching List/Board never reshuffles.
+ */
+export function selectBoardColumns(
+  tasks: Task[],
+  args: BoardViewArgs = {},
+  now: Date = new Date(),
+): BoardColumn[] {
+  let filtered = applyCommonFilters(tasks, args);
+  if (args.lens === "today") {
+    filtered = filtered.filter((t) => isTodayTask(t, now));
+  }
+  return BOARD_LIFECYCLES.map((lifecycle) => {
+    const columnTasks = filtered.filter((t) => t.lifecycle === lifecycle);
+    if (lifecycle === "inbox") {
+      columnTasks.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    } else if (lifecycle === "active") {
+      columnTasks.sort(byFocusScore(now));
+    } else if (lifecycle === "done") {
+      columnTasks.sort((a, b) =>
+        (a.completedAt ?? a.updatedAt) < (b.completedAt ?? b.updatedAt) ? 1 : -1,
+      );
+    } else {
+      columnTasks.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+    }
+    return { lifecycle, tasks: columnTasks };
+  });
 }
 
 export function selectDoneTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
