@@ -2,6 +2,7 @@
 
 import { CaptureDialog } from "@/components/tasks/capture-dialog";
 import { TaskDetailSheet } from "@/components/tasks/task-detail-sheet";
+import { Toaster } from "@/components/ui/toast";
 import { useServerSync } from "@/lib/store/sync";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
@@ -80,14 +81,17 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} onCapture={openCapture} />
       <TaskDetailSheet taskId={detailTaskId} onClose={closeDetail} />
       <GlobalKeyboard onCapture={openCapture} onCommand={openCommand} />
-      {sync.hydrated && sync.error ? (
-        <div
-          role="status"
-          className="fixed bottom-[92px] md:bottom-4 left-1/2 -translate-x-1/2 z-40 rounded-full border border-[var(--border)] bg-[var(--bg-elevated)]/95 backdrop-blur px-3.5 py-1.5 text-[12px] text-[var(--fg-muted)] shadow-sm"
-        >
-          Can't reach Sifty — changes are saved locally and will sync.
-        </div>
-      ) : null}
+      <div className="fixed bottom-[92px] md:bottom-4 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-2">
+        <Toaster />
+        {sync.hydrated && sync.error ? (
+          <div
+            role="status"
+            className="rounded-full border border-[var(--border)] bg-[var(--bg-elevated)]/95 backdrop-blur px-3.5 py-1.5 text-[12px] text-[var(--fg-muted)] shadow-sm"
+          >
+            Can't reach Sifty — changes are saved locally and will sync.
+          </div>
+        ) : null}
+      </div>
     </FrameContext.Provider>
   );
 }
