@@ -82,11 +82,13 @@ app/
     agent-brief/route.ts       # "Prepare for agent" handoff brief
     stripe/{checkout,portal,webhook}/route.ts
 middleware.ts                  # gates /today, /focus, /inbox, /waiting,
-                               # /someday, /memory, /settings on a JWT cookie
+                               # /someday, /done, /board, /memory, /settings
+                               # on a JWT cookie
 
 components/
   app-shell/                   # frame, sidebar, top bar, palette, bottom nav
-  tasks/                       # capture, list, row, detail sheet, ai status
+  tasks/                       # capture, list, row, board, detail sheet,
+                               # ai status
   auth/auth-form.tsx           # sign-in / sign-up shared form
   billing/billing-panel.tsx    # checkout + portal + tier display
   ui/                          # primitives
@@ -271,7 +273,9 @@ pnpm test:e2e
 | `⌘↵` | Submit capture |
 | `↑/↓` (`j`/`k`) | Navigate task list |
 | `Enter` | Open the highlighted task |
-| `Esc` | Close any overlay |
+| `Space` | Board: pick up the focused card / drop it |
+| `←/→` | Board: move the picked-up card one column |
+| `Esc` | Close any overlay; cancel a board move |
 
 ## License
 
