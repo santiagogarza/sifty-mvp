@@ -93,35 +93,40 @@ export const BoardCard = React.forwardRef<
             {!isDone ? (
               <PriorityGlyph
                 bucket={task.priorityBucket}
-                className="transition-opacity duration-150 group-hover:opacity-0 group-focus-within:opacity-0"
+                className={cn(
+                  "transition-opacity duration-150",
+                  !lifted && "group-hover:opacity-0 group-focus-within:opacity-0",
+                )}
               />
             ) : null}
-            <button
-              type="button"
-              tabIndex={-1}
-              aria-label={isDone ? "Mark as not done" : "Mark as done"}
-              disabled={lifted || ghost}
-              onClick={(e) => {
-                e.stopPropagation();
-                onComplete?.(task.id);
-              }}
-              onMouseDown={stop}
-              onTouchStart={stop}
-              onPointerDown={stop}
-              className={cn(
-                "absolute inset-0 flex items-center justify-center rounded-full border",
-                "transition-[opacity,border-color,background-color] duration-150 ease-[var(--ease-product)]",
-                isDone
-                  ? "bg-[var(--done)] border-[var(--done)]"
-                  : cn(
-                      "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
-                      "bg-[var(--surface-muted)] border-[var(--fg-muted)]/40",
-                      "hover:bg-[var(--surface-hover)] hover:border-[var(--accent)]",
-                    ),
-              )}
-            >
-              {isDone ? <Check size={10} className="text-white" strokeWidth={3} /> : null}
-            </button>
+            {lifted ? null : (
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-label={isDone ? "Mark as not done" : "Mark as done"}
+                disabled={ghost}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onComplete?.(task.id);
+                }}
+                onMouseDown={stop}
+                onTouchStart={stop}
+                onPointerDown={stop}
+                className={cn(
+                  "absolute inset-0 flex items-center justify-center rounded-full border",
+                  "transition-[opacity,border-color,background-color] duration-150 ease-[var(--ease-product)]",
+                  isDone
+                    ? "bg-[var(--done)] border-[var(--done)]"
+                    : cn(
+                        "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
+                        "bg-[var(--surface-muted)] border-[var(--fg-muted)]/40",
+                        "hover:bg-[var(--surface-hover)] hover:border-[var(--accent)]",
+                      ),
+                )}
+              >
+                {isDone ? <Check size={10} className="text-white" strokeWidth={3} /> : null}
+              </button>
+            )}
           </span>
 
           {dueLabel ? (

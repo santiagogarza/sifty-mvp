@@ -38,7 +38,7 @@ export function TaskView({
   emptyDescription?: string;
   rightSlot?: React.ReactNode;
 }) {
-  const { openDetail, openCapture } = useFrame();
+  const { openDetail, openCapture, syncError } = useFrame();
   const tasks = useStore((s) => s.tasks);
   const hydrated = useStore((s) => s.hydrated);
   const [mode, setMode] = useViewMode();
@@ -70,7 +70,7 @@ export function TaskView({
           <TaskListSkeleton />
         )
       ) : board ? (
-        <BoardView tasks={tasks} onOpen={openDetail} onAdd={onAdd} />
+        <BoardView tasks={tasks} onOpen={openDetail} onAdd={onAdd} stackAboveNotice={syncError} />
       ) : (
         <TaskList
           tasks={visible}

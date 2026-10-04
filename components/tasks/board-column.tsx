@@ -1,19 +1,18 @@
 "use client";
 
-import type { Label, Lifecycle, Task } from "@/lib/domain/types";
+import type { Lifecycle, Task } from "@/lib/domain/types";
 import type { BoardColumn as BoardColumnModel } from "@/lib/store/selectors";
 import { cn } from "@/lib/utils/cn";
 import { Plus } from "lucide-react";
 import * as React from "react";
-import { BoardCard } from "./board-card";
 import { STATUS_ICONS } from "./status-icon";
 
-/** Fits the column header, an empty drop area, and the Add row. */
+/** Height of an empty column's drop area — enough to land a card in. */
 export const EMPTY_DROP_AREA_PX = 88;
 
 /**
- * One status column. The section is the drop target; cards inside are not
- * reorderable, so there is no insertion line — the whole column tints.
+ * One status column. The whole column is the drop target; cards inside are
+ * not reorderable, so there is no insertion line — the column tints.
  *
  * A11y shape: the board is one listbox, each column's cards are a named
  * `group` inside it ("Inbox, 2 tasks"), each card an `option`. One tab
@@ -22,34 +21,19 @@ export const EMPTY_DROP_AREA_PX = 88;
 export function BoardColumn({
   column,
   previewDelta = 0,
-  labels,
-  selectedId,
-  onSelect,
-  onOpen,
-  onComplete,
-  onAdd,
-  cardRef,
-  liftedId,
-  isOver,
+  isOver = false,
   setDropRef,
+  onAdd,
   renderCard,
 }: {
   column: BoardColumnModel;
   /** While a card is lifted: -1 on its source column, +1 on the column under the pointer. */
   previewDelta?: number;
-  labels: Label[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-  onOpen: (id: string) => void;
-  onComplete: (id: string) => void;
-  onAdd?: (lifecycle: Lifecycle) => void;
-  cardRef?: (id: string, el: HTMLDivElement | null) => void;
-  /** Card currently lifted by a drag; it renders as a dashed ghost in place. */
-  liftedId?: string | null;
+  /** A lifted card from another column is over this one. */
   isOver?: boolean;
   setDropRef?: (el: HTMLElement | null) => void;
-  /** Lets the board wrap each card with drag wiring without the column knowing about it. */
-  renderCard?: (task: Task, card: React.ReactElement) => React.ReactNode;
+  onAdd?: (lifecycle: Lifecycle) => void;
+  renderCard: (task: Task) => React.ReactNode;
 }) {
   const Icon = STATUS_ICONS[column.status];
   const count = column.tasks.length;
@@ -79,26 +63,9 @@ export function BoardColumn({
         className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain px-2 pb-2"
         style={{ minHeight: EMPTY_DROP_AREA_PX }}
       >
-        {column.tasks.map((task) => {
-          const card = (
-            <BoardCard
-              key={task.id}
-              ref={(el) => cardRef?.(task.id, el)}
-              task={task}
-              labels={labels}
-              selected={task.id === selectedId}
-              ghost={task.id === liftedId}
-              onSelect={onSelect}
-              onOpen={onOpen}
-              onComplete={onComplete}
-            />
-          );
-          return renderCard ? (
-            <React.Fragment key={task.id}>{renderCard(task, card)}</React.Fragment>
-          ) : (
-            card
-          );
-        })}
+        {column.tasks.map((task) => (
+          <React.Fragment key={task.id}>{renderCard(task)}</React.Fragment>
+        ))}
         {isOver ? (
           <div
             aria-hidden
