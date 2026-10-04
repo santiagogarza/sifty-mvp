@@ -97,6 +97,7 @@ export function BoardView({
   const undoTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const seeded = React.useRef(false);
   const didFocus = React.useRef(false);
+  const refocusAfterFile = React.useRef(false);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: BOARD_POINTER_DISTANCE_PX } }),
@@ -134,9 +135,11 @@ export function BoardView({
       (card ?? root).focus({ preventScroll: true });
       return;
     }
-    if (inside && card && document.activeElement !== card) {
+    // Filing remounts the card in another column, which drops focus to body.
+    if ((inside || refocusAfterFile.current) && card && document.activeElement !== card) {
       card.focus({ preventScroll: true });
     }
+    if (card && document.activeElement === card) refocusAfterFile.current = false;
   }, [columns, selection]);
 
   React.useEffect(() => {
@@ -174,6 +177,7 @@ export function BoardView({
       setLifecycle(task.id, next);
       recordMove({ taskId: task.id, prev: task.lifecycle, next });
       setPulse({ id: task.id, column: next });
+      refocusAfterFile.current = true;
       const landed = cursorFor(selectBoardColumns(useStore.getState().tasks), task.id);
       if (landed) setCursor(landed);
     },
@@ -182,10 +186,12 @@ export function BoardView({
 
   const undo = React.useCallback(() => {
     if (!move) return;
-    const { taskId, prev } = move;
+    const { taskId, prev, next } = move;
+    if (prev === "done" && !completedFrom.has(taskId)) completedFrom.set(taskId, next);
     setLifecycle(taskId, prev);
     clearMove();
     setPulse({ id: taskId, column: prev });
+    refocusAfterFile.current = true;
     const landed = cursorFor(selectBoardColumns(useStore.getState().tasks), taskId);
     if (landed) setCursor(landed);
   }, [clearMove, move, setLifecycle]);
