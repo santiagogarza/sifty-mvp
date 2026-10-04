@@ -7,6 +7,8 @@ import { Textarea } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import { runTriage } from "@/lib/ai/run-triage";
 import { TASK_LIMITS } from "@/lib/domain/limits";
+import { statusLabel } from "@/lib/domain/status";
+import type { Lifecycle } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
 import { ArrowUpRight, Sparkles } from "lucide-react";
 import * as React from "react";
@@ -29,12 +31,20 @@ import * as React from "react";
 export function CaptureDialog({
   open,
   onOpenChange,
+  fileTo = null,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  /**
+   * Column the board's Add row captured from. The task is still created as
+   * inbox — new captures always start there — and then filed, as a user
+   * action, into this status.
+   */
+  fileTo?: Lifecycle | null;
 }) {
   const { openDetail } = useFrame();
   const createTask = useStore((s) => s.createTask);
+  const setLifecycle = useStore((s) => s.setLifecycle);
   const [text, setText] = React.useState("");
   const [context, setContext] = React.useState("");
   const [showContext, setShowContext] = React.useState(false);
@@ -56,6 +66,7 @@ export function CaptureDialog({
       sourceText: text,
       sourceContext: context.trim() || null,
     });
+    if (fileTo && fileTo !== "inbox") setLifecycle(task.id, fileTo);
     onOpenChange(false);
     // Open the sheet on the next frame so this dialog's close (and its
     // focus restore) doesn't fight the sheet's focus trap.
@@ -72,7 +83,9 @@ export function CaptureDialog({
             <DialogTitle>Capture</DialogTitle>
           </div>
           <DialogDescription className="hidden sm:block text-[12px]">
-            Type the task as you'd say it. Sifty organizes it.
+            {fileTo && fileTo !== "inbox"
+              ? `Files to ${statusLabel(fileTo)}. Sifty organizes it.`
+              : "Type the task as you'd say it. Sifty organizes it."}
           </DialogDescription>
         </div>
 

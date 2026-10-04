@@ -5,9 +5,13 @@ import { PageHeader } from "@/components/app-shell/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
+import { cn } from "@/lib/utils/cn";
+import { usePathname } from "next/navigation";
 import * as React from "react";
 import { TaskEmptyState } from "./empty-state";
+import { BOARD_BREAKOUT_CLASS, BOARD_GUTTER_CLASS, TaskBoard } from "./task-board";
 import { TaskList } from "./task-list";
+import { ViewModeToggle } from "./view-mode-toggle";
 
 /**
  * Reusable view that renders the standard structure for Today/Inbox/Focus/etc.
@@ -22,6 +26,7 @@ export function TaskView({
   emptyTitle,
   emptyDescription,
   rightSlot,
+  boardScope = "all",
 }: {
   eyebrow?: string;
   title: string;
@@ -30,18 +35,60 @@ export function TaskView({
   emptyTitle: string;
   emptyDescription?: string;
   rightSlot?: React.ReactNode;
+  /**
+   * `today` partitions Today-eligible tasks by their real lifecycle.
+   * Every other route shows the whole pipeline; the columns are the filter.
+   */
+  boardScope?: "all" | "today";
 }) {
-  const { openDetail } = useFrame();
+  const { openDetail, openCapture } = useFrame();
+  const pathname = usePathname() ?? "/";
   const tasks = useStore((s) => s.tasks);
   const hydrated = useStore((s) => s.hydrated);
+  const viewMode = useStore((s) => s.viewModes[pathname] ?? "list");
 
   const visible = React.useMemo(() => selector(tasks), [tasks, selector]);
+  const board = hydrated && viewMode === "board";
+
+  const header = (
+    <PageHeader
+      eyebrow={board ? "Board" : eyebrow}
+      title={
+        board ? (boardScope === "today" ? "Today, by status" : "Everything, by status") : title
+      }
+      description={
+        board
+          ? "Drag a card to another column to file it. Same order, words, and icons as the sidebar."
+          : description
+      }
+      actions={
+        <div className="flex items-center gap-2">
+          {rightSlot}
+          <ViewModeToggle />
+        </div>
+      }
+    />
+  );
 
   return (
     <>
-      <PageHeader eyebrow={eyebrow} title={title} description={description} actions={rightSlot} />
+      {board ? (
+        <div className={cn(BOARD_BREAKOUT_CLASS, BOARD_GUTTER_CLASS)}>{header}</div>
+      ) : (
+        header
+      )}
       {!hydrated ? (
         <TaskListSkeleton />
+      ) : board ? (
+        <div className={cn(BOARD_BREAKOUT_CLASS, BOARD_GUTTER_CLASS)}>
+          <TaskBoard
+            lens={boardScope === "today" ? "today" : undefined}
+            onOpen={openDetail}
+            onCapture={(lifecycle) =>
+              openCapture(lifecycle === "inbox" ? undefined : { fileTo: lifecycle })
+            }
+          />
+        </div>
       ) : (
         <TaskList
           tasks={visible}

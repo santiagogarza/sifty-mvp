@@ -46,6 +46,9 @@ export interface SyncHooks {
   isTaskDirty(taskId: string): boolean;
 }
 
+/** How a task page renders: the linear list, or the kanban board. */
+export type TaskViewMode = "list" | "board";
+
 let syncHooks: SyncHooks | null = null;
 
 export function registerSyncHooks(hooks: SyncHooks | null): void {
@@ -62,9 +65,12 @@ interface SiftyState {
   labels: Label[];
   memories: Memory[];
   preferredModelId: string;
+  /** List vs Board, remembered per route. Absent means List. */
+  viewModes: Partial<Record<string, TaskViewMode>>;
 
   setHydrated: (v: boolean) => void;
   setPreferredModelId: (modelId: string) => void;
+  setViewMode: (route: string, mode: TaskViewMode) => void;
 
   createTask: (input: { sourceText: string; sourceContext?: string | null }) => Task;
   updateTask: (
@@ -126,7 +132,33 @@ interface SiftyState {
   ensureLabel: (name: string) => Label;
 }
 
-const VERSION = 3;
+const VERSION = 4;
+
+/** Persisted slice. Exported so the view-mode contract can be tested without a browser. */
+export function partializeSiftyState(s: SiftyState) {
+  return {
+    tasks: s.tasks,
+    labels: s.labels,
+    memories: s.memories,
+    preferredModelId: s.preferredModelId,
+    viewModes: s.viewModes,
+  };
+}
+
+/** localStorage migrations. v4 adds the per-route List/Board map. */
+export function migrateSiftyState(persisted: unknown, version: number): SiftyState {
+  const state = persisted as Partial<SiftyState>;
+  if (version < 2 && state.tasks) {
+    state.tasks = state.tasks.map((t) => ({ ...t, agentBrief: t.agentBrief ?? null }));
+  }
+  if (version < 3 && state.tasks) {
+    state.tasks = state.tasks.map((t) => ({ ...t, assigneeName: t.assigneeName ?? null }));
+  }
+  if (version < 4) {
+    state.viewModes = state.viewModes ?? {};
+  }
+  return state as SiftyState;
+}
 
 export const useStore = create<SiftyState>()(
   persist(
@@ -142,9 +174,12 @@ export const useStore = create<SiftyState>()(
         labels: [],
         memories: [],
         preferredModelId: DEFAULT_MODEL_ID,
+        viewModes: {},
 
         setHydrated: (v) => set({ hydrated: v }),
         setPreferredModelId: (modelId) => set({ preferredModelId: modelId }),
+        setViewMode: (route, mode) =>
+          set((s) => ({ viewModes: { ...s.viewModes, [route]: mode } })),
 
         createTask: ({ sourceText, sourceContext }) => {
           const now = new Date().toISOString();
@@ -395,22 +430,8 @@ export const useStore = create<SiftyState>()(
     {
       name: "sifty-store-v1",
       version: VERSION,
-      partialize: (s) => ({
-        tasks: s.tasks,
-        labels: s.labels,
-        memories: s.memories,
-        preferredModelId: s.preferredModelId,
-      }),
-      migrate: (persisted, version) => {
-        const state = persisted as Partial<SiftyState>;
-        if (version < 2 && state.tasks) {
-          state.tasks = state.tasks.map((t) => ({ ...t, agentBrief: t.agentBrief ?? null }));
-        }
-        if (version < 3 && state.tasks) {
-          state.tasks = state.tasks.map((t) => ({ ...t, assigneeName: t.assigneeName ?? null }));
-        }
-        return state as SiftyState;
-      },
+      partialize: partializeSiftyState,
+      migrate: migrateSiftyState,
       onRehydrateStorage: () => (state) => {
         state?.setHydrated(true);
       },
