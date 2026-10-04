@@ -56,15 +56,19 @@ export function getSyncHooks(): SyncHooks | null {
   return syncHooks;
 }
 
+export type ViewMode = "list" | "board";
+
 interface SiftyState {
   hydrated: boolean;
   tasks: Task[];
   labels: Label[];
   memories: Memory[];
   preferredModelId: string;
+  viewMode: ViewMode;
 
   setHydrated: (v: boolean) => void;
   setPreferredModelId: (modelId: string) => void;
+  setViewMode: (mode: ViewMode) => void;
 
   createTask: (input: { sourceText: string; sourceContext?: string | null }) => Task;
   updateTask: (
@@ -142,9 +146,11 @@ export const useStore = create<SiftyState>()(
         labels: [],
         memories: [],
         preferredModelId: DEFAULT_MODEL_ID,
+        viewMode: "list",
 
         setHydrated: (v) => set({ hydrated: v }),
         setPreferredModelId: (modelId) => set({ preferredModelId: modelId }),
+        setViewMode: (mode) => set({ viewMode: mode }),
 
         createTask: ({ sourceText, sourceContext }) => {
           const now = new Date().toISOString();
@@ -400,6 +406,7 @@ export const useStore = create<SiftyState>()(
         labels: s.labels,
         memories: s.memories,
         preferredModelId: s.preferredModelId,
+        viewMode: s.viewMode,
       }),
       migrate: (persisted, version) => {
         const state = persisted as Partial<SiftyState>;
