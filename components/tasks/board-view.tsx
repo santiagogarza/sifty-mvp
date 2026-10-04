@@ -332,7 +332,7 @@ export function BoardView({
         aria-label="Board"
         aria-activedescendant={selectedId ? `card-${selectedId}` : undefined}
         onKeyDown={onKeyDown}
-        className="rounded-[var(--radius-lg)] focus:outline-none"
+        className="board-focus rounded-[var(--radius-lg)] focus:outline-none"
       >
         <div
           role="region"

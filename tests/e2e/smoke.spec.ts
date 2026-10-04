@@ -129,16 +129,15 @@ test("board files a card, keeps the layout across routes, and survives reload", 
 });
 
 test("board hides the dropped disclosure and list brings it back", async ({ page }) => {
-  const marker = `Dropped ${Date.now()}`;
-  const created = await page.request.post("/api/tasks", {
-    data: { sourceText: marker, title: marker },
-  });
-  expect(created.ok()).toBeTruthy();
-  const { task } = (await created.json()) as { task: { id: string } };
-  const patched = await page.request.patch(`/api/tasks/${task.id}`, {
-    data: { lifecycle: "dropped", title: marker },
-  });
-  expect(patched.ok()).toBeTruthy();
+  await page.goto("/inbox", { waitUntil: "networkidle" });
+  const marker = `Drop me ${Date.now()}`;
+  await page.keyboard.press("c");
+  await page.getByPlaceholder("What do you need to do?").fill(marker);
+  await page.keyboard.press("ControlOrMeta+Enter");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("button", { name: /^Status/ }).click();
+  await page.getByRole("button", { name: /^Dropped/ }).click();
+  await page.keyboard.press("Escape");
 
   await page.goto("/done", { waitUntil: "networkidle" });
   await expect(page.getByRole("button", { name: /Dropped/ })).toBeVisible();
