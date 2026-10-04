@@ -72,3 +72,95 @@ test("rate limit returns 429 with Retry-After when bursting the triage route", a
   }
   expect(limited.headers()["retry-after"]).toBeTruthy();
 });
+
+test("board files a card, keeps the layout across routes, and survives reload", async ({
+  page,
+}) => {
+  await page.goto("/inbox", { waitUntil: "networkidle" });
+
+  const marker = `Board file ${Date.now()}`;
+  await page.keyboard.press("c");
+  await page.getByPlaceholder("What do you need to do?").fill(marker);
+  await page.keyboard.press("ControlOrMeta+Enter");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  await page.getByRole("radio", { name: "Board" }).click();
+  const board = page.getByRole("listbox", { name: "Board" });
+  await board.focus();
+  await board.press("ArrowDown");
+  for (let step = 0; step < 20; step += 1) {
+    const selected = board.locator("[aria-selected='true']");
+    const text = (await selected.textContent()) ?? "";
+    if (text.includes(marker)) break;
+    await board.press("ArrowDown");
+  }
+  await board.press("Shift+ArrowRight");
+
+  let title = marker;
+  await expect
+    .poll(
+      async () => {
+        const res = await page.request.get("/api/tasks");
+        if (!res.ok()) return null;
+        const { tasks } = (await res.json()) as {
+          tasks: Array<{ sourceText: string; lifecycle: string; title: string }>;
+        };
+        const task = tasks.find((entry) => entry.sourceText === marker);
+        if (task?.title) title = task.title;
+        return task?.lifecycle ?? null;
+      },
+      { timeout: 10_000 },
+    )
+    .toBe("active");
+
+  await page.reload({ waitUntil: "networkidle" });
+  await expect(page.getByRole("region", { name: /^Focus,/ })).toContainText(title);
+  await expect(page.getByRole("region", { name: /^Inbox,/ })).not.toContainText(title);
+
+  await page.goto("/focus", { waitUntil: "networkidle" });
+  await expect(page.getByRole("radio", { name: "Board" })).toHaveAttribute("aria-checked", "true");
+
+  await page.goto("/inbox", { waitUntil: "networkidle" });
+  await page.getByRole("radio", { name: "List" }).click();
+  await expect(page.getByText(/Newly captured tasks/)).toBeVisible();
+  await expect(page.getByText(title)).toHaveCount(0);
+});
+
+test("board hides the dropped disclosure and list brings it back", async ({ page }) => {
+  const marker = `Dropped ${Date.now()}`;
+  const created = await page.request.post("/api/tasks", {
+    data: { sourceText: marker, title: marker },
+  });
+  expect(created.ok()).toBeTruthy();
+  const { task } = (await created.json()) as { task: { id: string } };
+  const patched = await page.request.patch(`/api/tasks/${task.id}`, {
+    data: { lifecycle: "dropped", title: marker },
+  });
+  expect(patched.ok()).toBeTruthy();
+
+  await page.goto("/done", { waitUntil: "networkidle" });
+  await expect(page.getByRole("button", { name: /Dropped/ })).toBeVisible();
+  await page.getByRole("radio", { name: "Board" }).click();
+  await expect(page.getByRole("button", { name: /Dropped/ })).toHaveCount(0);
+  await page.getByRole("radio", { name: "List" }).click();
+  await expect(page.getByRole("button", { name: /Dropped/ })).toBeVisible();
+});
+
+test("board columns scroll and the toggle sits under the title on a phone", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/inbox", { waitUntil: "networkidle" });
+  await page.getByRole("radio", { name: "Board" }).click();
+
+  const scroller = page.getByRole("region", { name: "Columns" });
+  const overflows = await scroller.evaluate((el) => el.scrollWidth > el.clientWidth);
+  expect(overflows).toBe(true);
+
+  const title = await page.getByRole("heading", { name: "Everything, by status" }).boundingBox();
+  const toggle = await page.getByRole("radiogroup", { name: "Layout" }).boundingBox();
+  expect(title).toBeTruthy();
+  expect(toggle).toBeTruthy();
+  if (!title || !toggle) return;
+  expect(toggle.y).toBeGreaterThan(title.y + title.height - 1);
+});
