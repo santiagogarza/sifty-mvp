@@ -2,6 +2,7 @@
 
 import { CaptureDialog } from "@/components/tasks/capture-dialog";
 import { TaskDetailSheet } from "@/components/tasks/task-detail-sheet";
+import type { Lifecycle } from "@/lib/domain/types";
 import { useServerSync } from "@/lib/store/sync";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
@@ -35,6 +36,7 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const search = useSearchParams();
   const [captureOpen, setCaptureOpen] = React.useState(false);
+  const [captureLifecycle, setCaptureLifecycle] = React.useState<Lifecycle>("inbox");
   const [commandOpen, setCommandOpen] = React.useState(false);
 
   // Pulls the server snapshot into the store on mount and reconciles; a
@@ -43,7 +45,14 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
 
   const detailTaskId = search.get("task");
 
-  const openCapture = React.useCallback(() => setCaptureOpen(true), []);
+  const openCapture = React.useCallback((opts?: { lifecycle?: Lifecycle }) => {
+    setCaptureLifecycle(opts?.lifecycle ?? "inbox");
+    setCaptureOpen(true);
+  }, []);
+  const onCaptureOpenChange = React.useCallback((open: boolean) => {
+    setCaptureOpen(open);
+    if (!open) setCaptureLifecycle("inbox");
+  }, []);
   const openCommand = React.useCallback(() => setCommandOpen(true), []);
 
   const openDetail = React.useCallback(
@@ -62,9 +71,10 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [router, pathname, search]);
 
+  const syncError = Boolean(sync.hydrated && sync.error);
   const value = React.useMemo(
-    () => ({ openDetail, openCapture, openCommand }),
-    [openDetail, openCapture, openCommand],
+    () => ({ openDetail, openCapture, openCommand, syncError }),
+    [openDetail, openCapture, openCommand, syncError],
   );
 
   return (
@@ -76,7 +86,11 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
         </main>
       </div>
       <BottomNav onCapture={openCapture} />
-      <CaptureDialog open={captureOpen} onOpenChange={setCaptureOpen} />
+      <CaptureDialog
+        open={captureOpen}
+        onOpenChange={onCaptureOpenChange}
+        lifecycle={captureLifecycle}
+      />
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} onCapture={openCapture} />
       <TaskDetailSheet taskId={detailTaskId} onClose={closeDetail} />
       <GlobalKeyboard onCapture={openCapture} onCommand={openCommand} />
@@ -94,8 +108,10 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
 
 interface FrameApi {
   openDetail: (id: string) => void;
-  openCapture: () => void;
+  openCapture: (opts?: { lifecycle?: Lifecycle }) => void;
   openCommand: () => void;
+  /** True while the offline notice is on screen, so other pills can sit above it. */
+  syncError: boolean;
 }
 
 const FrameContext = React.createContext<FrameApi | null>(null);

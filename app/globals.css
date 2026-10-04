@@ -242,6 +242,12 @@ body::before {
   border-radius: 4px;
 }
 
+/* The board autofocuses a region the size of the pipeline. The global ring
+   would box every column; the selected card is the focus indicator. */
+.board-focus:focus-visible {
+  outline: none;
+}
+
 button,
 [role="button"] {
   cursor: default;
