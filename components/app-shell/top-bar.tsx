@@ -33,9 +33,12 @@ export function TopBar({
     >
       <div className="flex min-w-0 items-baseline gap-3">
         {title ? (
-          <h1 className="truncate text-[16px] font-medium tracking-[-0.01em] text-[var(--fg)]">
+          <p
+            className="truncate text-[16px] font-medium tracking-[-0.01em] text-[var(--fg)] max-md:hidden"
+            aria-hidden="true"
+          >
             {title}
-          </h1>
+          </p>
         ) : null}
         {subtitle ? (
           <span className="hidden sm:inline-block truncate text-[13px] text-[var(--fg-subtle)]">
