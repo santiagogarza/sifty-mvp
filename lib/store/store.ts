@@ -82,11 +82,7 @@ interface SiftyState {
   addSubtask: (taskId: string, title: string) => void;
   removeSubtask: (taskId: string, subtaskId: string) => void;
   setLifecycle: (taskId: string, lifecycle: Lifecycle) => void;
-  setAiStatus: (
-    taskId: string,
-    status: AiStatus,
-    error?: string | null,
-  ) => void;
+  setAiStatus: (taskId: string, status: AiStatus, error?: string | null) => void;
   applyTriage: (
     taskId: string,
     triage: {
@@ -128,11 +124,7 @@ interface SiftyState {
    */
   remapLabel: (localId: string, canonical: Label) => string[];
 
-  addMemory: (input: {
-    text: string;
-    kind?: Memory["kind"];
-    pinned?: boolean;
-  }) => Memory;
+  addMemory: (input: { text: string; kind?: Memory["kind"]; pinned?: boolean }) => Memory;
   updateMemory: (id: string, patch: Partial<Memory>) => void;
   removeMemory: (id: string) => void;
 
@@ -163,9 +155,7 @@ export const useStore = create<SiftyState>()(
           const now = new Date().toISOString();
           const text = sourceText.trim();
           const provisionalTitle =
-            text.length > 80
-              ? `${text.slice(0, 78)}…`
-              : text || "Untitled task";
+            text.length > 80 ? `${text.slice(0, 78)}…` : text || "Untitled task";
 
           const task: Task = {
             id: id("task"),
@@ -210,9 +200,7 @@ export const useStore = create<SiftyState>()(
                 : t.editedFields;
               const scopedPatch = { ...patch };
               if ("assigneeName" in patch) {
-                scopedPatch.assigneeName = normalizeAssigneeName(
-                  patch.assigneeName,
-                );
+                scopedPatch.assigneeName = normalizeAssigneeName(patch.assigneeName);
               }
               const next: Task = {
                 ...t,
@@ -225,10 +213,7 @@ export const useStore = create<SiftyState>()(
                 !("priorityBucket" in patch) &&
                 !editedFields.includes("priorityBucket")
               ) {
-                next.priorityBucket = bucketFromScalars(
-                  next.urgency,
-                  next.importance,
-                );
+                next.priorityBucket = bucketFromScalars(next.urgency, next.importance);
               }
               if (patch.lifecycle === "done" && !t.completedAt) {
                 next.completedAt = next.updatedAt;
@@ -258,9 +243,7 @@ export const useStore = create<SiftyState>()(
                       st.id === subtaskId ? { ...st, done: !st.done } : st,
                     ),
                     updatedAt: new Date().toISOString(),
-                    editedFields: Array.from(
-                      new Set([...t.editedFields, "subtasks"]),
-                    ),
+                    editedFields: Array.from(new Set([...t.editedFields, "subtasks"])),
                   },
             ),
           }));
@@ -276,14 +259,9 @@ export const useStore = create<SiftyState>()(
               const order = t.subtasks.length;
               return {
                 ...t,
-                subtasks: [
-                  ...t.subtasks,
-                  { id: id("st"), title: cleaned, done: false, order },
-                ],
+                subtasks: [...t.subtasks, { id: id("st"), title: cleaned, done: false, order }],
                 updatedAt: new Date().toISOString(),
-                editedFields: Array.from(
-                  new Set([...t.editedFields, "subtasks"]),
-                ),
+                editedFields: Array.from(new Set([...t.editedFields, "subtasks"])),
               };
             }),
           }));
@@ -299,9 +277,7 @@ export const useStore = create<SiftyState>()(
                     ...t,
                     subtasks: t.subtasks.filter((st) => st.id !== subtaskId),
                     updatedAt: new Date().toISOString(),
-                    editedFields: Array.from(
-                      new Set([...t.editedFields, "subtasks"]),
-                    ),
+                    editedFields: Array.from(new Set([...t.editedFields, "subtasks"])),
                   },
             ),
           }));
@@ -315,9 +291,7 @@ export const useStore = create<SiftyState>()(
         setAiStatus: (taskId, status, error) => {
           set((s) => ({
             tasks: s.tasks.map((t) =>
-              t.id !== taskId
-                ? t
-                : { ...t, aiStatus: status, aiError: error ?? null },
+              t.id !== taskId ? t : { ...t, aiStatus: status, aiError: error ?? null },
             ),
           }));
           notifyTask(taskId, { created: false });
@@ -325,9 +299,7 @@ export const useStore = create<SiftyState>()(
 
         applyTriage: (taskId, triage) => {
           set((s) => ({
-            tasks: s.tasks.map((t) =>
-              t.id !== taskId ? t : mergeTriageIntoTask(t, triage),
-            ),
+            tasks: s.tasks.map((t) => (t.id !== taskId ? t : mergeTriageIntoTask(t, triage))),
           }));
           notifyTask(taskId, { created: false });
         },
@@ -351,9 +323,7 @@ export const useStore = create<SiftyState>()(
           if (!get().tasks.some((t) => t.id === oldId)) return null;
           const newId = id("task");
           set((s) => ({
-            tasks: s.tasks.map((t) =>
-              t.id === oldId ? { ...t, id: newId } : t,
-            ),
+            tasks: s.tasks.map((t) => (t.id === oldId ? { ...t, id: newId } : t)),
           }));
           return newId;
         },
@@ -362,9 +332,7 @@ export const useStore = create<SiftyState>()(
           if (!get().memories.some((m) => m.id === oldId)) return null;
           const newId = id("mem");
           set((s) => ({
-            memories: s.memories.map((m) =>
-              m.id === oldId ? { ...m, id: newId } : m,
-            ),
+            memories: s.memories.map((m) => (m.id === oldId ? { ...m, id: newId } : m)),
           }));
           return newId;
         },
@@ -373,9 +341,7 @@ export const useStore = create<SiftyState>()(
           const affected: string[] = [];
           set((s) => ({
             labels: [
-              ...s.labels.filter(
-                (l) => l.id !== localId && l.id !== canonical.id,
-              ),
+              ...s.labels.filter((l) => l.id !== localId && l.id !== canonical.id),
               canonical,
             ],
             tasks: s.tasks.map((t) => {
@@ -384,11 +350,7 @@ export const useStore = create<SiftyState>()(
               return {
                 ...t,
                 labelIds: Array.from(
-                  new Set(
-                    t.labelIds.map((id) =>
-                      id === localId ? canonical.id : id,
-                    ),
-                  ),
+                  new Set(t.labelIds.map((id) => (id === localId ? canonical.id : id))),
                 ),
               };
             }),
@@ -411,9 +373,7 @@ export const useStore = create<SiftyState>()(
 
         updateMemory: (id, patch) => {
           set((s) => ({
-            memories: s.memories.map((m) =>
-              m.id === id ? { ...m, ...patch } : m,
-            ),
+            memories: s.memories.map((m) => (m.id === id ? { ...m, ...patch } : m)),
           }));
           const memory = get().memories.find((m) => m.id === id);
           if (memory) syncHooks?.memoryUpserted(memory, { created: false });
@@ -426,19 +386,10 @@ export const useStore = create<SiftyState>()(
 
         ensureLabel: (name) => {
           const trimmed = name.trim();
-          const existing = get().labels.find(
-            (l) => l.name.toLowerCase() === trimmed.toLowerCase(),
-          );
+          const existing = get().labels.find((l) => l.name.toLowerCase() === trimmed.toLowerCase());
           if (existing) return existing;
-          const palette: Label["tone"][] = [
-            "neutral",
-            "mist",
-            "sand",
-            "sage",
-            "ember",
-          ];
-          const tone =
-            palette[get().labels.length % palette.length] ?? "neutral";
+          const palette: Label["tone"][] = ["neutral", "mist", "sand", "sage", "ember"];
+          const tone = palette[get().labels.length % palette.length] ?? "neutral";
           const label: Label = { id: id("label"), name: trimmed, tone };
           set((s) => ({ labels: [...s.labels, label] }));
           syncHooks?.labelEnsured(label);
@@ -458,16 +409,10 @@ export const useStore = create<SiftyState>()(
       migrate: (persisted, version) => {
         const state = persisted as Partial<SiftyState>;
         if (version < 2 && state.tasks) {
-          state.tasks = state.tasks.map((t) => ({
-            ...t,
-            agentBrief: t.agentBrief ?? null,
-          }));
+          state.tasks = state.tasks.map((t) => ({ ...t, agentBrief: t.agentBrief ?? null }));
         }
         if (version < 3 && state.tasks) {
-          state.tasks = state.tasks.map((t) => ({
-            ...t,
-            assigneeName: t.assigneeName ?? null,
-          }));
+          state.tasks = state.tasks.map((t) => ({ ...t, assigneeName: t.assigneeName ?? null }));
         }
         return state as SiftyState;
       },
