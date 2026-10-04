@@ -127,7 +127,7 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
   });
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-elevated)]/95 backdrop-blur px-4 sm:px-5 py-3">
         <div className="flex items-center gap-2 text-[12px] text-[var(--fg-subtle)]">
           {organizing && task.priorityBucket === "unset" ? (
@@ -162,7 +162,7 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-5">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 py-5">
         <div className="flex items-start gap-3">
           <button
             type="button"
