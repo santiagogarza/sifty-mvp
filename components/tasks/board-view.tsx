@@ -128,10 +128,14 @@ export function BoardView({
     const el = cardRefs.current.get(selectedId);
     if (!el) return;
     const active = document.activeElement;
-    const ours = active === document.body || !!containerRef.current?.contains(active);
+    const ours =
+      !active ||
+      active === document.body ||
+      !active.isConnected ||
+      !!containerRef.current?.contains(active);
     if (!ours || active === el) return;
     el.focus({ preventScroll: true });
-    el.scrollIntoView({ block: "nearest", inline: "nearest" });
+    el.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, [selectedId, selectedColumn]);
 
   React.useEffect(
@@ -209,7 +213,7 @@ export function BoardView({
   // focus (clicking empty board) and the mount autofocus select nothing.
   const onContainerFocus = (e: React.FocusEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget || selectedId || focusingProgrammatically.current) return;
-    if (e.currentTarget.matches(":focus-visible")) selectFirst();
+    if (matchesFocusVisible(e.currentTarget)) selectFirst();
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -440,6 +444,14 @@ const columnUnderPointer: CollisionDetection = (args) => {
 
 function titleOf(tasks: Task[], id: string | number): string {
   return tasks.find((t) => t.id === String(id))?.title ?? "task";
+}
+
+function matchesFocusVisible(el: Element): boolean {
+  try {
+    return el.matches(":focus-visible");
+  } catch {
+    return false;
+  }
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {

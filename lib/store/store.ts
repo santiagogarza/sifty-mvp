@@ -187,7 +187,7 @@ export const useStore = create<SiftyState>()(
             editedFields: [],
             createdAt: now,
             updatedAt: now,
-            completedAt: null,
+            completedAt: lifecycle === "done" ? now : null,
           };
           set((s) => ({ tasks: [task, ...s.tasks] }));
           syncHooks?.taskUpserted(task, { created: true });
