@@ -269,7 +269,9 @@ pnpm test:e2e
 | `/` | Open command palette |
 | `⌘K` / `^K` | Open command palette |
 | `⌘↵` | Submit capture |
-| `↑/↓` (`j`/`k`) | Navigate task list |
+| `↑/↓` (`j`/`k`) | Navigate task list, or cards within a board column |
+| `←/→` | Move board selection between columns |
+| `⌥←` / `⌥→` (`Alt+←/→`) | Move the selected board card one column |
 | `Enter` | Open the highlighted task |
 | `Esc` | Close any overlay |
 
