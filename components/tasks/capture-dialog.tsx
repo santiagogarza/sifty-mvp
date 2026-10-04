@@ -70,7 +70,7 @@ export function CaptureDialog({
       sourceText: text,
       sourceContext: context.trim() || null,
     });
-    if (dueToday) updateTask(task.id, { due: localIsoDate(new Date()) }, { editedFields: ["due"] });
+    if (dueToday) updateTask(task.id, { due: new Date().toISOString().slice(0, 10) }, { editedFields: ["due"] });
     if (fileTo && fileTo !== "inbox") setLifecycle(task.id, fileTo);
     onOpenChange(false);
     // Open the sheet on the next frame so this dialog's close (and its
@@ -148,10 +148,4 @@ export function CaptureDialog({
       </DialogContent>
     </Dialog>
   );
-}
-
-function localIsoDate(d: Date): string {
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${m}-${day}`;
 }
