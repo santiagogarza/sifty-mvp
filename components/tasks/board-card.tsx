@@ -68,7 +68,8 @@ export function BoardCardFace({
             <button
               type="button"
               aria-label={isDone ? "Mark as not done" : "Mark as done"}
-              onPointerDown={(event) => event.stopPropagation()}
+              onMouseDown={(event) => event.stopPropagation()}
+              onTouchStart={(event) => event.stopPropagation()}
               onClick={(event) => {
                 event.stopPropagation();
                 onComplete(task);
