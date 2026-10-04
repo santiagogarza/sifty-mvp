@@ -12,7 +12,12 @@ test("keyboard file survives reload and the preference is global", async ({ page
   await page.keyboard.press("c");
   await page.getByPlaceholder("What do you need to do?").fill(marker);
   await page.keyboard.press("ControlOrMeta+Enter");
+  // Capture opens the detail sheet on the next frame. Escape before that
+  // lands on the dialog that's already closing, and the sheet stays up.
+  const sheet = page.getByPlaceholder("What's the very next concrete step?");
+  await expect(sheet).toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 
   await page.getByRole("radio", { name: "Board" }).click();
   const card = page.locator("[data-board-card]", { hasText: marker });
