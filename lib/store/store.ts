@@ -66,7 +66,15 @@ interface SiftyState {
   setHydrated: (v: boolean) => void;
   setPreferredModelId: (modelId: string) => void;
 
-  createTask: (input: { sourceText: string; sourceContext?: string | null }) => Task;
+  /**
+   * `lifecycle` defaults to inbox — the only caller that passes anything
+   * else is a board column's Add, which captures straight into that status.
+   */
+  createTask: (input: {
+    sourceText: string;
+    sourceContext?: string | null;
+    lifecycle?: Lifecycle;
+  }) => Task;
   updateTask: (
     id: string,
     patch: Partial<Task>,
@@ -146,7 +154,7 @@ export const useStore = create<SiftyState>()(
         setHydrated: (v) => set({ hydrated: v }),
         setPreferredModelId: (modelId) => set({ preferredModelId: modelId }),
 
-        createTask: ({ sourceText, sourceContext }) => {
+        createTask: ({ sourceText, sourceContext, lifecycle }) => {
           const now = new Date().toISOString();
           const text = sourceText.trim();
           const provisionalTitle =
@@ -159,7 +167,7 @@ export const useStore = create<SiftyState>()(
             title: provisionalTitle,
             description: sourceContext?.trim() || null,
             nextAction: null,
-            lifecycle: "inbox",
+            lifecycle: lifecycle ?? "inbox",
             aiStatus: "pending",
             aiError: null,
             aiAttempts: 0,
