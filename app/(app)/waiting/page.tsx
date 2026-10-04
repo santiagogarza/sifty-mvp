@@ -2,15 +2,17 @@
 
 import { PageShell } from "@/components/app-shell/page-shell";
 import { TaskView } from "@/components/tasks/task-view";
+import { useRouteViewMode } from "@/components/tasks/use-view-mode";
 import { statusLabel } from "@/lib/domain/status";
 import type { Task } from "@/lib/domain/types";
 import { selectByLifecycle } from "@/lib/store/selectors";
 import * as React from "react";
 
 export default function WaitingPage() {
+  const [mode] = useRouteViewMode();
   const select = React.useCallback((t: Task[]) => selectByLifecycle(t, "waiting"), []);
   return (
-    <PageShell title={statusLabel("waiting")}>
+    <PageShell title={statusLabel("waiting")} wide={mode === "board"}>
       <TaskView
         title={statusLabel("waiting")}
         description="Things you've handed off — to a person, an agent, or a process. Move them back to Focus when the ball returns; Today will nudge you when a deadline arrives."

@@ -2,6 +2,7 @@
 
 import { CaptureDialog } from "@/components/tasks/capture-dialog";
 import { TaskDetailSheet } from "@/components/tasks/task-detail-sheet";
+import type { Lifecycle } from "@/lib/domain/types";
 import { useServerSync } from "@/lib/store/sync";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
@@ -35,6 +36,7 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const search = useSearchParams();
   const [captureOpen, setCaptureOpen] = React.useState(false);
+  const [captureLifecycle, setCaptureLifecycle] = React.useState<Lifecycle | undefined>(undefined);
   const [commandOpen, setCommandOpen] = React.useState(false);
 
   // Pulls the server snapshot into the store on mount and reconciles; a
@@ -43,7 +45,14 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
 
   const detailTaskId = search.get("task");
 
-  const openCapture = React.useCallback(() => setCaptureOpen(true), []);
+  const openCapture = React.useCallback((opts?: { lifecycle?: Lifecycle }) => {
+    setCaptureLifecycle(opts?.lifecycle);
+    setCaptureOpen(true);
+  }, []);
+  const onCaptureOpenChange = React.useCallback((open: boolean) => {
+    setCaptureOpen(open);
+    if (!open) setCaptureLifecycle(undefined);
+  }, []);
   const openCommand = React.useCallback(() => setCommandOpen(true), []);
 
   const openDetail = React.useCallback(
@@ -63,8 +72,8 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
   }, [router, pathname, search]);
 
   const value = React.useMemo(
-    () => ({ openDetail, openCapture, openCommand }),
-    [openDetail, openCapture, openCommand],
+    () => ({ openDetail, openCapture, openCommand, captureOpen, commandOpen }),
+    [openDetail, openCapture, openCommand, captureOpen, commandOpen],
   );
 
   return (
@@ -75,11 +84,19 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
-      <BottomNav onCapture={openCapture} />
-      <CaptureDialog open={captureOpen} onOpenChange={setCaptureOpen} />
-      <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} onCapture={openCapture} />
+      <BottomNav onCapture={() => openCapture()} />
+      <CaptureDialog
+        open={captureOpen}
+        lifecycle={captureLifecycle}
+        onOpenChange={onCaptureOpenChange}
+      />
+      <CommandPalette
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        onCapture={() => openCapture()}
+      />
       <TaskDetailSheet taskId={detailTaskId} onClose={closeDetail} />
-      <GlobalKeyboard onCapture={openCapture} onCommand={openCommand} />
+      <GlobalKeyboard onCapture={() => openCapture()} onCommand={openCommand} />
       {sync.hydrated && sync.error ? (
         <div
           role="status"
@@ -94,8 +111,10 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
 
 interface FrameApi {
   openDetail: (id: string) => void;
-  openCapture: () => void;
+  openCapture: (opts?: { lifecycle?: Lifecycle }) => void;
   openCommand: () => void;
+  captureOpen: boolean;
+  commandOpen: boolean;
 }
 
 const FrameContext = React.createContext<FrameApi | null>(null);
