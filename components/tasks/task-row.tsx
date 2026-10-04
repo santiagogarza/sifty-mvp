@@ -3,6 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { assigneeDisplayValue } from "@/lib/domain/assignee";
 import type { Label, Lifecycle, Task } from "@/lib/domain/types";
+import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import { formatRelativeDay, isOverdue, isToday } from "@/lib/utils/dates";
 import { Check } from "lucide-react";
@@ -36,6 +37,7 @@ export const TaskRow = React.forwardRef<
     uncompleteTo?: Lifecycle;
   }
 >(function TaskRow({ task, onOpen, active, labels, tabIndex = -1, uncompleteTo = "active" }, ref) {
+  const setLifecycle = useStore((s) => s.setLifecycle);
   const labelMap = React.useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels]);
   const taskLabels = task.labelIds.map((id) => labelMap.get(id)).filter(Boolean) as Label[];
 
@@ -49,11 +51,12 @@ export const TaskRow = React.forwardRef<
       ? "ember"
       : "neutral";
 
+  const isDone = task.lifecycle === "done";
+
   const onComplete = (e: React.MouseEvent) => {
     e.stopPropagation();
+    setLifecycle(task.id, isDone ? uncompleteTo : "done");
   };
-
-  const isDone = task.lifecycle === "done";
 
   return (
     <div
@@ -80,6 +83,11 @@ export const TaskRow = React.forwardRef<
       <button
         type="button"
         onClick={onComplete}
+        onKeyDown={(e) => {
+          // The row opens the sheet on Enter/Space. Stop the key here so
+          // activating the circle only toggles lifecycle.
+          if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+        }}
         aria-label={isDone ? "Mark as not done" : "Mark as done"}
         className={cn(
           // The visible circle is 20px; the ::after pseudo pads the hit
