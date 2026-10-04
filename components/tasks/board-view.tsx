@@ -12,7 +12,7 @@ import {
   DragOverEvent,
   DragOverlay,
   DragStartEvent,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   useSensor,
   useSensors,
@@ -86,7 +86,10 @@ export function BoardView({ tasks }: { tasks: Task[] }) {
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [overId, setOverId] = React.useState<Lifecycle | null>(null);
   const [settledId, setSettledId] = React.useState<string | null>(null);
-  const [pulse, setPulse] = React.useState<{ status: Lifecycle; key: number } | null>(null);
+  const [pulse, setPulse] = React.useState<{
+    status: Lifecycle;
+    key: number;
+  } | null>(null);
   const [undo, setUndo] = React.useState<UndoRecord | null>(null);
   const completedFrom = React.useRef(new Map<string, Lifecycle>());
   const ignoreClick = React.useRef(false);
@@ -96,7 +99,9 @@ export function BoardView({ tasks }: { tasks: Task[] }) {
   const resolvedSelection = React.useMemo(() => {
     if (
       selectedId &&
-      columns.some((column) => column.tasks.some((task) => task.id === selectedId))
+      columns.some((column) =>
+        column.tasks.some((task) => task.id === selectedId),
+      )
     ) {
       return selectedId;
     }
@@ -137,7 +142,8 @@ export function BoardView({ tasks }: { tasks: Task[] }) {
     if (!node) return;
     const active = document.activeElement;
     const insideBoard = Boolean(active && boardRef.current?.contains(active));
-    const onToggle = active instanceof HTMLElement && active.getAttribute("role") === "radio";
+    const onToggle =
+      active instanceof HTMLElement && active.getAttribute("role") === "radio";
     // The list autofocuses so j/k work immediately. Pull focus off the
     // toggle the same way, otherwise Shift+arrow never reaches a card.
     if (
@@ -190,7 +196,11 @@ export function BoardView({ tasks }: { tasks: Task[] }) {
       // Buttons and the layout toggle own Enter / arrows. The card is a listitem, so it still receives them.
       if (isInteractiveTarget(event.target)) return;
 
-      if (event.key === "z" && (event.metaKey || event.ctrlKey) && !event.shiftKey) {
+      if (
+        event.key === "z" &&
+        (event.metaKey || event.ctrlKey) &&
+        !event.shiftKey
+      ) {
         if (!undo) return;
         event.preventDefault();
         undoMove();
@@ -222,7 +232,9 @@ export function BoardView({ tasks }: { tasks: Task[] }) {
       ) {
         event.preventDefault();
         const dir = event.key === "ArrowDown" || event.key === "j" ? 1 : -1;
-        setSelectedId(moveSelection(columns, resolvedSelection, { index: dir }));
+        setSelectedId(
+          moveSelection(columns, resolvedSelection, { index: dir }),
+        );
         return;
       }
 
@@ -248,7 +260,9 @@ export function BoardView({ tasks }: { tasks: Task[] }) {
   ]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: BOARD_POINTER_DISTANCE } }),
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: BOARD_POINTER_DISTANCE },
+    }),
     useSensor(TouchSensor, {
       activationConstraint: { delay: BOARD_TOUCH_DELAY_MS, tolerance: 8 },
     }),
@@ -301,7 +315,10 @@ export function BoardView({ tasks }: { tasks: Task[] }) {
         onDragEnd={onDragEnd}
         onDragCancel={onDragCancel}
       >
-        <div data-testid="board-scroller" className="flex gap-3 overflow-x-auto pb-1">
+        <div
+          data-testid="board-scroller"
+          className="flex gap-3 overflow-x-auto pb-1"
+        >
           {columns.map((column) => (
             <BoardColumn
               key={column.status}
@@ -312,7 +329,10 @@ export function BoardView({ tasks }: { tasks: Task[] }) {
               count={columnCount(column, activeTask, overId)}
               selectedId={resolvedSelection}
               settledId={settledId}
-              isOver={overId === column.status && activeTask?.lifecycle !== column.status}
+              isOver={
+                overId === column.status &&
+                activeTask?.lifecycle !== column.status
+              }
               pulseKey={pulse?.status === column.status ? pulse.key : null}
               ignoreClick={ignoreClick}
               onOpen={openDetail}

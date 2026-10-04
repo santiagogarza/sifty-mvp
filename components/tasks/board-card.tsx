@@ -27,11 +27,15 @@ export function BoardCardFace({
   onComplete?: (task: Task) => void;
 }) {
   const isDone = task.lifecycle === "done";
-  const labelMap = React.useMemo(() => new Map(labels.map((label) => [label.id, label])), [labels]);
+  const labelMap = React.useMemo(
+    () => new Map(labels.map((label) => [label.id, label])),
+    [labels],
+  );
   const firstLabel = task.labelIds
     .map((id) => labelMap.get(id))
     .find((label): label is Label => Boolean(label));
-  const assignee = task.delegationCandidate === "person" ? assigneeDisplayValue(task) : null;
+  const assignee =
+    task.delegationCandidate === "person" ? assigneeDisplayValue(task) : null;
   const dueLabel = formatRelativeDay(task.due);
   const overdue = isOverdue(task.due);
   const dueTone = overdue ? "rose" : isToday(task.due) ? "ember" : "neutral";
@@ -48,14 +52,18 @@ export function BoardCardFace({
       <h3
         className={cn(
           "line-clamp-2 break-words text-[13px] leading-[1.35] tracking-[-0.005em]",
-          isDone ? "text-[var(--fg-subtle)] line-through decoration-[1.5px]" : "text-[var(--fg)]",
+          isDone
+            ? "text-[var(--fg-subtle)] line-through decoration-[1.5px]"
+            : "text-[var(--fg)]",
         )}
       >
         {task.title}
       </h3>
       <AiStatusInline status={task.aiStatus} className="mt-1" />
       {task.nextAction && !isDone ? (
-        <p className="mt-1 truncate text-[12px] text-[var(--fg-muted)]">{task.nextAction}</p>
+        <p className="mt-1 truncate text-[12px] text-[var(--fg-muted)]">
+          {task.nextAction}
+        </p>
       ) : null}
       <div className="mt-2 flex min-w-0 items-center gap-1.5">
         <div className="relative size-4 shrink-0">
@@ -81,7 +89,9 @@ export function BoardCardFace({
                   : "border-[var(--fg-muted)]/40 bg-[var(--surface)] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
               )}
             >
-              {isDone ? <Check size={10} className="text-white" strokeWidth={3} /> : null}
+              {isDone ? (
+                <Check size={10} className="text-white" strokeWidth={3} />
+              ) : null}
             </button>
           ) : (
             <span
@@ -91,12 +101,17 @@ export function BoardCardFace({
               )}
               aria-hidden
             >
-              {isDone ? <Check size={10} className="text-white" strokeWidth={3} /> : null}
+              {isDone ? (
+                <Check size={10} className="text-white" strokeWidth={3} />
+              ) : null}
             </span>
           )}
         </div>
         {dueLabel ? (
-          <Badge tone={dueTone} variant={dueTone === "neutral" ? "outline" : "soft"}>
+          <Badge
+            tone={dueTone}
+            variant={dueTone === "neutral" ? "outline" : "soft"}
+          >
             {dueLabel}
           </Badge>
         ) : null}
@@ -133,7 +148,9 @@ export function BoardCard({
   onComplete?: (task: Task) => void;
   onSelect?: (id: string) => void;
 }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: task.id });
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: task.id,
+  });
 
   const open = () => {
     if (ignoreClick?.current) {
@@ -163,7 +180,7 @@ export function BoardCard({
         }
       }}
       className={cn(
-        "group relative w-full min-w-0 cursor-grab select-none touch-none",
+        "group relative w-full min-w-0 cursor-grab select-none touch-manipulation",
         "transition-[transform,box-shadow] duration-150 ease-[var(--ease-product)]",
         "hover:-translate-y-px",
         "focus-visible:outline-none",
@@ -174,7 +191,12 @@ export function BoardCard({
       {isDragging ? (
         <div className="h-[88px] rounded-[var(--radius-md)] border border-dashed border-[var(--border-strong)]" />
       ) : (
-        <BoardCardFace task={task} labels={labels} selected={selected} onComplete={onComplete} />
+        <BoardCardFace
+          task={task}
+          labels={labels}
+          selected={selected}
+          onComplete={onComplete}
+        />
       )}
     </div>
   );
