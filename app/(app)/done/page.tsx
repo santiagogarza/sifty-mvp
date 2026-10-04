@@ -7,6 +7,7 @@ import { TaskView } from "@/components/tasks/task-view";
 import { statusLabel } from "@/lib/domain/status";
 import { selectDoneTasks, selectDroppedTasks } from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
+import { useClientReady, useViewMode } from "@/lib/store/view-mode";
 import { cn } from "@/lib/utils/cn";
 import { ChevronRight } from "lucide-react";
 import * as React from "react";
@@ -35,10 +36,13 @@ function DroppedSection() {
   const { openDetail } = useFrame();
   const tasks = useStore((s) => s.tasks);
   const hydrated = useStore((s) => s.hydrated);
+  const mode = useViewMode();
+  const clientReady = useClientReady();
   const [expanded, setExpanded] = React.useState(false);
 
   const dropped = React.useMemo(() => selectDroppedTasks(tasks), [tasks]);
-  if (!hydrated || dropped.length === 0) return null;
+  // Hide until the client knows the mode, so Board never flashes the disclosure.
+  if (!clientReady || mode === "board" || !hydrated || dropped.length === 0) return null;
 
   return (
     <section className="mt-8 mb-10 pt-4 border-t border-[var(--border)]">
