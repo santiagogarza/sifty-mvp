@@ -5,10 +5,12 @@ import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils/cn";
 import { Plus, Search } from "lucide-react";
 import * as React from "react";
+import { PomodoroControl } from "./pomodoro-control";
 
 /**
  * Top bar — kept intentionally light. The page content owns its own H1
- * heading so the top bar is just affordances: command palette + capture.
+ * heading so the top bar is just affordances: focus timer, command palette,
+ * capture.
  */
 export function TopBar({
   onCapture,
@@ -46,6 +48,7 @@ export function TopBar({
 
       <div className="flex items-center gap-2">
         {rightSlot}
+        <PomodoroControl />
         {/* Visible on phones too: with no sidebar there, the palette is the
             route to Waiting on / Someday / Done. */}
         <button
