@@ -1,6 +1,6 @@
 {
   "name": "Sifty",
-  "install": "corepack enable && corepack prepare pnpm@10.0.0 --activate && pnpm install --frozen-lockfile && pnpm test:e2e:install",
+  "install": "corepack enable && corepack prepare pnpm@10.0.0 --activate && pnpm install --frozen-lockfile",
   "terminals": [
     {
       "name": "dev",
