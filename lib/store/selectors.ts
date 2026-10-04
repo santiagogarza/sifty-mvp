@@ -25,7 +25,7 @@ export interface ViewArgs {
   search?: string;
 }
 
-function applyCommonFilters(tasks: Task[], args: ViewArgs): Task[] {
+export function applyCommonFilters(tasks: Task[], args: ViewArgs): Task[] {
   let out = tasks;
   if (args.labelId) {
     out = out.filter((t) => t.labelIds.includes(args.labelId!));
@@ -60,7 +60,7 @@ export function isTodayTask(t: Task, now = new Date()): boolean {
   return false;
 }
 
-function byFocusScore(now: Date) {
+export function byFocusScore(now: Date) {
   return (a: Task, b: Task) =>
     focusScore({
       bucket: a.priorityBucket,
