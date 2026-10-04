@@ -66,6 +66,12 @@ Sifty optimises three things, in this order:
    confidence are visible in the detail sheet so you can disagree on
    evidence, not vibes.
 
+Every task route (Today, Inbox, Focus, Waiting on, Someday, Done) can switch
+to a **Board** of those same statuses. Drag a card between columns, or select
+one and press `⇧←` / `⇧→`, to file it. `←` `→` move the selection, `↵` opens
+the card, and `⌘Z` undoes the last move for a few seconds. The choice is
+remembered on this device.
+
 ## Production architecture
 
 ```
