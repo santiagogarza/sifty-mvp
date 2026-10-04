@@ -3,6 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { assigneeDisplayValue } from "@/lib/domain/assignee";
 import type { Label, Lifecycle, Task } from "@/lib/domain/types";
+import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import { formatRelativeDay, isOverdue, isToday } from "@/lib/utils/dates";
 import { Check } from "lucide-react";
@@ -34,8 +35,20 @@ export const TaskRow = React.forwardRef<
      * puts it back exactly where it was.
      */
     uncompleteTo?: Lifecycle;
+    /** Part of the list's multi-selection (SIF-22). */
+    selected?: boolean;
+    /**
+     * Selection intent for a click. Shift+click is selection-only: the
+     * detail sheet does not open. Plain click selects the single row and
+     * then opens as before.
+     */
+    onSelect?: (id: string, opts: { shift: boolean }) => void;
   }
->(function TaskRow({ task, onOpen, active, labels, tabIndex = -1, uncompleteTo = "active" }, ref) {
+>(function TaskRow(
+  { task, onOpen, active, labels, tabIndex = -1, uncompleteTo = "active", selected, onSelect },
+  ref,
+) {
+  const updateTask = useStore((s) => s.updateTask);
   const labelMap = React.useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels]);
   const taskLabels = task.labelIds.map((id) => labelMap.get(id)).filter(Boolean) as Label[];
 
@@ -50,7 +63,12 @@ export const TaskRow = React.forwardRef<
       : "neutral";
 
   const onComplete = (e: React.MouseEvent) => {
+    // Completion never touches the selection set: the click stops here and
+    // the row's click/select handlers never run.
     e.stopPropagation();
+    updateTask(task.id, {
+      lifecycle: task.lifecycle === "done" ? uncompleteTo : "done",
+    });
   };
 
   const isDone = task.lifecycle === "done";
@@ -59,9 +77,21 @@ export const TaskRow = React.forwardRef<
     <div
       ref={ref}
       role="option"
-      aria-selected={active}
+      aria-selected={!!selected}
       tabIndex={tabIndex}
-      onClick={() => onOpen(task.id)}
+      onMouseDown={(e) => {
+        // Shift+click means "extend selection" — suppress the browser's
+        // native text-range selection so titles don't highlight.
+        if (e.shiftKey && onSelect) e.preventDefault();
+      }}
+      onClick={(e) => {
+        if (e.shiftKey && onSelect) {
+          onSelect(task.id, { shift: true });
+          return;
+        }
+        onSelect?.(task.id, { shift: false });
+        onOpen(task.id);
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -75,6 +105,9 @@ export const TaskRow = React.forwardRef<
         "transition-colors duration-150 ease-[var(--ease-product)]",
         "hover:bg-[var(--surface-muted)]",
         active && "bg-[var(--surface-muted)]",
+        // Quiet selected state: one step past hover on the existing surface
+        // scale, no checkboxes, no accent shouting.
+        selected && "bg-[var(--surface-hover)]",
       )}
     >
       <button
