@@ -33,7 +33,7 @@ export async function GET(req: Request) {
   `;
 
   const result = await db.execute(sql.raw(query));
-  const tasks = Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? result;
+  const tasks = Array.isArray(result) ? result : ((result as { rows?: unknown[] }).rows ?? result);
 
   return NextResponse.json({ tasks });
 }
