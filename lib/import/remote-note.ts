@@ -1,5 +1,6 @@
-import { lookup } from "node:dns/promises";
-import { BlockList, isIP } from "node:net";
+import { type LookupAddress, lookup } from "node:dns";
+import { request } from "node:https";
+import { BlockList, type LookupFunction, isIP } from "node:net";
 
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_BODY_BYTES = 64 * 1024;
@@ -29,7 +30,28 @@ for (const [net, prefix] of [
   blockedRanges.addSubnet(net, prefix, "ipv6");
 }
 
-async function assertPublicHttpsUrl(raw: string): Promise<URL> {
+function isBlocked(address: string, family: number): boolean {
+  return blockedRanges.check(address, family === 6 ? "ipv6" : "ipv4");
+}
+
+// Validates the exact addresses the socket connects to, so a DNS answer
+// cannot change between the check and the connect (rebinding).
+const publicOnlyLookup: LookupFunction = (hostname, options, callback) => {
+  lookup(hostname, { ...options, all: true }, (err, addresses) => {
+    if (err) return callback(err, "", 0);
+    if (
+      addresses.length === 0 ||
+      addresses.some(({ address, family }) => isBlocked(address, family))
+    ) {
+      return callback(new Error("Import URL host is not allowed"), "", 0);
+    }
+    if (options.all) return callback(null, addresses);
+    const [first] = addresses as [LookupAddress];
+    callback(null, first.address, first.family);
+  });
+};
+
+function assertPublicHttpsUrl(raw: string): URL {
   let url: URL;
   try {
     url = new URL(raw);
@@ -39,16 +61,9 @@ async function assertPublicHttpsUrl(raw: string): Promise<URL> {
   if (url.protocol !== "https:") {
     throw new Error("Import URL must use https");
   }
+  // IP literals skip the lookup hook, so they are checked here.
   const host = url.hostname.replace(/^\[|\]$/g, "");
-  const addresses = isIP(host)
-    ? [{ address: host, family: isIP(host) }]
-    : await lookup(host, { all: true }).catch(() => []);
-  if (
-    addresses.length === 0 ||
-    addresses.some(({ address, family }) =>
-      blockedRanges.check(address, family === 6 ? "ipv6" : "ipv4"),
-    )
-  ) {
+  if (isIP(host) && isBlocked(host, isIP(host))) {
     throw new Error("Import URL host is not allowed");
   }
   return url;
@@ -57,32 +72,41 @@ async function assertPublicHttpsUrl(raw: string): Promise<URL> {
 /**
  * Pull plain-text note content from a user-supplied URL for task capture.
  */
-export async function fetchRemoteNote(url: string): Promise<string> {
-  const target = await assertPublicHttpsUrl(url);
-  const res = await fetch(target, {
-    headers: { "User-Agent": "SiftyImport/1.0" },
-    // Redirects could bounce to an internal host after validation.
-    redirect: "error",
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+export function fetchRemoteNote(url: string): Promise<string> {
+  const target = assertPublicHttpsUrl(url);
+  return new Promise((resolve, reject) => {
+    // node:https does not follow redirects, which could bounce to an internal host.
+    const req = request(
+      target,
+      {
+        headers: { "User-Agent": "SiftyImport/1.0" },
+        lookup: publicOnlyLookup,
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      },
+      (res) => {
+        const status = res.statusCode ?? 0;
+        if (status < 200 || status >= 300) {
+          res.resume();
+          reject(new Error(`Import fetch failed (${status})`));
+          return;
+        }
+        const chunks: Buffer[] = [];
+        let size = 0;
+        const finish = () =>
+          resolve(new TextDecoder().decode(Buffer.concat(chunks).subarray(0, MAX_BODY_BYTES)));
+        res.on("data", (chunk: Buffer) => {
+          chunks.push(chunk);
+          size += chunk.byteLength;
+          if (size >= MAX_BODY_BYTES) {
+            finish();
+            res.destroy();
+          }
+        });
+        res.on("end", finish);
+        res.on("error", reject);
+      },
+    );
+    req.on("error", reject);
+    req.end();
   });
-  if (!res.ok) {
-    throw new Error(`Import fetch failed (${res.status})`);
-  }
-  if (!res.body) {
-    return "";
-  }
-
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  while (size < MAX_BODY_BYTES) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    size += value.byteLength;
-  }
-  await reader.cancel().catch(() => {});
-  return new TextDecoder().decode(
-    Buffer.concat(chunks).subarray(0, MAX_BODY_BYTES),
-  );
 }
