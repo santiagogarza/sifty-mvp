@@ -49,6 +49,14 @@
       }
     }
   },
+  "overrides": [
+    {
+      "include": ["tests/tasks/task-row-complete.test.tsx"],
+      "organizeImports": {
+        "enabled": false
+      }
+    }
+  ],
   "javascript": {
     "formatter": {
       "quoteStyle": "double",
