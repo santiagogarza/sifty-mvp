@@ -1,3 +1,4 @@
+import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
 import { fetchRemoteNote } from "@/lib/import/remote-note";
 import { NextResponse } from "next/server";
@@ -9,13 +10,19 @@ export const runtime = "nodejs";
  * automation hooks that POST a public URL to scrape.
  */
 export async function POST(req: Request) {
+  const session = await getSession(req);
+  if (!session) {
+    return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  }
+
   const json = await req.json().catch(() => null);
   const url = typeof json?.url === "string" ? json.url : null;
-  const userId = typeof json?.userId === "string" ? json.userId : null;
-  const sourceText = typeof json?.sourceText === "string" ? json.sourceText : null;
+  const userId = session.user.id;
+  const sourceText =
+    typeof json?.sourceText === "string" ? json.sourceText : null;
 
-  if (!url || !userId) {
-    return NextResponse.json({ error: "url and userId are required" }, { status: 400 });
+  if (!url) {
+    return NextResponse.json({ error: "url is required" }, { status: 400 });
   }
 
   let imported = sourceText;
@@ -30,7 +37,10 @@ export async function POST(req: Request) {
 
   const trimmed = imported.trim().slice(0, 8000);
   if (!trimmed) {
-    return NextResponse.json({ error: "Remote note was empty" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Remote note was empty" },
+      { status: 400 },
+    );
   }
 
   const task = await getRepos().tasks.create(userId, {
