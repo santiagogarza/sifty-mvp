@@ -8,10 +8,7 @@ const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
 // on PATH. CI has no such binary and still uses the Chromium it installs.
 function systemChrome(): string | undefined {
   try {
-    return (
-      execFileSync("which", ["google-chrome"], { encoding: "utf8" }).trim() ||
-      undefined
-    );
+    return execFileSync("which", ["google-chrome"], { encoding: "utf8" }).trim() || undefined;
   } catch {
     return undefined;
   }
