@@ -116,7 +116,15 @@ function DraggableCard({
   // A real drag ends with a click. Swallow that one so the sheet stays closed.
   const suppressClick = React.useRef(false);
   React.useEffect(() => {
-    if (isDragging) suppressClick.current = true;
+    if (isDragging) {
+      suppressClick.current = true;
+      return;
+    }
+    // Cancelled drags and drops outside a column never produce that click.
+    const t = setTimeout(() => {
+      suppressClick.current = false;
+    }, 0);
+    return () => clearTimeout(t);
   }, [isDragging]);
 
   return (
