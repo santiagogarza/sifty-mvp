@@ -3,9 +3,9 @@ import { defineConfig, devices } from "@playwright/test";
 
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
 
-// Cloud egress resets TLS to storage.googleapis.com, so Playwright cannot
-// download Chrome for Testing here. Use the image's Google Chrome when it is
-// on PATH. CI has no such binary and still uses the Chromium it installs.
+// Cloud Agent egress resets TLS to storage.googleapis.com, so Playwright cannot
+// download Chrome for Testing on the VM. Use the image's Google Chrome when it
+// is on PATH; CI and laptops have no such binary and keep Playwright's Chromium.
 function systemChrome(): string | undefined {
   try {
     return execFileSync("which", ["google-chrome"], { encoding: "utf8" }).trim() || undefined;
