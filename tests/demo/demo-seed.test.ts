@@ -1,5 +1,12 @@
 import { signUp } from "@/lib/auth/service";
 import { seedDemoWorkspaceIfEmpty } from "@/lib/demo/seed-demo";
+import {
+  computeTaskCounts,
+  selectByLifecycle,
+  selectFocusTasks,
+  selectInboxTasks,
+  selectTodayTasks,
+} from "@/lib/store/selectors";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getTestRepos } from "../setup";
 
@@ -47,6 +54,22 @@ describe("SIFTY_DEMO_SEED", () => {
     expect(memories.some((m) => m.pinned)).toBe(true);
     const done = tasks.filter((t) => t.lifecycle === "done");
     expect(done.every((t) => t.completedAt)).toBe(true);
+  });
+
+  it("sidebar counts match each view's rows on the demo seed", async () => {
+    const repos = getTestRepos();
+    const result = await signUp({ email: "counts@example.com", password: "password123" });
+    const userId = ("user" in result ? result.user : null)!.id;
+    const tasks = await repos.tasks.list(userId);
+    const now = new Date();
+
+    const counts = computeTaskCounts(tasks, now);
+    expect(counts.today).toBeGreaterThan(0);
+    expect(counts.today).toBe(selectTodayTasks(tasks).length);
+    expect(counts.inbox).toBe(selectInboxTasks(tasks).length);
+    expect(counts.focus).toBe(selectFocusTasks(tasks).length);
+    expect(counts.waiting).toBe(selectByLifecycle(tasks, "waiting").length);
+    expect(counts.someday).toBe(selectByLifecycle(tasks, "someday").length);
   });
 
   it("never reseeds a workspace that already has data", async () => {
