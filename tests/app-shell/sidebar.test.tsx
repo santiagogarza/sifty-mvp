@@ -15,39 +15,16 @@ function iso(daysFromNow: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-let seq = 0;
-function makeTask(patch: Partial<Task>): Task {
-  seq += 1;
-  return {
-    id: `task_sidebar_${seq}`,
-    sourceText: "test",
-    sourceContext: null,
-    title: `Task ${seq}`,
-    description: null,
-    nextAction: null,
-    lifecycle: "inbox",
-    aiStatus: "ready",
-    aiError: null,
-    aiAttempts: 1,
-    urgency: 0.4,
-    importance: 0.4,
-    priorityBucket: "schedule",
-    effort: "small",
-    due: null,
-    delegationCandidate: "self",
-    assigneeName: null,
-    confidence: 0.8,
-    clarifyingQuestion: null,
-    rationale: null,
-    agentBrief: null,
-    labelIds: [],
-    subtasks: [],
-    editedFields: [],
-    createdAt: NOW.toISOString(),
-    updatedAt: NOW.toISOString(),
-    completedAt: null,
-    ...patch,
-  };
+/**
+ * Builds fixtures through the store's own `createTask` so the full `Task`
+ * shape comes from production code; a hand-written literal would break
+ * typecheck whenever a required field is added to `Task`.
+ */
+function seedTask(patch: Partial<Task>): string {
+  const { createTask, updateTask } = useStore.getState();
+  const task = createTask({ sourceText: "test" });
+  updateTask(task.id, patch);
+  return task.id;
 }
 
 function navRow(label: string): HTMLElement {
@@ -62,20 +39,18 @@ function badge(label: string): HTMLElement | null {
   return (spans[1] as HTMLElement | undefined) ?? null;
 }
 
-const filed = makeTask({ lifecycle: "inbox" });
+let filedId: string;
+let somedayId: string;
 
 beforeEach(() => {
-  useStore.setState({
-    hydrated: true,
-    tasks: [
-      filed,
-      makeTask({ lifecycle: "inbox", due: iso(-1) }), // also Today
-      makeTask({ lifecycle: "active", priorityBucket: "do_now" }), // also Today
-      makeTask({ lifecycle: "waiting" }),
-      makeTask({ lifecycle: "done", due: iso(-1), completedAt: NOW.toISOString() }),
-      makeTask({ lifecycle: "dropped", priorityBucket: "do_now" }),
-    ],
-  });
+  useStore.setState({ hydrated: true, tasks: [] });
+  filedId = seedTask({ lifecycle: "inbox" });
+  seedTask({ lifecycle: "inbox", due: iso(-1) }); // also Today
+  seedTask({ lifecycle: "active", priorityBucket: "do_now" }); // also Today
+  seedTask({ lifecycle: "waiting" });
+  somedayId = seedTask({ lifecycle: "someday", due: iso(-1) }); // overdue, still not Today
+  seedTask({ lifecycle: "done", due: iso(-1) });
+  seedTask({ lifecycle: "dropped", priorityBucket: "do_now" });
 });
 
 describe("Sidebar count badges", () => {
@@ -85,13 +60,15 @@ describe("Sidebar count badges", () => {
     expect(badge("Inbox")?.textContent).toBe("2");
     expect(badge("Focus")?.textContent).toBe("1");
     expect(badge("Waiting on")?.textContent).toBe("1");
+    expect(badge("Someday")?.textContent).toBe("1");
   });
 
   it("renders no badge for a zero count or for Done", () => {
     render(<Sidebar />);
+    act(() => useStore.getState().deleteTask(somedayId));
     expect(badge("Someday")).toBeNull();
-    expect(badge("Done")).toBeNull();
     expect(navRow("Someday").textContent).toBe("Someday");
+    expect(badge("Done")).toBeNull();
   });
 
   it("uses the muted token with tabular numerals, even on the active row", () => {
@@ -106,7 +83,7 @@ describe("Sidebar count badges", () => {
 
   it("moves a count from Inbox to Focus live when a task is filed", () => {
     render(<Sidebar />);
-    act(() => useStore.getState().setLifecycle(filed.id, "active"));
+    act(() => useStore.getState().setLifecycle(filedId, "active"));
     expect(badge("Inbox")?.textContent).toBe("1");
     expect(badge("Focus")?.textContent).toBe("2");
   });
@@ -117,7 +94,7 @@ describe("Sidebar count badges", () => {
       useStore.getState().createTask({ sourceText: "Call the dentist", sourceContext: null });
     });
     expect(badge("Inbox")?.textContent).toBe("3");
-    act(() => useStore.getState().setLifecycle(filed.id, "done"));
+    act(() => useStore.getState().setLifecycle(filedId, "done"));
     expect(badge("Inbox")?.textContent).toBe("2");
   });
 });
