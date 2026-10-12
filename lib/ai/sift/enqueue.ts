@@ -68,12 +68,21 @@ export async function enqueueSift(args: {
   if (!admission.ok) {
     // The task exists either way; the denial is recorded on it so the UI
     // can show the cap message and offer the upgrade path.
+    // Guarded like every sift write: a run that claimed the task since the
+    // caller's read keeps its status.
     const denied =
-      (await repos.tasks.update(userId, task.id, {
-        aiStatus: "failed",
-        aiError: String(admission.body.error ?? "Sifting is not available right now."),
-        siftStage: null,
-      })) ?? task;
+      (await repos.tasks.update(
+        userId,
+        task.id,
+        {
+          aiStatus: "failed",
+          aiError: String(admission.body.error ?? "Sifting is not available right now."),
+          siftStage: null,
+        },
+        { ifSiftId: task.siftId },
+      )) ??
+      (await repos.tasks.get(userId, task.id)) ??
+      task;
     return { ok: false, reason: "denied", admission, task: denied };
   }
 
@@ -130,10 +139,14 @@ export async function enqueueSift(args: {
 async function abandon(repos: Repos, input: SiftInput): Promise<Task> {
   const message = SIFT_NOT_STARTED_MESSAGE;
   await repos.aiRuns.setStatus(input.userId, input.accountingRunId, "failed", message);
-  const task = await repos.tasks.update(input.userId, input.taskId, {
-    aiStatus: "failed",
-    aiError: message,
-  });
+  // Only while this sift still owns the task; a newer claim keeps its state.
+  const task =
+    (await repos.tasks.update(
+      input.userId,
+      input.taskId,
+      { aiStatus: "failed", aiError: message },
+      { ifSiftId: input.siftId },
+    )) ?? (await repos.tasks.get(input.userId, input.taskId));
   if (!task) throw new Error("task vanished while abandoning its sift");
   return task;
 }

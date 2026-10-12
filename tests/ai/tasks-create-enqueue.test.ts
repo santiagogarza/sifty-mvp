@@ -197,6 +197,22 @@ describe("POST /api/tasks enqueues siftTask", () => {
     expect(task?.siftId).toBe(results.find((r) => r.sift.enqueued)!.sift.siftId);
   });
 
+  it("a start failure never overwrites a newer sift that already claimed the task", async () => {
+    const repos = getTestRepos();
+    // The runtime refuses, but only after a re-sift has taken the task over.
+    client.start.mockImplementationOnce(async () => {
+      await repos.tasks.update(userId, "task_late", { siftId: "sift_newer", aiStatus: "running" });
+      throw new Error("queue down");
+    });
+    const body = await (
+      await create({ id: "task_late", sourceText: "Late failure", aiStatus: "pending" })
+    ).json();
+    expect(body.sift).toEqual({ enqueued: false, reason: "not_started" });
+    const task = await repos.tasks.get(userId, "task_late");
+    expect(task?.siftId).toBe("sift_newer");
+    expect(task?.aiStatus).toBe("running");
+  });
+
   it("offline=1 is passed through to the workflow", async () => {
     const res = await create({ sourceText: "Offline capture", aiStatus: "pending" }, "?offline=1");
     expect(res.status).toBe(201);
