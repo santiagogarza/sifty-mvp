@@ -1,8 +1,9 @@
-import { getRepos } from "@/lib/db/repos";
+import { type Repos, getRepos } from "@/lib/db/repos";
 import { reportError } from "@/lib/observability/report-error";
 import { FatalError } from "workflow";
 import { recordAiRun } from "../ai-runs";
 import { AiConfigError } from "../provider";
+import type { TriageMeta } from "../triage-agent";
 import { MEMORY_STAGE, type MemoryContext, type SiftContradiction } from "./extract";
 import { looksMemoryWorthy } from "./prefilter";
 import { filterProposals, proposeMemories } from "./propose";
@@ -31,6 +32,12 @@ export interface MemoryExtractInput {
   contradictions: SiftContradiction[];
   modelPreference: string | null;
   offline: boolean;
+  /**
+   * Edit-triggered runs: the `ai_runs` row reserved at admission, completed
+   * in place here so a retried step never bills twice. Sift-triggered runs
+   * insert their own detail row instead.
+   */
+  aiRunId?: string;
 }
 
 export type MemoryExtractOutcome =
@@ -45,9 +52,18 @@ export async function extractMemories(
   workflowRunId: string | null,
 ): Promise<MemoryExtractOutcome> {
   const repos = getRepos();
+  const release = async (why: string) => {
+    if (input.aiRunId) await repos.aiRuns.setStatus(input.userId, input.aiRunId, "failed", why);
+  };
   const task = await repos.tasks.get(input.userId, input.taskId);
-  if (!task) return { outcome: "skipped", reason: "missing" };
-  if (task.siftId !== input.siftId) return { outcome: "skipped", reason: "superseded" };
+  if (!task) {
+    await release("task gone");
+    return { outcome: "skipped", reason: "missing" };
+  }
+  if (task.siftId !== input.siftId) {
+    await release("superseded by a newer sift");
+    return { outcome: "skipped", reason: "superseded" };
+  }
 
   const text = `${task.sourceText}\n${task.sourceContext ?? ""}`;
   if (input.trigger === "sift" && !looksMemoryWorthy(text)) {
@@ -74,14 +90,7 @@ export async function extractMemories(
       modelPreference: input.modelPreference,
       offline: input.offline,
     });
-    await recordAiRun({
-      userId: input.userId,
-      taskId: input.taskId,
-      meta,
-      status: "succeeded",
-      siftId: billingSiftId(input),
-      workflowRunId,
-    });
+    await recordRun(repos, input, meta, "succeeded", null, workflowRunId);
     const proposals = filterProposals(output.proposals, existing);
     if (!proposals.length) return { outcome: "skipped", reason: "nothing" };
     const { filed } = await proposeMemories(repos, input.userId, proposals, {
@@ -100,21 +109,56 @@ export async function extractMemories(
       userId: input.userId,
       tags: { taskId: input.taskId, siftId: input.siftId, trigger: input.trigger },
     });
-    await recordAiRun({
-      userId: input.userId,
-      taskId: input.taskId,
-      meta: failedMemoryMeta(input.offline),
-      status: "failed",
-      error: message,
-      siftId: billingSiftId(input),
+    await recordRun(
+      repos,
+      input,
+      failedMemoryMeta(input.offline),
+      "failed",
+      message,
       workflowRunId,
-    });
+    );
     if (err instanceof AiConfigError) throw new FatalError(message);
     throw err;
   }
 }
 
-/** Sift-triggered rows belong to their sift; edit-triggered rows are their own cap unit. */
-function billingSiftId(input: MemoryExtractInput): string | null {
-  return input.trigger === "sift" ? input.siftId : null;
+/**
+ * Sift-triggered runs insert a detail row of their sift (not a cap unit).
+ * Edit-triggered runs complete the row reserved at admission in place, so
+ * the cap counted it before the model was called and a retry cannot add
+ * a second unit.
+ */
+async function recordRun(
+  repos: Repos,
+  input: MemoryExtractInput,
+  meta: TriageMeta,
+  status: "succeeded" | "failed",
+  error: string | null,
+  workflowRunId: string | null,
+): Promise<void> {
+  if (input.aiRunId) {
+    await repos.aiRuns.complete(input.userId, input.aiRunId, {
+      promptVersion: meta.promptVersion,
+      model: meta.model,
+      transport: meta.transport,
+      status,
+      durationMs: meta.durationMs,
+      inputTokens: meta.inputTokens,
+      outputTokens: meta.outputTokens,
+      costCents: meta.costCents,
+      offline: meta.offline,
+      workflowRunId,
+      error,
+    });
+    return;
+  }
+  await recordAiRun({
+    userId: input.userId,
+    taskId: input.taskId,
+    meta,
+    status,
+    error,
+    siftId: input.siftId,
+    workflowRunId,
+  });
 }

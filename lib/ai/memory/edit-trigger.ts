@@ -8,6 +8,7 @@ import { memoryFromEdit } from "@/lib/workflows/memory-from-edit";
 import { admitAiRun } from "../ai-gate";
 import { detectContradictions } from "./contradictions";
 import type { MemoryExtractInput } from "./execute";
+import { MEMORY_PROMPT_VERSION, MEMORY_STAGE } from "./extract";
 
 /**
  * `PATCH /api/tasks/:id` calls this after a successful write. If the edit
@@ -54,6 +55,26 @@ export async function maybeExtractFromEdit(
     const admission = await admitAiRun({ req: args.req, session: args.session, bucket: "memory" });
     if (!admission.ok) return { started: false, reason: "denied" };
 
+    // Reserve the cap unit now, so the next request already counts it; the
+    // step completes this row with the model's usage, and it is released
+    // if the run never starts.
+    const reserved = await repos.aiRuns.insert({
+      userId,
+      taskId: args.before.id,
+      promptVersion: MEMORY_PROMPT_VERSION,
+      stage: MEMORY_STAGE,
+      model: "sifty.workflow",
+      transport: "workflow",
+      status: "succeeded",
+      durationMs: 0,
+      inputTokens: null,
+      outputTokens: null,
+      costCents: 0,
+      offline: args.offline,
+      error: null,
+    });
+    const release = (why: string) => repos.aiRuns.setStatus(userId, reserved.id, "failed", why);
+
     // The marker is the once-per-sift claim: only the request whose insert
     // landed (its nonce came back) starts the run.
     const nonce = makeId("mx");
@@ -63,7 +84,10 @@ export async function maybeExtractFromEdit(
       kind: "memory.extracted",
       payload: { siftId, nonce, fields: contradictions.map((c) => c.field) },
     });
-    if (marker.payload.nonce !== nonce) return { started: false, reason: "already_extracted" };
+    if (marker.payload.nonce !== nonce) {
+      await release("another edit already started extraction");
+      return { started: false, reason: "already_extracted" };
+    }
 
     const input: MemoryExtractInput = {
       userId,
@@ -73,8 +97,14 @@ export async function maybeExtractFromEdit(
       contradictions,
       modelPreference: null,
       offline: args.offline,
+      aiRunId: reserved.id,
     };
-    await startWorkflow(memoryFromEdit, [input]);
+    try {
+      await startWorkflow(memoryFromEdit, [input]);
+    } catch (err) {
+      await release("extraction could not start").catch(() => undefined);
+      throw err;
+    }
     return { started: true };
   } catch (err) {
     reportError(err, {

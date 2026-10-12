@@ -326,17 +326,20 @@ describe("PATCH /api/tasks/:id starts memoryFromEdit on a contradicting edit", (
     expect(res.status).toBe(200);
     expect(((await res.json()) as { task: { urgency: number } }).task.urgency).toBe(0.2);
     expect(client.start).toHaveBeenCalledTimes(1);
-    expect(client.start).toHaveBeenCalledWith(memoryFromEdit, [
-      {
-        userId: user.id,
-        taskId: task.id,
-        siftId: "sift_1",
-        trigger: "edit",
-        contradictions: [{ field: "urgency", aiValue: 0.8, userValue: 0.2 }],
-        modelPreference: null,
-        offline: false,
-      },
-    ]);
+    const started = client.start.mock.calls[0]!;
+    expect(started[0]).toBe(memoryFromEdit);
+    expect(started[1][0]).toMatchObject({
+      userId: user.id,
+      taskId: task.id,
+      siftId: "sift_1",
+      trigger: "edit",
+      contradictions: [{ field: "urgency", aiValue: 0.8, userValue: 0.2 }],
+      modelPreference: null,
+      offline: false,
+    });
+    // The cap unit was reserved before the run started and already counts.
+    expect((started[1][0] as { aiRunId?: string }).aiRunId).toBeTruthy();
+    expect(await repos.aiRuns.countSucceededToday(user.id)).toBe(2); // the sift + this run
     const events = await repos.taskEvents.listForTask(user.id, task.id, 10);
     expect(events.map((e) => e.kind)).toEqual(["memory.extracted"]);
 
@@ -397,7 +400,7 @@ describe("PATCH /api/tasks/:id starts memoryFromEdit on a contradicting edit", (
     expect(await repos.taskEvents.listForTask(user.id, task.id, 10)).toHaveLength(1);
   });
 
-  it("an edit-triggered run is billed as its own unit; a sift-triggered one is not", async () => {
+  it("an edit-triggered run completes its reserved row in place; a retry or a failure never adds a unit", async () => {
     const repos = getTestRepos();
     const user = await repos.users.create({
       email: "bill@example.com",
@@ -405,20 +408,59 @@ describe("PATCH /api/tasks/:id starts memoryFromEdit on a contradicting edit", (
       isCreator: false,
     });
     const task = await seedSifted(repos, user.id, "Pay the October invoice");
+    const reserve = () =>
+      repos.aiRuns.insert({
+        userId: user.id,
+        taskId: task.id,
+        promptVersion: "memory.v1",
+        stage: "memory",
+        model: "sifty.workflow",
+        transport: "workflow",
+        status: "succeeded",
+        durationMs: 0,
+        inputTokens: null,
+        outputTokens: null,
+        costCents: 0,
+        offline: true,
+        error: null,
+      });
+    const reserved = await reserve();
     const before = await repos.aiRuns.countSucceededToday(user.id);
-    await extractMemories(
-      input(user.id, task.id, {
-        trigger: "edit",
-        offline: false,
-        contradictions: [{ field: "urgency", aiValue: 0.8, userValue: 0.2 }],
-      }),
-      null,
-    ).catch(() => undefined);
+    const run = input(user.id, task.id, {
+      trigger: "edit",
+      offline: true,
+      aiRunId: reserved.id,
+      contradictions: [{ field: "urgency", aiValue: 0.8, userValue: 0.2 }],
+    });
+    // A sink failure on the first attempt, then a clean retry.
+    setMemorySinkForTesting(async () => {
+      throw new Error("inbox down");
+    });
+    await expect(extractMemories(run, "wrun_1")).rejects.toThrow("inbox down");
+    setMemorySinkForTesting(async (_r, _u, proposals) => ({ filed: proposals.length }));
+    expect(await extractMemories(run, "wrun_2")).toEqual({
+      outcome: "proposed",
+      proposals: 1,
+      filed: 1,
+    });
+
     const rows = (await repos.aiRuns.list(user.id)).filter((r) => r.stage === "memory");
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.siftId).toBeNull();
-    if (rows[0]!.status === "succeeded") {
-      expect(await repos.aiRuns.countSucceededToday(user.id)).toBe(before + 1);
-    }
+    expect(rows[0]).toMatchObject({
+      id: reserved.id,
+      siftId: null,
+      status: "succeeded",
+      workflowRunId: "wrun_2",
+    });
+    expect(await repos.aiRuns.countSucceededToday(user.id)).toBe(before);
+
+    // A superseded run releases its reservation.
+    const other = await reserve();
+    expect(
+      await extractMemories({ ...run, siftId: "sift_stale", aiRunId: other.id }, null),
+    ).toEqual({ outcome: "skipped", reason: "superseded" });
+    expect((await repos.aiRuns.list(user.id)).find((r) => r.id === other.id)!.status).toBe(
+      "failed",
+    );
   });
 });
