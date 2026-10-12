@@ -9,6 +9,7 @@ import * as React from "react";
 import { BottomNav } from "./bottom-nav";
 import { CommandPalette } from "./command-palette";
 import { GlobalKeyboard } from "./keyboard";
+import { ShortcutsSheet } from "./shortcuts-sheet";
 import { Sidebar } from "./sidebar";
 import { ThemeProvider } from "./theme-context";
 
@@ -50,6 +51,7 @@ function AppFrameInner({
   const search = useSearchParams();
   const [captureOpen, setCaptureOpen] = React.useState(false);
   const [commandOpen, setCommandOpen] = React.useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
 
   // Pulls the server snapshot into the store on mount and reconciles; a
   // no-op when the user isn't authenticated (the hook handles 401s).
@@ -59,6 +61,9 @@ function AppFrameInner({
 
   const openCapture = React.useCallback(() => setCaptureOpen(true), []);
   const openCommand = React.useCallback(() => setCommandOpen(true), []);
+  const openShortcuts = React.useCallback(() => setShortcutsOpen(true), []);
+  // `?` toggles: pressing it on the open sheet closes it again.
+  const toggleShortcuts = React.useCallback(() => setShortcutsOpen((v) => !v), []);
 
   const openDetail = React.useCallback(
     (id: string) => {
@@ -94,9 +99,19 @@ function AppFrameInner({
       </div>
       <BottomNav onCapture={openCapture} />
       <CaptureDialog open={captureOpen} onOpenChange={setCaptureOpen} />
-      <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} onCapture={openCapture} />
+      <CommandPalette
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        onCapture={openCapture}
+        onShortcuts={openShortcuts}
+      />
+      <ShortcutsSheet open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       <TaskDetailSheet taskId={detailTaskId} onClose={closeDetail} />
-      <GlobalKeyboard onCapture={openCapture} onCommand={openCommand} />
+      <GlobalKeyboard
+        onCapture={openCapture}
+        onCommand={openCommand}
+        onShortcuts={toggleShortcuts}
+      />
       <Toaster />
       <SyncNotice error={sync.hydrated ? sync.error : null} rejected={sync.rejected} />
     </FrameContext.Provider>

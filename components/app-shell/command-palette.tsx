@@ -13,6 +13,7 @@ import {
   Brain,
   Columns3,
   CreditCard,
+  Keyboard,
   Rows3,
   Search,
   Settings,
@@ -35,10 +36,12 @@ export function CommandPalette({
   open,
   onOpenChange,
   onCapture,
+  onShortcuts,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onCapture: () => void;
+  onShortcuts: () => void;
 }) {
   const router = useRouter();
   const openDetail = useOpenDetail();
@@ -138,10 +141,18 @@ export function CommandPalette({
         icon: <Sun size={14} />,
         run: () => toggle(),
       },
+      {
+        id: "shortcuts",
+        group: "system",
+        label: "Keyboard shortcuts",
+        hint: "?",
+        icon: <Keyboard size={14} />,
+        run: onShortcuts,
+      },
     ];
 
     return [...taskItems, ...taskMatches, ...nav, ...sys];
-  }, [tasks, router, openDetail, onCapture, toggle, viewMode, setViewMode]);
+  }, [tasks, router, openDetail, onCapture, onShortcuts, toggle, viewMode, setViewMode]);
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
