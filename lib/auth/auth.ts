@@ -138,7 +138,12 @@ function createAuth(repos: Repos) {
       updateAge: 60 * 60 * 24,
     },
     account: { modelName: "accounts" },
-    verification: { modelName: "verifications" },
+    verification: {
+      modelName: "verifications",
+      // Reset and magic-link tokens are bearer secrets; store only a hash so
+      // a database read cannot redeem them.
+      storeIdentifier: "hashed",
+    },
     emailAndPassword: {
       enabled: true,
       minPasswordLength: 8,
@@ -215,6 +220,7 @@ function createAuth(repos: Repos) {
     plugins: [
       magicLink({
         expiresIn: 60 * 5,
+        storeToken: "hashed",
         // Deliberately no special case for unverified accounts: Better Auth
         // treats the magic link as the first proof of mailbox ownership and
         // strips any password or session set before it (GHSA-qq9h-g4jm-xgf3).
