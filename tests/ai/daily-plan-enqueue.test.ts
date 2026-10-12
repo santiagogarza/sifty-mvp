@@ -11,6 +11,7 @@ import {
   emptySnapshot,
   trialSnapshot,
 } from "@/lib/entitlements/entitlements";
+import { DEFAULT_PREFERENCES } from "@/lib/notifications/preferences";
 import { __resetRateLimits } from "@/lib/ratelimit/limiter";
 import { dailyPlan } from "@/lib/workflows/daily-plan";
 import { type WorkflowClient, setWorkflowClientForTesting } from "@/lib/workflows/dispatch";
@@ -342,11 +343,26 @@ describe("enqueueNightlyPlans", () => {
     const plan = await repos.dailyPlans.latest(pro.id);
     expect(plan?.trigger).toBe("cron");
     expect(plan?.timezone).toBe("UTC");
+    expect(plan?.planDate).toBe(planDateFor(NOW, "UTC", "cron"));
 
     // The same tick again: the cron claim makes it a no-op.
     const again = await enqueueNightlyPlans(repos, { now: NOW, offline: false });
     expect(again.enqueued).toBe(0);
     expect(again.skipped.alreadyRunning).toBe(1);
+  });
+
+  it("plans in the zone saved with the user's notification preferences", async () => {
+    const repos = getTestRepos();
+    const user = await proUser(repos, "nz@example.com");
+    await repos.notificationPreferences.upsert(user.id, {
+      ...DEFAULT_PREFERENCES,
+      timezone: "Pacific/Auckland",
+    });
+    const result = await enqueueNightlyPlans(repos, { now: NOW, offline: false });
+    expect(result.enqueued).toBe(1);
+    const plan = await repos.dailyPlans.latest(user.id);
+    expect(plan?.timezone).toBe("Pacific/Auckland");
+    expect(plan?.planDate).toBe(planDateFor(NOW, "Pacific/Auckland", "cron"));
   });
 
   it("stops at the time budget and says so", async () => {

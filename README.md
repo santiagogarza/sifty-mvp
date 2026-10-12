@@ -275,9 +275,10 @@ today** on the Today page (Pro and creator; `caps.dailyPlan`). Backed by
   then claims one `cron` plan per user and local day (partial unique index)
   before `start()`. Claims are atomic per user (advisory lock): at most one
   plan runs at a time, so two overlapping "Re-plan today" clicks start one
-  workflow. The plan is for the user's local date — tomorrow when it
-  is already past 18:00 there — resolved in UTC until a saved timezone
-  exists; the manual route takes the browser's zone.
+  workflow. The plan is for the user's local date — tomorrow when it is
+  already past 18:00 there — in the zone saved with their notification
+  preferences (UTC until they save one); the manual route takes the
+  browser's zone.
 - Offline (`SIFTY_AI_OFFLINE=1`) the deterministic variant applies the same
   rules the prompt describes, so the whole flow runs in CI and demos.
 
