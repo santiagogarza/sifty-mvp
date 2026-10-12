@@ -42,6 +42,8 @@ const task: Task = {
   siftId: null,
   siftStage: null,
   plan: null,
+  recurrence: null,
+  seriesId: null,
   siftedWithAssumptions: false,
   labelIds: [],
   subtasks: [{ id: "st_1", title: "Review calendar", done: true, order: 0 }],
@@ -151,5 +153,70 @@ describe("TaskDetailSheet duplicate", () => {
     await user.keyboard("{Shift>}D{/Shift}");
     expect(useStore.getState().tasks).toHaveLength(2);
     expect(openDetail).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("TaskDetailSheet repeat", () => {
+  it("header shows the labeled priority pill", () => {
+    render(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
+    expect(screen.getByTestId("priority-pill")).toHaveTextContent("Urgent + important");
+  });
+
+  it("sets a weekly rule anchored on the due, then edits days, mode, and scope", async () => {
+    const user = userEvent.setup();
+    render(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
+
+    const row = screen.getByTestId("recurrence-row");
+    expect(row).toHaveTextContent("Doesn't repeat");
+    await user.click(row);
+    await user.click(screen.getByRole("menuitemradio", { name: "Weekly" }));
+
+    let current = useStore.getState().tasks.find((t) => t.id === "task_src")!;
+    // Due 2026-10-16 is a Friday.
+    expect(current.recurrence).toEqual({ freq: "weekly", mode: "fixed", weekdays: [5] });
+    expect(current.seriesId).toBe("task_src");
+    expect(row).toHaveTextContent("Weekly on Fri");
+
+    await user.click(screen.getByRole("button", { name: "Monday" }));
+    current = useStore.getState().tasks.find((t) => t.id === "task_src")!;
+    expect(current.recurrence?.weekdays).toEqual([1, 5]);
+    // The last remaining day cannot be switched off.
+    await user.click(screen.getByRole("button", { name: "Friday" }));
+    await user.click(screen.getByRole("button", { name: "Monday" }));
+    current = useStore.getState().tasks.find((t) => t.id === "task_src")!;
+    expect(current.recurrence?.weekdays).toEqual([1]);
+
+    // Clicking the frequency already in force keeps the chosen days.
+    await user.click(screen.getByRole("menuitemradio", { name: "Weekly" }));
+    current = useStore.getState().tasks.find((t) => t.id === "task_src")!;
+    expect(current.recurrence?.weekdays).toEqual([1]);
+
+    await user.click(screen.getByRole("menuitemradio", { name: /After completion/ }));
+    current = useStore.getState().tasks.find((t) => t.id === "task_src")!;
+    expect(current.recurrence?.mode).toBe("after_completion");
+    expect(row).toHaveTextContent("Weekly · after completion");
+
+    await user.click(screen.getByRole("radio", { name: "This instance" }));
+    expect(useStore.getState().instanceScope).toEqual({ task_src: true });
+    expect(row).toHaveTextContent("Editing this instance");
+
+    await user.click(screen.getByRole("menuitemradio", { name: "Doesn't repeat" }));
+    current = useStore.getState().tasks.find((t) => t.id === "task_src")!;
+    expect(current.recurrence).toBeNull();
+    expect(row).toHaveTextContent("Doesn't repeat");
+  });
+
+  it("monthly exposes a day-of-month input defaulting to the due's day", async () => {
+    const user = userEvent.setup();
+    render(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
+    await user.click(screen.getByTestId("recurrence-row"));
+    await user.click(screen.getByRole("menuitemradio", { name: "Monthly" }));
+    const day = screen.getByRole("spinbutton", { name: "Day of month" });
+    expect(day).toHaveValue(16);
+    await user.clear(day);
+    await user.type(day, "28");
+    const current = useStore.getState().tasks.find((t) => t.id === "task_src")!;
+    expect(current.recurrence).toEqual({ freq: "monthly", mode: "fixed", dayOfMonth: 28 });
+    expect(screen.getByTestId("recurrence-row")).toHaveTextContent("Monthly on the 28th");
   });
 });

@@ -427,7 +427,7 @@ describe("store persistence", () => {
 
     expect(useStore.getState().modelPreference).toBe("openai");
     const persisted = JSON.parse(window.localStorage.getItem(STORE_KEY) ?? "{}");
-    expect(persisted.version).toBe(4);
+    expect(persisted.version).toBe(5);
     expect(persisted.state.modelPreference).toBe("openai");
     expect(persisted.state).not.toHaveProperty("preferredModelId");
   });

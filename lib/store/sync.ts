@@ -3,6 +3,7 @@
 import { isTriageInFlight, watchSift } from "@/lib/ai/run-triage";
 import { normalizeAssigneeName } from "@/lib/domain/assignee";
 import { LABEL_LIMITS, MEMORY_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
+import { toLocalIsoDate } from "@/lib/domain/snooze";
 import type { Label, Memory, Task } from "@/lib/domain/types";
 import * as React from "react";
 import { type SyncHooks, registerSyncHooks, useStore } from "./store";
@@ -401,8 +402,32 @@ function taskWireFields(task: Task): Record<string, unknown> {
     subtasks: task.subtasks
       .slice(0, TASK_LIMITS.maxSubtasks)
       .map((s) => ({ ...s, title: clip(s.title, TASK_LIMITS.subtaskTitle) })),
+    recurrence: task.recurrence,
+    seriesId: task.seriesId,
     editedFields: task.editedFields,
   };
+}
+
+/**
+ * Completion context for a recurring task: the local calendar day the user
+ * completed it (from the store's own `completedAt`, so a push that lands
+ * hours or days later still names the right day) and the browser's zone as
+ * the server's fallback.
+ */
+function completionContext(task: Task): Record<string, unknown> {
+  if (task.lifecycle !== "done" || !task.recurrence) return {};
+  const out: Record<string, unknown> = {
+    completedOn: toLocalIsoDate(task.completedAt ? new Date(task.completedAt) : new Date()),
+  };
+  const completedFrom = useStore.getState().completedFrom[task.id];
+  if (completedFrom) out.completedFrom = completedFrom;
+  try {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (timeZone) out.timeZone = timeZone;
+  } catch {
+    // No zone available; the server falls back to UTC.
+  }
+  return out;
 }
 
 /** Keep only the dirty keys; `["*"]` keeps everything. */
@@ -412,7 +437,10 @@ function pick(fields: Record<string, unknown>, keys: readonly string[]): Record<
 }
 
 function taskPatchBody(task: Task, keys: readonly string[]): Record<string, unknown> {
-  return pick(taskWireFields(task), keys);
+  const body = pick(taskWireFields(task), keys);
+  // Completing a recurring task spawns its next instance server-side.
+  if (body.lifecycle === "done") Object.assign(body, completionContext(task));
+  return body;
 }
 
 function taskCreateBody(task: Task): Record<string, unknown> {
@@ -424,6 +452,8 @@ function taskCreateBody(task: Task): Record<string, unknown> {
     // preference the user picked in Settings.
     modelPreference: useStore.getState().modelPreference,
     ...taskWireFields(task),
+    // A recurring task captured and completed offline spawns on create.
+    ...completionContext(task),
   };
 }
 
@@ -509,6 +539,8 @@ async function pushTaskCreateJob(id: string): Promise<boolean> {
   if (!res) return false;
   if (res.status === 409) return remintAndRepushTask(id);
   if (!res.ok) return reportRejection(res, "tasks", id, `task create ${id}`);
+  const data = (await res.json().catch(() => null)) as { spawned?: Task | null } | null;
+  if (data?.spawned) adoptSpawnedTask(data.spawned);
   // The server started sifting in response to this create (a replayed
   // offline capture, say); follow it so the row does not sit on "pending"
   // until the next pull. Deferred past this job so the watcher's
@@ -535,7 +567,24 @@ async function pushTaskPatchJob(id: string): Promise<boolean> {
   if (!res) return false;
   if (res.status === 404) return pushTaskCreateJob(id);
   if (!res.ok) return reportRejection(res, "tasks", id, `task patch ${id}`);
+  const data = (await res.json().catch(() => null)) as { spawned?: Task | null } | null;
+  if (data?.spawned) adoptSpawnedTask(data.spawned);
   return true;
+}
+
+/**
+ * The server created the next instance of a recurring task in response to
+ * our completion. Show it now rather than on the next pull — unless this
+ * browser already deleted it, or has local edits to it that a pull would
+ * reconcile properly.
+ */
+function adoptSpawnedTask(task: Task): void {
+  if (ledger.deleted.tasks.includes(task.id) || isDirty("tasks", task.id)) return;
+  useStore.getState().adoptTaskFromServer(task);
+  // A successor that inherited an owed sift is being organized right now.
+  if (task.aiStatus === "pending" || task.aiStatus === "running") {
+    queueMicrotask(() => void watchSift(task.id));
+  }
 }
 
 async function pushTaskDeleteJob(id: string): Promise<boolean> {

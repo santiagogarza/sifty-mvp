@@ -25,7 +25,8 @@ import {
 import * as React from "react";
 import { AiStatusInline } from "./ai-status";
 import { ConfidencePill, confidenceBand } from "./confidence-pill";
-import { PriorityGlyph } from "./priority-glyph";
+import { PriorityPill } from "./priority-pill";
+import { RepeatGlyph } from "./repeat-glyph";
 
 /**
  * Kanban board: one column per lifecycle stage, drag a card between columns
@@ -260,7 +261,9 @@ function BoardCardContent({
   // Mirror AiStatusInline's render condition so in-flight triage shows too.
   const showAiStatus = task.aiStatus !== "ready" && task.aiStatus !== "idle";
   const lowConfidence = confidenceBand(task) === "low";
-  const hasMeta = dueLabel || taskLabels.length > 0 || showAiStatus || lowConfidence;
+  const ranked = task.priorityBucket !== "unset";
+  const hasMeta =
+    dueLabel || task.recurrence || taskLabels.length > 0 || showAiStatus || lowConfidence || ranked;
 
   return (
     <div
@@ -272,24 +275,29 @@ function BoardCardContent({
           : "hover:border-[var(--border-strong)]",
       )}
     >
-      <div className="flex items-start gap-2">
-        <PriorityGlyph bucket={task.priorityBucket} className="mt-[3px] shrink-0" />
-        <span
-          className={cn(
-            "min-w-0 flex-1 text-[13px] leading-[1.4] tracking-[-0.005em] line-clamp-2",
-            isDone ? "text-[var(--fg-subtle)] line-through decoration-[1.5px]" : "text-[var(--fg)]",
-          )}
-        >
-          {task.title}
-        </span>
-      </div>
+      <span
+        className={cn(
+          "block min-w-0 text-[13px] leading-[1.4] tracking-[-0.005em] line-clamp-2",
+          isDone ? "text-[var(--fg-subtle)] line-through decoration-[1.5px]" : "text-[var(--fg)]",
+        )}
+      >
+        {task.title}
+      </span>
       {hasMeta ? (
-        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-[22px]">
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          {ranked ? (
+            <PriorityPill
+              bucket={task.priorityBucket}
+              urgency={task.urgency}
+              importance={task.importance}
+            />
+          ) : null}
           {dueLabel ? (
             <Badge tone={dueTone} variant={dueTone === "neutral" ? "outline" : "soft"}>
               {dueLabel}
             </Badge>
           ) : null}
+          {task.recurrence ? <RepeatGlyph rule={task.recurrence} /> : null}
           {taskLabels.slice(0, 2).map((label) => (
             <Badge key={label.id} tone={label.tone}>
               {label.name}

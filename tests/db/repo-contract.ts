@@ -211,8 +211,26 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect(task.id).toBe("task_client1");
       expect(task.lifecycle).not.toBe("done");
 
-      const done = await repos.tasks.update(u.id, task.id, { lifecycle: "done" });
-      expect(done?.lifecycle).toBe("done");
+      // Two completions must agree on one completion time: the recurring
+      // successor's id derives from it. Overlapping calls on the memory repo
+      // serialize before any await, so this exercises the "second writer
+      // keeps the first time" rule; the Postgres SET uses
+      // coalesce(completed_at, now) for the genuinely concurrent case, and
+      // `task-columns.test.ts` pins that SQL.
+      const [doneA, doneB] = await Promise.all([
+        repos.tasks.update(u.id, task.id, { lifecycle: "done" }),
+        repos.tasks.update(u.id, task.id, { lifecycle: "done" }),
+      ]);
+      expect(doneA?.lifecycle).toBe("done");
+      expect(doneA?.completedAt).toBeTruthy();
+      expect(doneB?.completedAt).toBe(doneA?.completedAt);
+      const done = doneA;
+      // A repeated completion keeps the first completion time.
+      const again = await repos.tasks.update(u.id, task.id, { lifecycle: "done" });
+      expect(again?.completedAt).toBe(done?.completedAt);
+      const reopened = await repos.tasks.update(u.id, task.id, { lifecycle: "active" });
+      expect(reopened?.completedAt).toBeNull();
+      await repos.tasks.update(u.id, task.id, { lifecycle: "done" });
 
       const withSub = await repos.tasks.addSubtask(u.id, task.id, {
         id: "sub_1",
@@ -229,6 +247,71 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect(await repos.tasks.delete(u.id, task.id)).toBe(true);
       expect(await repos.tasks.get(u.id, task.id)).toBeNull();
       expect(await repos.tasks.list(u.id)).toEqual([]);
+    });
+
+    it("tasks: recurrence and series id round-trip, and clear to null", async () => {
+      const repos = getRepos();
+      const u = await createUser(repos, "repeat@example.com");
+      const task = await repos.tasks.create(u.id, {
+        sourceText: "Weekly review",
+        sourceContext: null,
+      });
+      expect(task.recurrence).toBeNull();
+      expect(task.seriesId).toBeNull();
+
+      const rule = {
+        freq: "weekly" as const,
+        mode: "fixed" as const,
+        weekdays: [1, 4],
+        seriesValues: { title: "Weekly review", urgency: 0.7 },
+      };
+      const set = await repos.tasks.update(u.id, task.id, { recurrence: rule, seriesId: task.id });
+      expect(set?.recurrence).toEqual(rule);
+      expect(set?.seriesId).toBe(task.id);
+      expect((await repos.tasks.list(u.id))[0]?.recurrence).toEqual(rule);
+
+      // A narrow patch to another field leaves the rule alone.
+      const retitled = await repos.tasks.update(u.id, task.id, { title: "Review" });
+      expect(retitled?.recurrence).toEqual(rule);
+
+      const cleared = await repos.tasks.update(u.id, task.id, { recurrence: null });
+      expect(cleared?.recurrence).toBeNull();
+      expect(cleared?.seriesId).toBe(task.id);
+    });
+
+    it("tasks.listBySeries returns the user's series newest first, filtered and bounded", async () => {
+      const repos = getRepos();
+      const u = await createUser(repos, "series@example.com");
+      const other = await createUser(repos, "series-other@example.com");
+      const first = await repos.tasks.create(u.id, {
+        sourceText: "Standup",
+        sourceContext: null,
+        createdAt: "2026-10-01T09:00:00.000Z",
+      });
+      await repos.tasks.update(u.id, first.id, { seriesId: first.id, lifecycle: "done" });
+      const second = await repos.tasks.create(u.id, {
+        sourceText: "Standup",
+        sourceContext: null,
+        createdAt: "2026-10-02T09:00:00.000Z",
+      });
+      await repos.tasks.update(u.id, second.id, { seriesId: first.id, lifecycle: "active" });
+      // Another series, and another tenant with the same series id, stay out.
+      const loner = await repos.tasks.create(u.id, { sourceText: "Other", sourceContext: null });
+      await repos.tasks.update(u.id, loner.id, { seriesId: loner.id });
+      const foreign = await repos.tasks.create(other.id, {
+        sourceText: "Theirs",
+        sourceContext: null,
+      });
+      await repos.tasks.update(other.id, foreign.id, { seriesId: first.id });
+
+      const all = await repos.tasks.listBySeries(u.id, first.id);
+      expect(all.map((t) => t.id)).toEqual([second.id, first.id]);
+      const open = await repos.tasks.listBySeries(u.id, first.id, {
+        lifecycles: ["inbox", "active", "waiting", "someday"],
+      });
+      expect(open.map((t) => t.id)).toEqual([second.id]);
+      expect(await repos.tasks.listBySeries(u.id, first.id, { limit: 1 })).toHaveLength(1);
+      expect(await repos.tasks.listBySeries(other.id, first.id)).toHaveLength(1);
     });
 
     it("memories: update and delete", async () => {

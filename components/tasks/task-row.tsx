@@ -10,15 +10,17 @@ import { Check } from "lucide-react";
 import * as React from "react";
 import { AiStatusInline } from "./ai-status";
 import { ConfidencePill } from "./confidence-pill";
-import { PriorityGlyph } from "./priority-glyph";
+import { PriorityPill } from "./priority-pill";
+import { RepeatGlyph } from "./repeat-glyph";
 
 /**
  * Single task row.
  *
  * Hierarchy choices:
  *  - The title is the loudest element. Everything else is meta.
- *  - Priority and due date sit on the left as a "spine" so scanning a list
- *    feels like reading column-aligned text.
+ *  - Priority sits on the left as a "spine" (a labeled pill, dot-only on
+ *    phones) so scanning a list feels like reading column-aligned text;
+ *    the due date and repeat mark sit on the right.
  *  - Labels collapse to a single line and truncate gracefully.
  *  - The complete-button is a real <button> with a 32px hit target.
  */
@@ -104,7 +106,7 @@ export const TaskRow = React.forwardRef<
       }}
       className={cn(
         "group relative grid w-full items-center gap-3 cursor-default",
-        "grid-cols-[24px_14px_1fr_auto] sm:grid-cols-[24px_14px_1fr_auto_auto]",
+        "grid-cols-[24px_auto_1fr_auto] sm:grid-cols-[24px_auto_1fr_auto_auto]",
         "rounded-[var(--radius-md)] px-2.5 py-2.5",
         "transition-colors duration-150 ease-[var(--ease-product)]",
         "hover:bg-[var(--surface-muted)]",
@@ -130,7 +132,15 @@ export const TaskRow = React.forwardRef<
         {isDone ? <Check size={12} className="text-white" strokeWidth={3} /> : null}
       </button>
 
-      <PriorityGlyph bucket={task.priorityBucket} />
+      {/* An unranked task renders no pill; the empty cell keeps the title column aligned. */}
+      <span className="flex min-w-[6px] items-center">
+        <PriorityPill
+          bucket={task.priorityBucket}
+          urgency={task.urgency}
+          importance={task.importance}
+          compact
+        />
+      </span>
 
       <div className="min-w-0">
         <div className="flex min-w-0 items-baseline gap-2">
@@ -171,6 +181,7 @@ export const TaskRow = React.forwardRef<
             <span className="truncate">{assignee}</span>
           </Badge>
         ) : null}
+        {task.recurrence ? <RepeatGlyph rule={task.recurrence} /> : null}
         {dueLabel ? (
           <Badge tone={dueTone} variant={dueTone === "neutral" ? "outline" : "soft"}>
             {dueLabel}

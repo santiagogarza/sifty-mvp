@@ -33,6 +33,8 @@ function makeTask(id: string, confidence: number): Task {
     siftId: null,
     siftStage: null,
     plan: null,
+    recurrence: null,
+    seriesId: null,
     siftedWithAssumptions: false,
     labelIds: [],
     subtasks: [],
@@ -59,5 +61,30 @@ describe("TaskBoard confidence", () => {
     const pills = screen.getAllByTestId("confidence-pill");
     expect(pills).toHaveLength(1);
     expect(pills[0]!.closest("[class*='surface-card']")).toHaveTextContent("Card low");
+  });
+});
+
+describe("TaskBoard priority and repeat", () => {
+  it("cards carry the labeled priority pill, and a repeat mark when the task repeats", () => {
+    useStore.setState({
+      tasks: [
+        {
+          ...makeTask("rep", 0.9),
+          recurrence: { freq: "monthly", mode: "fixed", dayOfMonth: 1 },
+          seriesId: "rep",
+        },
+        { ...makeTask("plain", 0.9), priorityBucket: "unset" },
+      ],
+    });
+    render(<TaskBoard onOpen={vi.fn()} />);
+    const repCard = screen.getByText("Card rep").closest("[class*='surface-card']")!;
+    expect(repCard.querySelector("[data-testid='priority-pill']")).toHaveTextContent("Important");
+    expect(repCard.querySelector("[data-testid='repeat-glyph']")).toHaveAttribute(
+      "aria-label",
+      "Repeats monthly on the 1st",
+    );
+    const plainCard = screen.getByText("Card plain").closest("[class*='surface-card']")!;
+    expect(plainCard.querySelector("[data-testid='priority-pill']")).toBeNull();
+    expect(plainCard.querySelector("[data-testid='repeat-glyph']")).toBeNull();
   });
 });

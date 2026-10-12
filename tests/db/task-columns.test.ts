@@ -1,5 +1,7 @@
 import { taskPatchColumns } from "@/lib/db/repos/task-columns";
 import type { Task } from "@/lib/domain/types";
+import { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -35,6 +37,8 @@ const existing: Task = {
   siftId: null,
   siftStage: null,
   plan: null,
+  recurrence: null,
+  seriesId: null,
   siftedWithAssumptions: false,
   labelIds: [],
   subtasks: [],
@@ -70,6 +74,20 @@ describe("taskPatchColumns", () => {
     );
   });
 
+  it("writes recurrence and seriesId, including explicit nulls", () => {
+    const rule = { freq: "daily" as const, mode: "after_completion" as const };
+    expect(taskPatchColumns(existing, { recurrence: rule, seriesId: "task_1" }, { now })).toEqual({
+      recurrence: rule,
+      seriesId: "task_1",
+      updatedAt: now,
+    });
+    expect(taskPatchColumns(existing, { recurrence: null }, { now })).toEqual({
+      recurrence: null,
+      updatedAt: now,
+    });
+    expect(taskPatchColumns(existing, { title: "x" }, { now })).not.toHaveProperty("recurrence");
+  });
+
   it("derives the priority bucket from the scalars unless set or protected", () => {
     const columns = taskPatchColumns(existing, { urgency: 0.9, importance: 0.9 }, { now });
     expect(columns.urgency).toBe(90);
@@ -88,7 +106,14 @@ describe("taskPatchColumns", () => {
   });
 
   it("tracks completedAt across lifecycle transitions", () => {
-    expect(taskPatchColumns(existing, { lifecycle: "done" }, { now }).completedAt).toEqual(now);
+    // Into done: the database keeps an existing completion time, so two
+    // concurrent completions agree on one (the recurring successor's id
+    // derives from it).
+    const intoDone = taskPatchColumns(existing, { lifecycle: "done" }, { now }).completedAt;
+    expect(intoDone).toBeInstanceOf(SQL);
+    const query = new PgDialect().sqlToQuery(intoDone as SQL);
+    expect(query.sql).toBe('coalesce("tasks"."completed_at", $1::timestamptz)');
+    expect(query.params).toEqual([now.toISOString()]);
     const done = { ...existing, lifecycle: "done" as const, completedAt: "2026-10-05T00:00:00Z" };
     expect(taskPatchColumns(done, { lifecycle: "done" }, { now })).not.toHaveProperty(
       "completedAt",

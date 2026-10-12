@@ -1,5 +1,5 @@
 import { TASK_LIMITS } from "@/lib/domain/limits";
-import type { Task } from "@/lib/domain/types";
+import type { Recurrence, Task } from "@/lib/domain/types";
 import { type SyncHooks, registerSyncHooks, useStore } from "@/lib/store/store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -33,6 +33,8 @@ function seed(patch: Partial<Task> & { id: string }): Task {
     siftId: null,
     siftStage: null,
     plan: null,
+    recurrence: null,
+    seriesId: null,
     siftedWithAssumptions: false,
     labelIds: ["label_a", "label_b"],
     subtasks: [
@@ -141,6 +143,17 @@ describe("duplicateTask", () => {
     expect(hooks.taskUpserted).toHaveBeenCalledWith(copy, { created: true });
   });
 
+  it("a copy is a one-off: the repeat rule and series stay behind", () => {
+    seed({
+      id: "task_rep",
+      recurrence: { freq: "weekly", mode: "fixed", weekdays: [5] },
+      seriesId: "task_rep",
+    });
+    const copy = useStore.getState().duplicateTask("task_rep")!;
+    expect(copy.recurrence).toBeNull();
+    expect(copy.seriesId).toBeNull();
+  });
+
   it("a done or dropped original copies into the Inbox", () => {
     seed({ id: "task_done", lifecycle: "done", completedAt: "2026-10-11T00:00:00.000Z" });
     seed({ id: "task_dropped", lifecycle: "dropped" });
@@ -172,5 +185,78 @@ describe("moveTasksToLifecycle", () => {
       { created: false, changedKeys: ["lifecycle"] },
       { created: false, changedKeys: ["lifecycle"] },
     ]);
+  });
+});
+
+describe("recurrence in the store", () => {
+  const rule: Recurrence = { freq: "weekly", mode: "fixed", weekdays: [5] };
+
+  it("setRecurrence makes the task the origin of its series and pushes both keys", () => {
+    seed({ id: "task_rep", recurrence: null, seriesId: null });
+    useStore.getState().setRecurrence("task_rep", { ...rule });
+    const task = useStore.getState().tasks.find((t) => t.id === "task_rep")!;
+    expect(task.recurrence).toEqual(rule);
+    expect(task.seriesId).toBe("task_rep");
+    expect(hooks.taskUpserted).toHaveBeenLastCalledWith(task, {
+      created: false,
+      changedKeys: ["recurrence", "seriesId"],
+    });
+
+    // Clearing keeps the series id as history.
+    useStore.getState().setRecurrence("task_rep", null);
+    const cleared = useStore.getState().tasks.find((t) => t.id === "task_rep")!;
+    expect(cleared.recurrence).toBeNull();
+    expect(cleared.seriesId).toBe("task_rep");
+  });
+
+  it("edits apply to the series by default; instance scope parks the series values", () => {
+    seed({ id: "task_rep", recurrence: { ...rule }, seriesId: "task_rep" });
+    const store = useStore.getState();
+
+    store.updateTask("task_rep", { title: "Series rename" }, { editedFields: ["title"] });
+    let task = useStore.getState().tasks.find((t) => t.id === "task_rep")!;
+    expect(task.recurrence).toEqual(rule);
+
+    store.setEditScope("task_rep", "instance");
+    store.updateTask("task_rep", { title: "Just this week" }, { editedFields: ["title"] });
+    store.addSubtask("task_rep", "Only this time");
+    task = useStore.getState().tasks.find((t) => t.id === "task_rep")!;
+    expect(task.title).toBe("Just this week");
+    expect(task.recurrence?.seriesValues).toEqual({
+      title: "Series rename",
+      subtasks: expect.arrayContaining([expect.objectContaining({ title: "Review calendar" })]),
+    });
+    expect(task.recurrence?.seriesValues?.subtasks).toHaveLength(3);
+    // The recurrence change rides along in the narrow patch.
+    expect(hooks.taskUpserted.mock.calls.at(-1)![1].changedKeys).toEqual(
+      expect.arrayContaining(["subtasks", "recurrence"]),
+    );
+
+    // Back to series scope: the next title edit becomes the series title.
+    store.setEditScope("task_rep", "series");
+    store.updateTask("task_rep", { title: "New series title" }, { editedFields: ["title"] });
+    task = useStore.getState().tasks.find((t) => t.id === "task_rep")!;
+    expect(task.recurrence?.seriesValues).toEqual({
+      subtasks: expect.any(Array),
+    });
+  });
+
+  it("setEditScope toggles per task", () => {
+    useStore.getState().setEditScope("task_x", "instance");
+    useStore.getState().setEditScope("task_y", "instance");
+    expect(useStore.getState().instanceScope).toEqual({ task_x: true, task_y: true });
+    useStore.getState().setEditScope("task_x", "series");
+    expect(useStore.getState().instanceScope).toEqual({ task_y: true });
+  });
+
+  it("adoptTaskFromServer inserts a new task without pushing and replaces a known one", () => {
+    const spawned = seed({ id: "task_spawned", title: "From the server" });
+    useStore.setState({ tasks: [] });
+    useStore.getState().adoptTaskFromServer(spawned);
+    expect(useStore.getState().tasks.map((t) => t.id)).toEqual(["task_spawned"]);
+    useStore.getState().adoptTaskFromServer({ ...spawned, title: "Replaced" });
+    expect(useStore.getState().tasks).toHaveLength(1);
+    expect(useStore.getState().tasks[0]!.title).toBe("Replaced");
+    expect(hooks.taskUpserted).not.toHaveBeenCalled();
   });
 });
