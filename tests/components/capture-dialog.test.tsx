@@ -105,6 +105,9 @@ describe("CaptureDialog draft", () => {
 
     expect(useStore.getState().tasks).toHaveLength(1);
     expect(useStore.getState().tasks[0]?.sourceText).toBe("Renew passport");
+    // The server sifts on create; the dialog only starts the watcher.
+    const { watchSift } = await import("@/lib/ai/run-triage");
+    await waitFor(() => expect(watchSift).toHaveBeenCalledWith(useStore.getState().tasks[0]!.id));
 
     reopen();
     expect(screen.getByPlaceholderText(PLACEHOLDER)).toHaveValue("");

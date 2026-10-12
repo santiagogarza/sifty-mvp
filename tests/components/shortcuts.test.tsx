@@ -19,7 +19,11 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/store/sync", () => ({
   useServerSync: () => ({ hydrated: true, error: null, rejected: 0 }),
 }));
-vi.mock("@/lib/ai/run-triage", () => ({ runTriage: vi.fn(), isTriageInFlight: () => false }));
+vi.mock("@/lib/ai/run-triage", () => ({
+  resiftTask: vi.fn(),
+  watchSift: vi.fn(),
+  isTriageInFlight: () => false,
+}));
 
 afterEach(() => {
   cleanup();

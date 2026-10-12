@@ -59,6 +59,17 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe("create body", () => {
+  it("carries the model preference so the server can enqueue the sift with it", async () => {
+    const client = await bootAndPull();
+    client.store.getState().setModelPreference("quality");
+    client.calls.length = 0;
+    await captureSynced(client, "Book the dentist");
+    const create = client.calls.find((c) => c.method === "POST" && c.path === "/api/tasks");
+    expect((create?.body as { modelPreference?: string }).modelPreference).toBe("quality");
+  });
+});
+
 describe("narrow patches", () => {
   it("pushes only the keys that changed and never clobbers fields written server-side", async () => {
     const client = await bootAndPull();
