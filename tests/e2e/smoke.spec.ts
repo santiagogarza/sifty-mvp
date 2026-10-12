@@ -26,10 +26,13 @@ test("public pages render for anyone", async ({ page, request }) => {
   await expect(page.getByRole("heading", { name: "Free", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Pro", exact: true })).toBeVisible();
   await expect(page.getByText("$10")).toBeVisible();
-  await expect(page.getByRole("link", { name: /redeem it here/i })).toHaveAttribute(
-    "href",
-    "/redeem",
-  );
+  // The invite link must land on the real redeem page, not the 404.
+  const redeem = page.getByRole("link", { name: /redeem it here/i });
+  await expect(redeem).toHaveAttribute("href", "/redeem");
+  await redeem.click();
+  await expect(page).toHaveURL(/\/redeem$/);
+  await expect(page.getByRole("heading", { name: /redeem an invite/i })).toBeVisible();
+  await page.goBack();
 
   for (const path of ["/privacy", "/terms"]) {
     await page.goto(path, { waitUntil: "networkidle" });

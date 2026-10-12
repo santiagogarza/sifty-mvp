@@ -1,4 +1,4 @@
-import { TRIAL_DAYS } from "@/lib/entitlements/entitlements";
+import { FREE_SIFTS_PER_DAY, TRIAL_DAYS } from "@/lib/entitlements/entitlements";
 
 /**
  * Plan catalog — the one place prices and tier copy live.
@@ -23,7 +23,7 @@ export const PRO_PRICES: Record<Cadence, Price> = {
   yearly: { cadence: "yearly", amountCents: 9_600, currency: "usd" },
 };
 
-export const FREE_SIFTS_PER_DAY = 5;
+export { FREE_SIFTS_PER_DAY };
 export const PRO_TRIAL_DAYS = TRIAL_DAYS;
 
 export type FeatureStatus = "live" | "rolling-out";
