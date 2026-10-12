@@ -100,6 +100,7 @@ const WEEKDAY_ABBR_RE = "(?:sun|mon|tues?|wed|thu(?:rs?)?|fri|sat)";
 const MONTH_RE =
   "(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)";
 const ORD = "(?:st|nd|rd|th)?";
+const COMMON_FRACTIONS = new Set(["1/2", "1/3", "1/4", "2/3", "3/4", "1/8", "3/8", "5/8", "7/8"]);
 /** "tomorrow's standup" names a meeting, not a deadline. */
 const NOT_POSSESSIVE = "(?!['\u2019]s\\b)";
 const TIME_RE =
@@ -235,6 +236,9 @@ const RULES: Rule[] = [
         const y = Number(m[3]);
         return validDate(y < 100 ? 2000 + y : y, month, day);
       }
+      // Without a year, the everyday fractions read as fractions, not as
+      // Jan 2 / Feb 3 / Mar 4 — people write those with the month's name.
+      if (COMMON_FRACTIONS.has(`${Number(m[1])}/${day}`)) return null;
       return forwardDate(today, month, day);
     },
   },

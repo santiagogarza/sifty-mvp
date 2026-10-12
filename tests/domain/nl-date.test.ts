@@ -188,6 +188,9 @@ describe("parseNaturalDate: explicit dates", () => {
     // Fractions, with or without a preposition, and a slash date mid-sentence.
     expect(parseNaturalDate("Split the bill by 1/2", now)).toBeNull();
     expect(parseNaturalDate("Cut by 1/2 of the budget", now)).toBeNull();
+    expect(parseNaturalDate("Reduce to 3/4", now)).toBeNull();
+    expect(due("Pay by 1/2/2027", now)).toBe("2027-01-02"); // a year makes it a date
+    expect(due("Pay by 1/5", now)).toBe("2027-01-05");
     expect(parseNaturalDate("file taxes 10/20 to confirm", now)).toBeNull();
     expect(due("Submit by 10/20", now)).toBe("2026-10-20");
     expect(due("Submit by 10/20.", now)).toBe("2026-10-20");
