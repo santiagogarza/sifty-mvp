@@ -9,7 +9,7 @@ const ERROR_COPY: Record<string, string> = {
   EXPIRED_TOKEN: "That link has expired. Sign in to get a new one.",
   signup_disabled: "Sign-ups are closed right now.",
   account_not_linked:
-    "An account with this email exists but isn't confirmed yet. Open the confirmation link we emailed you, then continue with Google.",
+    "An account with this email exists but isn't confirmed yet. Sign in with your password or a sign-in link first; Google will work after that.",
 };
 
 export default async function SignInPage({

@@ -13,10 +13,17 @@ import { id as makeId } from "@/lib/utils/ids";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { memoryAdapter } from "better-auth/adapters/memory";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { magicLink } from "better-auth/plugins";
 import { verifyPasswordHash } from "./passwords";
 import { isCreatorEmail } from "./session-shared";
+import {
+  SIGNUP_BINDING_COOKIE,
+  SIGNUP_BINDING_MAX_AGE_S,
+  hasValidSignupBinding,
+  signupBindingValue,
+} from "./signup-binding";
 
 /**
  * Better Auth instance.
@@ -160,6 +167,14 @@ function createAuth(repos: Repos) {
           props: { name: user.name, verifyUrl: url },
         });
       },
+      // First mailbox proof. Unless the link is opened from the browser
+      // that chose the password (signup binding cookie), the password and
+      // any sessions created before the proof are unproven and removed.
+      beforeEmailVerification: async (user, request) => {
+        if (user.emailVerified) return;
+        if (hasValidSignupBinding(request?.headers, user.id, getAuthSecret())) return;
+        await revokeUnprovenCredentials(user.id);
+      },
       afterEmailVerification: async (user) => {
         await sendWelcome(user);
       },
@@ -175,11 +190,26 @@ function createAuth(repos: Repos) {
               isCreator: isCreatorEmail(user.email),
             },
           }),
-          after: async (user) => {
+          after: async (user, ctx) => {
             await onUserCreated(repos, user);
+            if (ctx && !user.emailVerified) setSignupBinding(ctx, user.id);
           },
         },
       },
+    },
+    hooks: {
+      // A correct password on a not-yet-verified account (e.g. a user
+      // migrated from the pre-verification era) proves the password to this
+      // browser too, so the re-sent verification link keeps it.
+      after: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== "/sign-in/email") return;
+        const returned = ctx.context.returned;
+        if (!(returned instanceof APIError) || returned.body?.code !== "EMAIL_NOT_VERIFIED") return;
+        const email = (ctx.body as { email?: string } | undefined)?.email;
+        if (!email) return;
+        const found = await ctx.context.internalAdapter.findUserByEmail(email);
+        if (found) setSignupBinding(ctx, found.user.id);
+      }),
     },
     plugins: [
       magicLink({
@@ -253,6 +283,28 @@ async function onUserCreated(repos: Repos, user: AuthUser): Promise<void> {
   // OAuth sign-ups arrive verified and never pass through
   // `afterEmailVerification`, so welcome them here.
   if (user.emailVerified) await sendWelcome(user);
+}
+
+function setSignupBinding(
+  ctx: { setCookie: (name: string, value: string, opts?: Record<string, unknown>) => unknown },
+  userId: string,
+): void {
+  const secure = getAuthBaseUrl().startsWith("https://");
+  ctx.setCookie(
+    secure ? `__Secure-${SIGNUP_BINDING_COOKIE}` : SIGNUP_BINDING_COOKIE,
+    signupBindingValue(userId, getAuthSecret()),
+    { httpOnly: true, sameSite: "lax", secure, path: "/", maxAge: SIGNUP_BINDING_MAX_AGE_S },
+  );
+}
+
+/** Delete credential accounts and every session of a user whose address was never proven. */
+async function revokeUnprovenCredentials(userId: string): Promise<void> {
+  const ctx = await getAuth().$context;
+  const accounts = await ctx.internalAdapter.findAccounts(userId);
+  for (const account of accounts) {
+    if (account.providerId === "credential") await ctx.internalAdapter.deleteAccount(account.id);
+  }
+  await ctx.internalAdapter.deleteUserSessions(userId);
 }
 
 async function sendWelcome(user: { id: string; email: string; name: string }): Promise<void> {

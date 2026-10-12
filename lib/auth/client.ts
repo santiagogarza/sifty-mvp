@@ -25,7 +25,7 @@ export function authErrorMessage(error: { code?: string; message?: string } | nu
     case "INVALID_TOKEN":
       return "That link has expired or was already used. Request a new one.";
     case "CREDENTIAL_ACCOUNT_NOT_FOUND":
-      return "This account signs in with Google. Use the Google button, or reset your password to add one.";
+      return "This account has no password yet. Use a sign-in link or Google, or set one via “Forgot password?”.";
     default:
       return error?.message || "Something went wrong. Try again.";
   }

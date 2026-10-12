@@ -26,6 +26,13 @@ function lastEmail() {
   return last;
 }
 
+/** Open an emailed link the way a browser would, optionally with cookies. */
+async function openLink(url: string, cookie?: string): Promise<Response> {
+  return getAuth().handler(
+    new Request(url, { redirect: "manual", headers: cookie ? { cookie } : {} }),
+  );
+}
+
 function headersFor(cookie: string): Headers {
   return new Headers({ cookie });
 }
@@ -67,9 +74,11 @@ describe("sign-up and email verification", () => {
 
   it("blocks sign-in until the email is verified, then the emailed link verifies it", async () => {
     const auth = getAuth();
-    await auth.api.signUpEmail({
+    const signUp = await auth.api.signUpEmail({
       body: { email: "unverified@example.com", password: TEST_PASSWORD, name: "U" },
+      asResponse: true,
     });
+    const browser = cookieHeaderFromResponse(signUp);
 
     const blocked = await auth.api.signInEmail({
       body: { email: "unverified@example.com", password: TEST_PASSWORD },
@@ -78,8 +87,7 @@ describe("sign-up and email verification", () => {
     expect(blocked.status).toBe(403);
 
     const verifyUrl = firstUrl(lastEmail().text);
-    const token = new URL(verifyUrl).searchParams.get("token")!;
-    await auth.api.verifyEmail({ query: { token } });
+    expect((await openLink(verifyUrl, browser)).status).toBe(302);
     const ctx = await auth.$context;
     expect(
       (await ctx.internalAdapter.findUserByEmail("unverified@example.com"))?.user.emailVerified,
@@ -329,6 +337,59 @@ describe("session revocation", () => {
   });
 });
 
+describe("verify-email as first mailbox proof", () => {
+  async function signUpWithBinding(email: string, password: string) {
+    const res = await getAuth().api.signUpEmail({
+      body: { email, password, name: "X", callbackURL: "/today" },
+      asResponse: true,
+    });
+    expect(res.status).toBe(200);
+    const binding = cookieHeaderFromResponse(res);
+    expect(binding).toContain("sifty.signup_binding=");
+    const url = firstUrl(lastEmail().text);
+    return { binding, url };
+  }
+
+  it("keeps the password when the link is opened from the browser that signed up", async () => {
+    const auth = getAuth();
+    const { binding, url } = await signUpWithBinding("same@example.com", TEST_PASSWORD);
+    expect((await openLink(url, binding)).status).toBe(302);
+    expect(await signInCookie("same@example.com", TEST_PASSWORD)).toBeTruthy();
+    void auth;
+  });
+
+  it("strips a planted password when the owner opens the link elsewhere", async () => {
+    // Attacker registers the victim's address from their own browser…
+    const auth = getAuth();
+    const { url } = await signUpWithBinding("owner@example.com", "attacker-chosen-pw");
+
+    // …the owner opens the emailed link on a device with no binding cookie.
+    const res = await openLink(url);
+    expect(`${res.status} ${res.headers.get("location")}`).toBe("302 /today");
+    const owner = await getSession(
+      new Request("http://x", { headers: { cookie: cookieHeaderFromResponse(res) } }),
+    );
+    expect(owner?.user.email).toBe("owner@example.com");
+
+    const planted = await auth.api.signInEmail({
+      body: { email: "owner@example.com", password: "attacker-chosen-pw" },
+      asResponse: true,
+    });
+    expect(planted.status).toBe(401);
+  });
+
+  it("a wrong-password attempt does not bind the browser", async () => {
+    const auth = getAuth();
+    await signUpWithBinding("guess@example.com", TEST_PASSWORD);
+    const wrong = await auth.api.signInEmail({
+      body: { email: "guess@example.com", password: "not-the-password" },
+      asResponse: true,
+    });
+    expect(wrong.status).toBe(401);
+    expect(wrong.headers.getSetCookie().join(";")).not.toContain("signup_binding");
+  });
+});
+
 describe("legacy bcrypt accounts", () => {
   it("asks a migrated user to confirm their email once, then the old bcrypt password works", async () => {
     const auth = getAuth();
@@ -358,10 +419,12 @@ describe("legacy bcrypt accounts", () => {
     });
     expect(blocked.status).toBe(403);
     expect(getTestOutbox().outbox.length).toBe(sent + 1);
-    const token = new URL(firstUrl(lastEmail().text)).searchParams.get("token")!;
-    await auth.api.verifyEmail({ query: { token } });
+    // The correct password bound this browser; the 403 carried the cookie.
+    const binding = cookieHeaderFromResponse(blocked);
+    expect(binding).toContain("sifty.signup_binding=");
+    expect((await openLink(firstUrl(lastEmail().text), binding)).status).toBe(302);
 
-    // The password set before the migration survives verification by email.
+    // Verified from the same browser: the pre-migration password survives.
     const cookie = await signInCookie("legacy@example.com", "old-bcrypt-password");
     const session = await getSession(new Request("http://x", { headers: { cookie } }));
     expect(session?.user.id).toBe("user_legacy1");

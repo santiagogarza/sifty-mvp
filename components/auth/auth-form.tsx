@@ -74,7 +74,11 @@ export function AuthForm({ mode, next, googleEnabled }: AuthFormProps) {
     setError(null);
     setPending("google");
     try {
-      const { error } = await authClient.signIn.social({ provider: "google", callbackURL });
+      const { error } = await authClient.signIn.social({
+        provider: "google",
+        callbackURL,
+        errorCallbackURL: "/sign-in",
+      });
       if (error) {
         setError(authErrorMessage(error));
         setPending(null);
