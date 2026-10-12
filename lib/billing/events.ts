@@ -28,8 +28,10 @@ import { GRACE_PERIOD_DAYS, withResolvedTier } from "@/lib/entitlements/entitlem
  *    `GRACE_PERIOD_DAYS` window; later failures in the same cycle neither
  *    extend nor reopen it, even after `expireGracePeriods()` has cleared
  *    the timestamp (the `past_due`/`unpaid` status marks the cycle as under
- *    way). Recovery (`active`/`trialing`, `invoice.paid`) and cancellation
- *    (`deleted`, `canceled`, `incomplete_expired`) end the cycle.
+ *    way). Recovery (`active`/`trialing`, `invoice.paid`) ends the cycle;
+ *    cancellation (`deleted`, `canceled`, `incomplete_expired`), `paused`,
+ *    and `incomplete` end it too and make later `invoice.payment_failed`
+ *    retries no-ops, so a stray retry can never revive Pro.
  */
 
 export interface StripeSubscriptionLike {
@@ -70,6 +72,8 @@ const PAYING_STATUSES = new Set(["active", "trialing"]);
 const DUNNING_STATUSES = new Set(["past_due", "unpaid"]);
 /** The subscription is gone or never started; no money is coming. */
 const ENDED_STATUSES = new Set(["canceled", "incomplete_expired"]);
+/** Statuses where a failed invoice must not start (or restart) dunning. */
+const NO_DUNNING_STATUSES = new Set([...ENDED_STATUSES, "incomplete", "paused"]);
 /**
  * A subscription Stripe still considers open. A second Checkout for such a
  * customer would create a second subscription, so checkout refuses with 409
@@ -151,6 +155,12 @@ export function applyStripeEvent(
       return resolve({ subscriptionActive: true, stripeStatus: "active", graceEndsAt: null });
     }
     case "invoice.payment_failed": {
+      // Stripe keeps retrying leftover invoices after a subscription is
+      // cancelled, expired, paused, or never got past its first payment. None
+      // of those owe the user Pro: the event changes nothing, so the webhook
+      // sends no dunning mail either. Only a live (or not yet recorded)
+      // subscription enters dunning here.
+      if (NO_DUNNING_STATUSES.has(current.stripeStatus ?? "")) return current;
       return resolve({
         subscriptionActive: false,
         stripeStatus: "past_due",

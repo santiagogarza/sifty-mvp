@@ -399,6 +399,49 @@ describe("POST /api/stripe/webhook", () => {
       expect(await repos.stripeEvents.recordIfNew(id, "invoice.payment_failed")).toBe(false);
     });
 
+    it("after the grace window lapsed, the retry email says Pro is paused", async () => {
+      const repos = getTestRepos();
+      const user = await payingUser("lapsed@example.com", "cus_LP", "sub_LP");
+      const first = new Date("2026-10-12T12:00:00.000Z");
+      await deliver(
+        makeEvent({ type: "invoice.payment_failed", customer: "cus_LP", created: first }).body,
+      );
+      const retryAt = new Date(first.getTime() + (GRACE_PERIOD_DAYS + 2) * 24 * 60 * 60 * 1000);
+      await deliver(
+        makeEvent({ type: "invoice.payment_failed", customer: "cus_LP", created: retryAt }).body,
+      );
+      const outbox = getTestOutbox().outbox;
+      expect(outbox).toHaveLength(2);
+      expect(outbox[0]!.text).toContain("Nothing changes yet");
+      expect(outbox[1]!.subject).toMatch(/Pro is paused/);
+      expect(outbox[1]!.text).toContain("Pro is paused");
+      expect(outbox[1]!.text).not.toContain("Nothing changes yet");
+      expect(outbox[1]!.text).not.toContain("before October");
+      void user;
+    });
+
+    it("a leftover retry after cancellation sends nothing and does not revive Pro", async () => {
+      const repos = getTestRepos();
+      const user = await payingUser("left@example.com", "cus_LF", "sub_LF");
+      await deliver(
+        makeEvent({
+          type: "customer.subscription.deleted",
+          customer: "cus_LF",
+          subscriptionId: "sub_LF",
+          status: "canceled",
+        }).body,
+      );
+      const res = await deliver(
+        makeEvent({ type: "invoice.payment_failed", customer: "cus_LF" }).body,
+      );
+      expect(res.status).toBe(200);
+      const after = await repos.entitlements.get(user.id);
+      expect(after?.stripeStatus).toBe("canceled");
+      expect(after?.graceEndsAt).toBeNull();
+      expect(after?.tier).toBe("free");
+      expect(getTestOutbox().outbox).toHaveLength(0);
+    });
+
     it("recovery: subscription.updated(active) clears grace and sends no mail", async () => {
       const repos = getTestRepos();
       const user = await payingUser("recover@example.com", "cus_V", "sub_V");

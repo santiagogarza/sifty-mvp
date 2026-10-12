@@ -113,8 +113,20 @@ describe("email templates", () => {
     expect(forever.text).toContain("with no end date");
 
     const failed = await renderEmail("payment-failed", fixtures["payment-failed"].props);
+    expect(failed.subject).toBe("Your Sifty payment didn't go through");
     expect(failed.text).toContain("$10.00");
     expect(failed.text).toContain("before November 1");
+    expect(failed.text).toContain("Nothing changes yet");
+
+    const paused = await renderEmail("payment-failed", {
+      ...fixtures["payment-failed"].props,
+      retryUntil: null,
+      accessPaused: true,
+    });
+    expect(paused.subject).toMatch(/Pro is paused/);
+    expect(paused.text).toContain("Pro is paused");
+    expect(paused.text).not.toContain("Nothing changes yet");
+    expect(paused.text).toContain(fixtures["payment-failed"].link);
   });
 
   it("sendTemplate delivers through the configured provider with headers", async () => {

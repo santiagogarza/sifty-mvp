@@ -246,6 +246,32 @@ describe("applyStripeEvent — dunning grace period", () => {
     expect(nextCycle.tier).toBe("pro");
   });
 
+  it("a leftover payment_failed after cancellation is a no-op: no grace, status untouched", () => {
+    const inGrace = applyStripeEvent(paying(), failed(), NOW);
+    const cancelled = applyStripeEvent(
+      inGrace,
+      subEvent("customer.subscription.deleted", "canceled"),
+    );
+    const next = applyStripeEvent(cancelled, failed(new Date(NOW.getTime() + DAY)));
+    expect(next).toBe(cancelled);
+    expect(next.stripeStatus).toBe("canceled");
+    expect(next.graceEndsAt).toBeNull();
+    expect(next.tier).toBe("free");
+  });
+
+  it("payment_failed on an incomplete, paused, or expired subscription changes nothing", () => {
+    for (const status of ["incomplete", "incomplete_expired", "paused"]) {
+      const before = applyStripeEvent(
+        lapsedTrial(),
+        subEvent("customer.subscription.updated", status),
+        NOW,
+      );
+      const next = applyStripeEvent(before, failed(new Date(NOW.getTime() + DAY)));
+      expect(next).toBe(before);
+      expect(next.tier).toBe("free");
+    }
+  });
+
   it("once the window has passed the resolved tier is free, with the facts intact", () => {
     const inGrace = applyStripeEvent(paying(), failed(), NOW);
     const afterWindow = new Date(NOW.getTime() + (GRACE_PERIOD_DAYS + 1) * DAY);
