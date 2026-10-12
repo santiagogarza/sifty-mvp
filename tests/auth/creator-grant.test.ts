@@ -1,6 +1,7 @@
 import { getAuth } from "@/lib/auth/auth";
 import { getSession, isCreatorEmail } from "@/lib/auth/session";
 import { createMemoryRepos, setReposForTesting } from "@/lib/db/repos";
+import type { Repos } from "@/lib/db/repos/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TEST_PASSWORD, cookieHeaderFromResponse, firstUrl, signInCookie } from "../helpers/auth";
 import { getTestOutbox, getTestRepos } from "../setup";
@@ -29,8 +30,7 @@ async function openLink(url: string, cookie?: string): Promise<Response> {
   );
 }
 
-async function state(userId: string) {
-  const repos = getTestRepos();
+async function state(userId: string, repos: Repos = getTestRepos()) {
   const ctx = await getAuth().$context;
   const authUser = (await ctx.internalAdapter.findUserById(userId)) as {
     isCreator?: boolean;
@@ -213,23 +213,182 @@ describe("creator grant requires a verified address", () => {
     await repos.entitlements.update(res.user.id, (current) => ({
       ...current!,
       stripeCustomerId: "cus_creator",
+      stripeSubscriptionId: "sub_creator",
+      stripeStatus: "active",
+      subscriptionActive: true,
+      currentPeriodEnd: "2027-01-01T00:00:00.000Z",
     }));
     expect((await openLink(firstUrl(lastEmail().text))).status).toBe(302);
     const ent = await repos.entitlements.get(res.user.id);
-    expect(ent?.tier).toBe("creator");
-    expect(ent?.stripeCustomerId).toBe("cus_creator");
+    expect(ent).toMatchObject({
+      tier: "creator",
+      stripeCustomerId: "cus_creator",
+      stripeSubscriptionId: "sub_creator",
+      stripeStatus: "active",
+      subscriptionActive: true,
+      currentPeriodEnd: "2027-01-01T00:00:00.000Z",
+    });
   });
 
-  it("the Google provider refuses a session for an unverified provider email", async () => {
-    vi.stubEnv("GOOGLE_CLIENT_ID", "client-id");
-    vi.stubEnv("GOOGLE_CLIENT_SECRET", "client-secret");
-    // A fresh repos instance yields a fresh auth instance that reads the env.
-    setReposForTesting(createMemoryRepos());
+  it("the Google provider is configured to refuse a session for an unverified provider email", async () => {
+    const { auth } = googleEnabledAuth();
     const google = (
-      getAuth().options.socialProviders as Record<string, { requireEmailVerification?: boolean }>
+      auth.options.socialProviders as Record<string, { requireEmailVerification?: boolean }>
     ).google;
     expect(google).toBeDefined();
     expect(google?.requireEmailVerification).toBe(true);
+  });
+});
+
+/**
+ * A Better Auth instance with the Google provider on. The env is read when
+ * the instance is built, and instances are keyed by repos, so a fresh repos
+ * handle yields a fresh instance; tests that use it read state from `repos`.
+ */
+function googleEnabledAuth() {
+  vi.stubEnv("GOOGLE_CLIENT_ID", "client-id");
+  vi.stubEnv("GOOGLE_CLIENT_SECRET", "client-secret");
+  const repos = createMemoryRepos();
+  setReposForTesting(repos);
+  return { auth: getAuth(), repos };
+}
+
+/** An id token as Google would mint it; the callback path decodes it without verifying. */
+function googleIdToken(claims: Record<string, unknown>): string {
+  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  return `${b64({ alg: "RS256", kid: "k1" })}.${b64({
+    iss: "https://accounts.google.com",
+    aud: "client-id",
+    sub: "google-sub-1",
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    ...claims,
+  })}.sig`;
+}
+
+/**
+ * Run the real `/sign-in/social` → `/callback/google` round trip with the
+ * token endpoint stubbed to return `idToken`. Returns the callback response.
+ */
+async function googleCallback(auth: ReturnType<typeof getAuth>, idToken: string) {
+  const start = await auth.api.signInSocial({
+    body: { provider: "google", callbackURL: "/today", disableRedirect: true },
+    headers: new Headers({ origin: ORIGIN }),
+    asResponse: true,
+  });
+  expect(start.status).toBe(200);
+  const { url } = (await start.json()) as { url: string };
+  const state = new URL(url).searchParams.get("state");
+  expect(state).toBeTruthy();
+  const stateCookie = start.headers
+    .getSetCookie()
+    .map((c) => c.split(";")[0]!)
+    .join("; ");
+
+  const realFetch = globalThis.fetch;
+  const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const target =
+      typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (target.startsWith("https://oauth2.googleapis.com/token")) {
+      return new Response(
+        JSON.stringify({
+          access_token: "ya29.test",
+          token_type: "Bearer",
+          expires_in: 3600,
+          scope: "openid email profile",
+          id_token: idToken,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    return realFetch(input, init);
+  });
+  try {
+    return await auth.handler(
+      new Request(`${ORIGIN}/api/auth/callback/google?code=auth-code&state=${state}`, {
+        redirect: "manual",
+        headers: stateCookie ? { cookie: stateCookie } : {},
+      }),
+    );
+  } finally {
+    fetchSpy.mockRestore();
+  }
+}
+
+describe("Google sign-in with the creator address (real callback, stubbed token endpoint)", () => {
+  it("an unverified provider claim creates an unverified trial account and no session", async () => {
+    const { auth, repos } = googleEnabledAuth();
+    const res = await googleCallback(
+      auth,
+      googleIdToken({ email: CREATOR, email_verified: false, name: "Claimed" }),
+    );
+    expect(res.status).toBe(302);
+    const location = res.headers.get("location") ?? "";
+    expect(location).toContain("error=email_not_verified");
+    expect(res.headers.getSetCookie().join(";")).not.toContain("sifty.session_token=");
+
+    const user = await repos.users.getByEmail(CREATOR);
+    expect(user).not.toBeNull();
+    expect(user?.isCreator).toBe(false);
+    expect((await repos.entitlements.get(user!.id))?.tier).toBe("trialing");
+    const ctx = await auth.$context;
+    expect((await ctx.internalAdapter.findUserByEmail(CREATOR))?.user.emailVerified).toBe(false);
+    // The usual verification email went out to the real mailbox instead.
+    expect(lastEmail().subject).toBe("Confirm your email for Sifty");
+
+    // Google later asserts the same account verified. Better Auth 1.7.7
+    // records `emailVerified` (which promotes the account through the
+    // update hook) but still gates this response on the pre-update user
+    // object, so this attempt is refused and the next one signs in.
+    const again = await googleCallback(
+      auth,
+      googleIdToken({ email: CREATOR, email_verified: true, name: "Santi" }),
+    );
+    expect(again.headers.get("location")).toContain("error=email_not_verified");
+    expect(await state(user!.id, repos)).toEqual({
+      repoCreator: true,
+      tier: "creator",
+      authCreator: true,
+      emailVerified: true,
+    });
+
+    const third = await googleCallback(
+      auth,
+      googleIdToken({ email: CREATOR, email_verified: true, name: "Santi" }),
+    );
+    expect(`${third.status} ${third.headers.get("location")}`).toBe("302 /today");
+    const session = await getSession(
+      new Request(`${ORIGIN}/x`, { headers: { cookie: cookieHeaderFromResponse(third) } }),
+    );
+    expect(session?.user.id).toBe(user!.id);
+    expect(session?.user.isCreator).toBe(true);
+    expect(session?.entitlement?.tier).toBe("creator");
+  });
+
+  it("a verified provider claim signs in as creator at once", async () => {
+    const { auth, repos } = googleEnabledAuth();
+    const res = await googleCallback(
+      auth,
+      googleIdToken({ email: CREATOR, email_verified: true, name: "Santi" }),
+    );
+    expect(`${res.status} ${res.headers.get("location")}`).toBe("302 /today");
+    const session = await getSession(
+      new Request(`${ORIGIN}/x`, { headers: { cookie: cookieHeaderFromResponse(res) } }),
+    );
+    expect(session?.user.isCreator).toBe(true);
+    expect((await repos.entitlements.get(session!.user.id))?.tier).toBe("creator");
+  });
+
+  it("a verified claim for an ordinary address is a trial account", async () => {
+    const { auth, repos } = googleEnabledAuth();
+    const res = await googleCallback(
+      auth,
+      googleIdToken({ email: "someone@example.com", email_verified: true, name: "Someone" }),
+    );
+    expect(res.status).toBe(302);
+    const user = await repos.users.getByEmail("someone@example.com");
+    expect(user?.isCreator).toBe(false);
+    expect((await repos.entitlements.get(user!.id))?.tier).toBe("trialing");
   });
 });
 
@@ -254,6 +413,16 @@ describe("getSession() fallback profile", () => {
     const session = await getSession(new Request(`${ORIGIN}/x`, { headers: { cookie } }));
     expect(session?.user.email).toBe(CREATOR);
     expect(session?.user.isCreator).toBe(false);
+
+    // And the flag is honoured when Better Auth does carry it: the fallback
+    // reads the stored flag, it does not simply return false.
+    await ctx.adapter.update({
+      model: "user",
+      where: [{ field: "id", value: res.user.id }],
+      update: { isCreator: true },
+    });
+    const promoted = await getSession(new Request(`${ORIGIN}/x`, { headers: { cookie } }));
+    expect(promoted?.user.isCreator).toBe(true);
   });
 });
 
