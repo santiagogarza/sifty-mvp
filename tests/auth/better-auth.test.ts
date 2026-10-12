@@ -267,24 +267,38 @@ describe("magic link", () => {
     expect(session?.user.email).toBe("magic@example.com");
   });
 
-  it("sends an unverified user the verification email so their password survives", async () => {
+  it("strips a password planted before the mailbox owner proved the address", async () => {
+    // Pre-account-takeover: someone registers the victim's email with their
+    // own password. The owner's first proof of the mailbox (the magic link)
+    // must not inherit that credential or any standing session.
     const auth = getAuth();
     await auth.api.signUpEmail({
-      body: { email: "pending@example.com", password: TEST_PASSWORD, name: "P" },
+      body: { email: "victim@example.com", password: "attacker-chosen-pw", name: "Attacker" },
     });
 
     await auth.api.signInMagicLink({
-      body: { email: "pending@example.com", callbackURL: "/today" },
+      body: { email: "victim@example.com", callbackURL: "/today" },
       headers: new Headers(),
     });
     const mail = lastEmail();
-    expect(mail.subject).toBe("Confirm your email for Sifty");
+    expect(mail.subject).toBe("Your sign-in link for Sifty");
     const res = await auth.handler(new Request(firstUrl(mail.text), { redirect: "manual" }));
     const session = await getSession(
       new Request("http://localhost/x", { headers: { cookie: cookieHeaderFromResponse(res) } }),
     );
-    expect(session?.user.email).toBe("pending@example.com");
-    expect(await signInCookie("pending@example.com", TEST_PASSWORD)).toBeTruthy();
+    expect(session?.user.email).toBe("victim@example.com");
+
+    const planted = await auth.api.signInEmail({
+      body: { email: "victim@example.com", password: "attacker-chosen-pw" },
+      asResponse: true,
+    });
+    expect(planted.status).toBe(401);
+    // The owner can set their own password through the reset flow afterwards.
+    const before = getTestOutbox().outbox.length;
+    await auth.api.requestPasswordReset({
+      body: { email: "victim@example.com", redirectTo: "/reset-password" },
+    });
+    expect(getTestOutbox().outbox.length).toBe(before + 1);
   });
 });
 

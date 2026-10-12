@@ -13,7 +13,6 @@ import { id as makeId } from "@/lib/utils/ids";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { memoryAdapter } from "better-auth/adapters/memory";
-import { sendVerificationEmailFn } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { magicLink } from "better-auth/plugins";
 import { verifyPasswordHash } from "./passwords";
@@ -182,15 +181,12 @@ function createAuth(repos: Repos) {
     plugins: [
       magicLink({
         expiresIn: 60 * 5,
-        sendMagicLink: async ({ email, url }, ctx) => {
-          // Verifying a magic link on an unverified account deletes all of its
-          // linked accounts, including the password chosen at sign-up. Send the
-          // verification email instead: it proves the mailbox and keeps them.
-          const existing = ctx ? await ctx.context.internalAdapter.findUserByEmail(email) : null;
-          if (ctx && existing && !existing.user.emailVerified) {
-            await sendVerificationEmailFn(ctx, existing.user);
-            return;
-          }
+        // Deliberately no special case for unverified accounts: Better Auth
+        // treats the magic link as the first proof of mailbox ownership and
+        // strips any password or session set before it (GHSA-qq9h-g4jm-xgf3).
+        // Rerouting to a verification email would let whoever registered the
+        // address first keep their password on the owner's account.
+        sendMagicLink: async ({ email, url }) => {
           await sendTemplate("magic-link", { to: email, props: { magicLinkUrl: url } });
         },
       }),
