@@ -219,6 +219,33 @@ describe("applyStripeEvent — dunning grace period", () => {
     expect(retryStatus.stripeStatus).toBe("unpaid");
   });
 
+  it("after the cron cleared an expired window, retries in the same cycle do not reopen it", () => {
+    const inGrace = applyStripeEvent(paying(), failed(), NOW);
+    // What expireGracePeriods() persists: timestamp gone, status still dunning.
+    const expired: EntitlementSnapshot = { ...inGrace, graceEndsAt: null, tier: "free" };
+    const afterWindow = new Date(NOW.getTime() + (GRACE_PERIOD_DAYS + 3) * DAY);
+
+    const retry = applyStripeEvent(expired, failed(afterWindow));
+    expect(retry.graceEndsAt).toBeNull();
+    expect(retry.tier).toBe("free");
+
+    const unpaid = applyStripeEvent(expired, {
+      ...subEvent("customer.subscription.updated", "unpaid"),
+      created: unix(afterWindow),
+    });
+    expect(unpaid.graceEndsAt).toBeNull();
+    expect(unpaid.tier).toBe("free");
+
+    // A real recovery still restores Pro, and a fresh cycle after it gets a new window.
+    const recovered = applyStripeEvent(unpaid, paid(afterWindow));
+    expect(recovered.tier).toBe("pro");
+    const nextCycle = applyStripeEvent(recovered, failed(new Date(afterWindow.getTime() + DAY)));
+    expect(nextCycle.graceEndsAt).toBe(
+      new Date(afterWindow.getTime() + DAY + GRACE_PERIOD_DAYS * DAY).toISOString(),
+    );
+    expect(nextCycle.tier).toBe("pro");
+  });
+
   it("once the window has passed the resolved tier is free, with the facts intact", () => {
     const inGrace = applyStripeEvent(paying(), failed(), NOW);
     const afterWindow = new Date(NOW.getTime() + (GRACE_PERIOD_DAYS + 1) * DAY);
