@@ -481,6 +481,7 @@ export function createPostgresRepos(): Repos {
         userId: input.userId,
         taskId: input.taskId,
         promptVersion: input.promptVersion,
+        stage: input.stage ?? null,
         model: input.model,
         transport: input.transport,
         status: input.status,
@@ -530,6 +531,7 @@ export function createPostgresRepos(): Repos {
       return rows.map((r) => ({
         id: r.id,
         taskId: r.taskId,
+        stage: r.stage,
         model: r.model,
         transport: r.transport,
         status: r.status,

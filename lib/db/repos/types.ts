@@ -74,12 +74,17 @@ export interface AiRunWriteInput {
   userId: string;
   taskId: string | null;
   promptVersion: string;
+  /** Pipeline stage (`lib/ai/models.ts` `Stage`); null for legacy rows and pre-resolution failures. */
+  stage?: string | null;
+  /** Canonical `provider/model` slug of the model that answered. */
   model: string;
+  /** "gateway" | "direct" | "offline" | "unknown". */
   transport: string;
   status: "succeeded" | "failed";
   durationMs: number;
   inputTokens: number | null;
   outputTokens: number | null;
+  /** Fractional cents from registry list prices; null when usage was not reported. */
   costCents: number | null;
   offline: boolean;
   error: string | null;
@@ -157,6 +162,7 @@ export interface AiRunRepo {
     Array<{
       id: string;
       taskId: string | null;
+      stage: string | null;
       model: string;
       transport: string;
       status: "succeeded" | "failed";

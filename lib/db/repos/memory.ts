@@ -48,6 +48,7 @@ interface State {
     userId: string;
     taskId: string | null;
     promptVersion: string;
+    stage: string | null;
     model: string;
     transport: string;
     status: "succeeded" | "failed";
@@ -371,7 +372,7 @@ export function createMemoryRepos(): MemoryReposHandle {
     async insert(input: AiRunWriteInput) {
       const id = nanoid(12);
       const createdAt = new Date().toISOString();
-      state.aiRuns.push({ id, ...input, createdAt });
+      state.aiRuns.push({ id, ...input, stage: input.stage ?? null, createdAt });
       return { id, createdAt };
     },
     async countSucceededToday(userId, now = new Date()) {
