@@ -54,9 +54,12 @@ export const decisionsSink: MemoryProposalSink = async (repos, userId, proposals
       memoryKind: proposal.kind,
       rationale: proposal.evidence,
     };
+    // Not attached to the task: a memory is about the user, and
+    // `decisions.task_id` cascades on task delete, which would take an
+    // open proposal — or a dismissal negative — down with the task.
     await repos.decisions.create(userId, {
       kind: "memory_proposal",
-      taskId: source.taskId,
+      taskId: null,
       payload,
       resumeToken: null,
       expiresAt: null,

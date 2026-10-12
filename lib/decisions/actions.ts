@@ -59,10 +59,11 @@ export async function answerDecision(args: {
   // retry, and the id derived from the decision makes a second tab's
   // write a no-op rather than a duplicate.
   const before = await repos.decisions.get(userId, args.decisionId);
-  if (before?.status === "open" && before.payload.kind === "memory_proposal") {
-    const memory = memoryFromProposal(before);
-    if (memory) await repos.memories.create(userId, memory);
-  }
+  const memory =
+    before?.status === "open" && before.payload.kind === "memory_proposal"
+      ? memoryFromProposal(before)
+      : null;
+  if (memory) await repos.memories.create(userId, memory);
 
   const resolved = await resolveDecision(
     userId,
@@ -70,7 +71,14 @@ export async function answerDecision(args: {
     { status: "answered", answer: args.answer, wake: false },
     repos,
   );
-  if (!resolved.ok) return resolved;
+  if (!resolved.ok) {
+    // Lost the CAS. If the other side confirmed, the memory is theirs to
+    // keep; if it dismissed (or the row expired), take back what we wrote.
+    if (memory && resolved.decision?.status !== "answered") {
+      await repos.memories.delete(userId, memory.id);
+    }
+    return resolved;
+  }
   const { decision } = resolved;
   const payload = decision.payload;
 

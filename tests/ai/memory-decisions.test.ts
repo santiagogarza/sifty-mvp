@@ -66,7 +66,7 @@ async function dismiss(cookie: string, id: string) {
 }
 
 describe("memory proposals in the Decisions inbox", () => {
-  it("a sift files a proposal as an open memory_proposal decision on the task", async () => {
+  it("a sift files a proposal as an open memory_proposal decision, detached from the task", async () => {
     const repos = getTestRepos();
     const user = await repos.users.create({
       email: "p@example.com",
@@ -84,7 +84,7 @@ describe("memory proposals in the Decisions inbox", () => {
     expect(open).toHaveLength(1);
     expect(open[0]).toMatchObject({
       kind: "memory_proposal",
-      taskId: task.id,
+      taskId: null,
       resumeToken: null,
       expiresAt: null,
       payload: {
@@ -96,6 +96,49 @@ describe("memory proposals in the Decisions inbox", () => {
     });
     expect(await repos.decisions.countOpen(user.id)).toBe(1);
 
+    // Deleting the source task leaves the proposal (and later its negative) in place.
+    await repos.tasks.delete(user.id, task.id);
+    expect(await repos.decisions.countOpen(user.id)).toBe(1);
+
+    // The same capture sifted again proposes nothing new while the row is open.
+    const task2 = await seedSifted(repos, user.id, "Send the Q3 numbers to Ana, my accountant");
+    expect(await extractMemories(input(user.id, task2.id), null)).toEqual({
+      outcome: "proposed",
+      proposals: 1,
+      filed: 0,
+    });
+    expect(await repos.decisions.countOpen(user.id)).toBe(1);
+  });
+
+  it("a Remember that loses to a dismiss takes its memory back; one that loses to another Remember keeps it", async () => {
+    const repos = getTestRepos();
+    const { user, cookie } = await createUserWithCookie(repos, { email: "race@example.com" });
+    const task = await seedSifted(repos, user.id, "Call Ana, my accountant");
+    await extractMemories(input(user.id, task.id), null);
+    const [proposal] = await repos.decisions.listOpen(user.id, { limit: 10 });
+
+    // The dismiss lands between Remember's memory write and its resolve.
+    const resolve = repos.decisions.resolve.bind(repos.decisions);
+    const spy = vi.spyOn(repos.decisions, "resolve").mockImplementationOnce(async (u, id, inp) => {
+      await resolve(u, id, { status: "dismissed", answer: null });
+      return resolve(u, id, inp);
+    });
+    const lost = await answer(cookie, proposal!.id, "Remember");
+    spy.mockRestore();
+    expect(lost.status).toBe(409);
+    expect((await repos.decisions.get(user.id, proposal!.id))!.status).toBe("dismissed");
+    expect(await repos.memories.list(user.id)).toEqual([]);
+  });
+
+  it("the sink files a proposal only once while it is open", async () => {
+    const repos = getTestRepos();
+    const user = await repos.users.create({
+      email: "once@example.com",
+      displayName: "O",
+      isCreator: false,
+    });
+    const task = await seedSifted(repos, user.id, "Send the Q3 numbers to Ana, my accountant");
+    await extractMemories(input(user.id, task.id), null);
     // The same capture sifted again proposes nothing new while the row is open.
     expect(await extractMemories(input(user.id, task.id), null)).toEqual({
       outcome: "proposed",
