@@ -43,7 +43,7 @@ export async function PATCH(req: Request, ctx: RouteContext) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
-  const { editedFields, timeZone, ...patch } = parsed.data;
+  const { editedFields, completedOn, timeZone, ...patch } = parsed.data;
   const repos = getRepos();
   const userId = session.user.id;
   const completing = patch.lifecycle === "done";
@@ -56,6 +56,7 @@ export async function PATCH(req: Request, ctx: RouteContext) {
     const next = await spawnNextInstance(repos, userId, {
       parent: task,
       previousLifecycle: before?.lifecycle ?? "active",
+      completedOn,
       timeZone,
     });
     spawned = next?.task ?? null;

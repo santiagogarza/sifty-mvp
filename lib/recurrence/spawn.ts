@@ -6,12 +6,15 @@ import type { Lifecycle, Task } from "@/lib/domain/types";
 /**
  * Spawn the next instance of a recurring task when one is completed.
  *
- * Idempotent by construction: the next instance's id is derived from the
- * completed instance's id, so a replayed PATCH, two devices completing the
- * same task, or an un-complete/re-complete all land on the same row. When
- * it already exists it is returned untouched — it may have moved on (been
- * edited, even completed and spawned its own successor) and must not be
- * reset to a copy of its parent.
+ * Idempotent by construction: the successor id is derived from the
+ * completed instance's id and its `completedAt`, so a replayed PATCH or
+ * two devices reporting the same completion land on one row, which is
+ * returned untouched — it may have moved on (been edited, even completed
+ * and spawned its own successor) and must not be reset to a copy of its
+ * parent. Un-completing and completing again is a new completion (new
+ * `completedAt`), but it spawns nothing while the series still has an
+ * open instance, so a mis-click never doubles the series; a successor the
+ * user deleted, on the other hand, no longer blocks it.
  *
  * The copy carries the parent's sift output (priority, labels, plan,
  * rationale) and is created `ready`, so a recurring task costs AI once.
@@ -24,7 +27,12 @@ export async function spawnNextInstance(
     parent: Task;
     /** Where the parent lived before completion; the next instance lands there. */
     previousLifecycle: Lifecycle;
-    /** IANA zone of the completing client; UTC when absent. */
+    /**
+     * The user's calendar day of completion (`YYYY-MM-DD`), as the client
+     * saw it. Falls back to today in `timeZone`, then UTC.
+     */
+    completedOn?: string | null;
+    /** IANA zone of the completing client. */
     timeZone?: string | null;
     now?: Date;
   },
@@ -32,9 +40,18 @@ export async function spawnNextInstance(
   const { parent } = args;
   if (!parent.recurrence) return null;
 
-  const nextId = nextInstanceId(parent.id);
+  const seriesId = parent.seriesId ?? parent.id;
+  const nextId = nextInstanceId(parent.id, parent.completedAt);
   const existing = await repos.tasks.get(userId, nextId);
-  if (existing) return { task: existing, created: false };
+  // A row that already carries its series is a finished spawn. One without
+  // it is a stub whose copy patch never landed; fall through and apply it.
+  if (existing?.seriesId) return { task: existing, created: false };
+  if (!existing) {
+    const open = (await repos.tasks.list(userId, { lifecycles: OPEN_LIFECYCLES })).find(
+      (t) => t.id !== parent.id && t.seriesId === seriesId,
+    );
+    if (open) return { task: open, created: false };
+  }
 
   const lifecycle: Lifecycle =
     args.previousLifecycle === "done" || args.previousLifecycle === "dropped"
@@ -42,23 +59,28 @@ export async function spawnNextInstance(
       : args.previousLifecycle;
   const { create, patch, editedFields } = buildNextInstance(parent, {
     id: nextId,
-    completedOn: localDay(args.now ?? new Date(), args.timeZone ?? null),
+    completedOn: args.completedOn ?? localDay(args.now ?? new Date(), args.timeZone ?? null),
     lifecycle,
   });
 
   // create() is idempotent for the owner: a concurrent spawn of the same
   // parent gets the same row back and applies the same patch.
-  const stub = await repos.tasks.create(userId, create);
+  const stub = existing ?? (await repos.tasks.create(userId, create));
   const task = (await repos.tasks.update(userId, stub.id, patch, { editedFields })) ?? stub;
   return { task, created: true };
 }
 
+const OPEN_LIFECYCLES: readonly Lifecycle[] = ["inbox", "active", "waiting", "someday"];
+
 /**
- * Deterministic successor id. Client ids are `prefix_<base36>`; a sha256
- * prefix is unguessable enough and matches the wire pattern.
+ * Deterministic successor id for one completion of one instance. Client
+ * ids are `prefix_<base36>`; a sha256 prefix is unguessable enough and
+ * matches the wire pattern.
  */
-export function nextInstanceId(parentId: string): string {
-  const digest = createHash("sha256").update(`next:${parentId}`).digest("hex");
+export function nextInstanceId(parentId: string, completedAt: string | null): string {
+  const digest = createHash("sha256")
+    .update(`next:${parentId}:${completedAt ?? ""}`)
+    .digest("hex");
   return `task_r${digest.slice(0, 20)}`;
 }
 

@@ -70,6 +70,47 @@ describe("create body", () => {
   });
 });
 
+describe("recurring completion", () => {
+  it("sends the completion day with a done patch and adopts the spawned successor", async () => {
+    const client = await bootAndPull();
+    const id = await captureSynced(client, "Water the plants");
+    client.store.getState().setRecurrence(id, { freq: "daily", mode: "fixed" });
+    await settle(client);
+
+    client.calls.length = 0;
+    client.store.getState().updateTask(id, { lifecycle: "done" });
+    await settle(client);
+
+    const patch = client.calls.find((c) => c.method === "PATCH" && c.path === `/api/tasks/${id}`);
+    const body = patch?.body as { lifecycle: string; completedOn: string; timeZone?: string };
+    expect(body.lifecycle).toBe("done");
+    expect(body.completedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // Narrow: the completion context rides along, nothing else does.
+    expect(Object.keys(body).sort()).toEqual(
+      ["completedOn", "lifecycle", ...(body.timeZone ? ["timeZone"] : [])].sort(),
+    );
+
+    // The server spawned the next instance and the client shows it without a pull.
+    const tasks = client.store.getState().tasks;
+    const successor = tasks.find((t) => t.id !== id && t.seriesId === id);
+    expect(successor).toBeTruthy();
+    expect(successor?.lifecycle).not.toBe("done");
+    expect(successor?.recurrence).toEqual({ freq: "daily", mode: "fixed" });
+    expect(successor?.title).toBe("Water the plants");
+    // Adopted, not pushed: no create for the successor left this client.
+    expect(
+      client.calls.some(
+        (c) => c.method === "POST" && (c.body as { id?: string } | null)?.id === successor!.id,
+      ),
+    ).toBe(false);
+    // Two rows in the series on the server (plus the starter examples).
+    const series = (await client.repos.tasks.list(client.userId)).filter(
+      (t) => t.id === id || t.seriesId === id,
+    );
+    expect(series).toHaveLength(2);
+  });
+});
+
 describe("narrow patches", () => {
   it("pushes only the keys that changed and never clobbers fields written server-side", async () => {
     const client = await bootAndPull();

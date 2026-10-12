@@ -3,6 +3,7 @@
 import { isTriageInFlight, watchSift } from "@/lib/ai/run-triage";
 import { normalizeAssigneeName } from "@/lib/domain/assignee";
 import { LABEL_LIMITS, MEMORY_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
+import { toLocalIsoDate } from "@/lib/domain/snooze";
 import type { Label, Memory, Task } from "@/lib/domain/types";
 import * as React from "react";
 import { type SyncHooks, registerSyncHooks, useStore } from "./store";
@@ -407,13 +408,24 @@ function taskWireFields(task: Task): Record<string, unknown> {
   };
 }
 
-/** The browser's IANA zone, so the server resolves "completed today" on the user's calendar. */
-function clientTimeZone(): string | undefined {
+/**
+ * Completion context for a recurring task: the local calendar day the user
+ * completed it (from the store's own `completedAt`, so a push that lands
+ * hours or days later still names the right day) and the browser's zone as
+ * the server's fallback.
+ */
+function completionContext(task: Task): Record<string, unknown> {
+  if (task.lifecycle !== "done" || !task.recurrence) return {};
+  const out: Record<string, unknown> = {
+    completedOn: toLocalIsoDate(task.completedAt ? new Date(task.completedAt) : new Date()),
+  };
   try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (timeZone) out.timeZone = timeZone;
   } catch {
-    return undefined;
+    // No zone available; the server falls back to UTC.
   }
+  return out;
 }
 
 /** Keep only the dirty keys; `["*"]` keeps everything. */
@@ -424,12 +436,8 @@ function pick(fields: Record<string, unknown>, keys: readonly string[]): Record<
 
 function taskPatchBody(task: Task, keys: readonly string[]): Record<string, unknown> {
   const body = pick(taskWireFields(task), keys);
-  // Completing a recurring task spawns its next instance server-side; the
-  // next due is a local calendar day, so the server needs our zone.
-  if (body.lifecycle === "done" && task.recurrence) {
-    const timeZone = clientTimeZone();
-    if (timeZone) body.timeZone = timeZone;
-  }
+  // Completing a recurring task spawns its next instance server-side.
+  if (body.lifecycle === "done") Object.assign(body, completionContext(task));
   return body;
 }
 
@@ -442,6 +450,8 @@ function taskCreateBody(task: Task): Record<string, unknown> {
     // preference the user picked in Settings.
     modelPreference: useStore.getState().modelPreference,
     ...taskWireFields(task),
+    // A recurring task captured and completed offline spawns on create.
+    ...completionContext(task),
   };
 }
 
@@ -527,6 +537,8 @@ async function pushTaskCreateJob(id: string): Promise<boolean> {
   if (!res) return false;
   if (res.status === 409) return remintAndRepushTask(id);
   if (!res.ok) return reportRejection(res, "tasks", id, `task create ${id}`);
+  const data = (await res.json().catch(() => null)) as { spawned?: Task | null } | null;
+  if (data?.spawned) adoptSpawnedTask(data.spawned);
   // The server started sifting in response to this create (a replayed
   // offline capture, say); follow it so the row does not sit on "pending"
   // until the next pull. Deferred past this job so the watcher's

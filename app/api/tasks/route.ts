@@ -5,7 +5,8 @@ import { getRepos } from "@/lib/db/repos";
 import { IdConflictError } from "@/lib/db/repos/types";
 import { TASK_LIMITS } from "@/lib/domain/limits";
 import { ClientId, TaskPatchSchema } from "@/lib/domain/task-patch-schema";
-import { TASK_EDITABLE_FIELDS } from "@/lib/domain/types";
+import { TASK_EDITABLE_FIELDS, type Task } from "@/lib/domain/types";
+import { spawnNextInstance } from "@/lib/recurrence/spawn";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -70,7 +71,8 @@ export async function POST(req: Request) {
     createdAt,
     editedFields,
     modelPreference,
-    timeZone: _timeZone,
+    completedOn,
+    timeZone,
     ...enrichment
   } = parsed.data;
   const repos = getRepos();
@@ -129,7 +131,21 @@ export async function POST(req: Request) {
       sift = { enqueued: false, reason: "already_sifting" };
     }
 
-    return NextResponse.json({ task, sift }, { status: 201 });
+    // A recurring task that arrives already completed (captured and done
+    // offline, or a PATCH that 404'd and fell back to create) still owes
+    // its series the next instance. Idempotent, like the PATCH path.
+    let spawned: Task | null = null;
+    if (task.lifecycle === "done" && task.recurrence) {
+      const next = await spawnNextInstance(repos, userId, {
+        parent: task,
+        previousLifecycle: "active",
+        completedOn,
+        timeZone,
+      });
+      spawned = next?.task ?? null;
+    }
+
+    return NextResponse.json({ task, sift, spawned }, { status: 201 });
   } catch (err) {
     if (err instanceof IdConflictError) {
       return NextResponse.json({ error: "Task id is not available" }, { status: 409 });

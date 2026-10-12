@@ -58,7 +58,7 @@ describe("completing a recurring task over the API", () => {
     expect(body.task.lifecycle).toBe("done");
     expect(body.task.completedAt).toBeTruthy();
     expect(body.spawned).toMatchObject({
-      id: nextInstanceId(created.id),
+      id: nextInstanceId(created.id, body.task.completedAt),
       title: "Water the plants",
       lifecycle: "active",
       aiStatus: "ready",
@@ -76,6 +76,72 @@ describe("completing a recurring task over the API", () => {
     const mine = (await repos.tasks.list(user.id)).filter((t) => t.seriesId === created.id);
     expect(mine).toHaveLength(2);
     expect(await repos.aiRuns.list(user.id)).toEqual([]);
+  });
+
+  it("counts 'after completion' from the day the client completed it, not from sync time", async () => {
+    const repos = getTestRepos();
+    const { user, cookie } = await createUserWithCookie(repos, { email: "late@example.com" });
+    const created = await repos.tasks.create(user.id, {
+      sourceText: "Stretch",
+      sourceContext: null,
+    });
+    await repos.tasks.update(user.id, created.id, {
+      recurrence: { freq: "daily", mode: "after_completion" },
+    });
+    // The push for an offline completion arrives much later than the completion itself.
+    const res = await patch(created.id, cookie, { lifecycle: "done", completedOn: "2026-01-05" });
+    const { spawned } = (await res.json()) as { spawned: { due: string } };
+    expect(spawned.due).toBe("2026-01-06");
+    expect(
+      (await patch(created.id, cookie, { lifecycle: "done", completedOn: "2026-1-5" })).status,
+    ).toBe(400);
+  });
+
+  it("a recurring task that arrives already done through create spawns its successor too", async () => {
+    // Offline capture, repeat set, completed before the first push — or a
+    // PATCH that 404'd and fell back to POST. The create path must not
+    // strand the series.
+    const repos = getTestRepos();
+    const { user, cookie } = await createUserWithCookie(repos, { email: "offline@example.com" });
+    const { POST } = await import("@/app/api/tasks/route");
+    const body = {
+      id: "task_offline1",
+      sourceText: "Water the plants",
+      title: "Water the plants",
+      lifecycle: "done",
+      aiStatus: "idle",
+      due: "2026-10-12",
+      recurrence: { freq: "daily", mode: "fixed" },
+      seriesId: "task_offline1",
+      completedOn: "2026-10-12",
+      timeZone: "Europe/Madrid",
+    };
+    const post = () =>
+      POST(
+        new Request("http://localhost/api/tasks", {
+          method: "POST",
+          headers: { "content-type": "application/json", cookie },
+          body: JSON.stringify(body),
+        }),
+      );
+    const res = await post();
+    expect(res.status).toBe(201);
+    const created = (await res.json()) as {
+      task: { lifecycle: string };
+      spawned: { id: string; due: string; lifecycle: string; seriesId: string } | null;
+    };
+    expect(created.task.lifecycle).toBe("done");
+    expect(created.spawned).toMatchObject({
+      due: "2026-10-13",
+      lifecycle: "active",
+      seriesId: "task_offline1",
+    });
+    // The replayed create returns the same successor.
+    const replay = (await (await post()).json()) as { spawned: { id: string } | null };
+    expect(replay.spawned?.id).toBe(created.spawned!.id);
+    expect(
+      (await repos.tasks.list(user.id)).filter((t) => t.seriesId === "task_offline1"),
+    ).toHaveLength(2);
   });
 
   it("spawns nothing for a one-off task or a non-completing patch", async () => {
