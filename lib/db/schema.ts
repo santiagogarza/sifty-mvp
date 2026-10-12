@@ -625,6 +625,10 @@ export const executions = pgTable(
   },
   (t) => [
     uniqueIndex("executions_user_idempotency_idx").on(t.userId, t.idempotencyKey),
+    // One live execution per task, enforced here so concurrent enqueues race safely.
+    uniqueIndex("executions_task_live_idx")
+      .on(t.taskId)
+      .where(sql`${t.status} not in ('done', 'failed', 'cancelled')`),
     index("executions_user_status_created_idx").on(t.userId, t.status, t.createdAt),
     index("executions_task_idx").on(t.taskId),
     // Monthly budget: every row of the user created this month.

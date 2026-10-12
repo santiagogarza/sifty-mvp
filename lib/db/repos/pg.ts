@@ -26,6 +26,7 @@ import {
   isNull,
   lt,
   lte,
+  notInArray,
   or,
   sql,
 } from "drizzle-orm";
@@ -1325,6 +1326,22 @@ export function createPostgresRepos(): Repos {
       if (byKey) return { created: false, execution: rowToExecution(byKey) };
       const existing = await executions.get(userId, id);
       if (existing) return { created: false, execution: existing };
+      const [taken] = await db
+        .select({ id: schema.executions.id })
+        .from(schema.executions)
+        .where(eq(schema.executions.id, id));
+      if (taken) throw new IdConflictError(id);
+      const [live] = await db
+        .select()
+        .from(schema.executions)
+        .where(
+          and(
+            eq(schema.executions.userId, userId),
+            eq(schema.executions.taskId, input.taskId),
+            notInArray(schema.executions.status, ["done", "failed", "cancelled"]),
+          ),
+        );
+      if (live) return { created: false, execution: rowToExecution(live) };
       throw new IdConflictError(id);
     },
     async get(userId, id) {

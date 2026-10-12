@@ -309,7 +309,7 @@ describe("routes acting on execution decisions", () => {
     };
     const approved = await post(token(linksA.approve));
     expect(approved.status).toBe(303);
-    expect(new URL(approved.headers.get("location")!).searchParams.get("link")).toBe("approved");
+    expect(new URL(approved.headers.get("location")!).searchParams.get("link")).toBe("accepted");
     expect((await repos.executions.get(user.id, a.execution.id))?.status).toBe("done");
 
     const rejected = await post(token(linksB.reject));

@@ -1018,6 +1018,11 @@ export function createMemoryRepos(): MemoryReposHandle {
         if (existing && existing.userId !== userId) throw new IdConflictError(input.id);
         if (existing) return { created: false, execution: cloneExecution(existing) };
       }
+      for (const e of state.executions.values()) {
+        if (e.taskId === input.taskId && !TERMINAL_EXECUTION_STATUSES.has(e.status)) {
+          return { created: false, execution: cloneExecution(e) };
+        }
+      }
       const now = new Date().toISOString();
       const execution: Execution & { userId: string } = {
         id: input.id ?? makeId("exec"),

@@ -146,6 +146,9 @@ export async function enqueueExecution(args: {
     idempotencyKey,
   });
   if (!created.created) {
+    if (created.execution.idempotencyKey !== idempotencyKey) {
+      return { ok: false, reason: "already_running", execution: created.execution };
+    }
     return { ok: true, execution: created.execution, created: false, runId: null, policy };
   }
   let execution = created.execution;
@@ -494,7 +497,7 @@ function acceptedDraft(
 ): ExecutionDraft {
   if (!edit || !edit.body.trim()) return payload.draft;
   return {
-    title: edit.title?.trim() || payload.draft.title,
+    title: edit.title?.trim() || null,
     body: edit.body,
     format: payload.draft.format,
   };

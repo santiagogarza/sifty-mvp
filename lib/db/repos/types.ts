@@ -706,7 +706,10 @@ export interface ExecutionCreateInput {
 
 export type ExecutionCreateResult =
   | { created: true; execution: Execution }
-  /** `(userId, idempotencyKey)` already exists: the earlier row, untouched. */
+  /**
+   * `(userId, idempotencyKey)` already exists, or the task already has a live
+   * (non-terminal) execution: that row, untouched.
+   */
   | { created: false; execution: Execution };
 
 /** The columns a transition may set alongside `status`. */

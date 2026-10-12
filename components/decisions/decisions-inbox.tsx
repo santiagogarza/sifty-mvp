@@ -223,22 +223,24 @@ function BatchBar({
   onClear: () => void;
 }) {
   const approveMany = useDecisionsStore((s) => s.approveMany);
-  const [arming, setArming] = React.useState(false);
+  // Armed for one exact selection: clearing or changing it disarms the confirm.
+  const [armedFor, setArmedFor] = React.useState<ReadonlySet<string> | null>(null);
   const [busy, setBusy] = React.useState(false);
   const count = selected.size;
+  const arming = armedFor !== null && armedFor === selected;
 
   React.useEffect(() => {
     if (!arming) return;
-    const t = setTimeout(() => setArming(false), 5000);
+    const t = setTimeout(() => setArmedFor(null), 5000);
     return () => clearTimeout(t);
   }, [arming]);
 
   const run = async () => {
     if (!arming) {
-      setArming(true);
+      setArmedFor(selected);
       return;
     }
-    setArming(false);
+    setArmedFor(null);
     setBusy(true);
     const ids = approvable.filter((d) => selected.has(d.id)).map((d) => d.id);
     const results = await approveMany(ids);
@@ -497,6 +499,7 @@ const DecisionCard = React.forwardRef<
           payload={approval}
           active={active}
           busy={!!busy}
+          inputRef={inputRef}
           onAnswer={(input) => void submit(input)}
           onReject={() => void runDismiss()}
         />

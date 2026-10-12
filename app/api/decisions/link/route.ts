@@ -85,9 +85,10 @@ export async function POST(req: Request) {
 function linkOutcome(mode: string | undefined): string {
   switch (mode) {
     case "approved":
+      return "approved";
     case "accepted":
     case "edited":
-      return "approved";
+      return "accepted";
     case "rejected":
       return "rejected";
     case "stale":

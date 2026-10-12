@@ -37,6 +37,7 @@ export function ApprovalBody({
   payload,
   active,
   busy,
+  inputRef,
   onAnswer,
   onReject,
 }: {
@@ -44,6 +45,8 @@ export function ApprovalBody({
   payload: ApprovalPayload;
   active: boolean;
   busy: boolean;
+  /** The free-text answer field of an executor question (the `Enter` key). */
+  inputRef?: React.Ref<HTMLInputElement>;
   onAnswer: (input: { option?: string; text?: string }) => void;
   onReject: () => void;
 }) {
@@ -111,6 +114,7 @@ export function ApprovalBody({
             }}
           >
             <Input
+              ref={inputRef}
               value={text}
               maxLength={DECISION_LIMITS.answerText}
               onChange={(e) => setText(e.target.value)}

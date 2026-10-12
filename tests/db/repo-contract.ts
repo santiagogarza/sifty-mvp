@@ -1103,6 +1103,10 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect(replay.created).toBe(false);
       expect(replay.execution.id).toBe(first.execution.id);
       expect(replay.execution.policy).toBe("ask_first");
+      // New key, same task, first still live: the live row, nothing new.
+      const second = await repos.executions.create(a.id, create(task.id, "k2"));
+      expect(second.created).toBe(false);
+      expect(second.execution.id).toBe(first.execution.id);
       // Same key, other tenant: their own row.
       const theirs = await repos.executions.create(b.id, create(bTask.id, "k1"));
       expect(theirs.created).toBe(true);
@@ -1277,12 +1281,14 @@ export function describeRepoContract(getRepos: () => Repos): void {
       const a = await createUser(repos, "exec-budget@example.com");
       const b = await createUser(repos, "exec-budget-b@example.com");
       const task = await repos.tasks.create(a.id, { sourceText: "Lease", sourceContext: null });
+      const task2 = await repos.tasks.create(a.id, { sourceText: "Lease 2", sourceContext: null });
+      const task3 = await repos.tasks.create(a.id, { sourceText: "Lease 3", sourceContext: null });
       const bTask = await repos.tasks.create(b.id, { sourceText: "Theirs", sourceContext: null });
       const now = new Date();
 
       const one = await repos.executions.create(a.id, create(task.id, "b1"));
-      const two = await repos.executions.create(a.id, create(task.id, "b2"));
-      const three = await repos.executions.create(a.id, create(task.id, "b3"));
+      const two = await repos.executions.create(a.id, create(task2.id, "b2"));
+      const three = await repos.executions.create(a.id, create(task3.id, "b3"));
       const theirs = await repos.executions.create(b.id, create(bTask.id, "b1"));
 
       const r1 = await repos.executions.reserve(a.id, one.execution.id, {
@@ -1368,11 +1374,14 @@ export function describeRepoContract(getRepos: () => Repos): void {
 
       // Concurrent reservations never overshoot the cap together.
       const c = await createUser(repos, "exec-race@example.com");
-      const cTask = await repos.tasks.create(c.id, { sourceText: "Race", sourceContext: null });
       const rows = await Promise.all(
-        Array.from({ length: 6 }, (_, i) =>
-          repos.executions.create(c.id, create(cTask.id, `race-${i}`)),
-        ),
+        Array.from({ length: 6 }, async (_, i) => {
+          const cTask = await repos.tasks.create(c.id, {
+            sourceText: `Race ${i}`,
+            sourceContext: null,
+          });
+          return repos.executions.create(c.id, create(cTask.id, `race-${i}`));
+        }),
       );
       const results = await Promise.all(
         rows.map((r) =>
@@ -1392,17 +1401,7 @@ export function describeRepoContract(getRepos: () => Repos): void {
       const task = await repos.tasks.create(a.id, { sourceText: "Lease", sourceContext: null });
       const other = await repos.tasks.create(a.id, { sourceText: "Other", sourceContext: null });
       const before = new Date(Date.now() - 60_000);
-      const queued = await repos.executions.create(a.id, create(task.id, "l1"));
-      const parked = await repos.executions.create(a.id, create(other.id, "l2"));
       const finished = await repos.executions.create(a.id, create(task.id, "l3"));
-      await repos.executions.transition(a.id, parked.execution.id, {
-        from: ["queued"],
-        to: "running",
-      });
-      await repos.executions.transition(a.id, parked.execution.id, {
-        from: ["running"],
-        to: "drafted",
-      });
       await repos.executions.transition(a.id, finished.execution.id, {
         from: ["queued"],
         to: "running",
@@ -1410,6 +1409,16 @@ export function describeRepoContract(getRepos: () => Repos): void {
       await repos.executions.transition(a.id, finished.execution.id, {
         from: ["running"],
         to: "done",
+      });
+      const queued = await repos.executions.create(a.id, create(task.id, "l1"));
+      const parked = await repos.executions.create(a.id, create(other.id, "l2"));
+      await repos.executions.transition(a.id, parked.execution.id, {
+        from: ["queued"],
+        to: "running",
+      });
+      await repos.executions.transition(a.id, parked.execution.id, {
+        from: ["running"],
+        to: "drafted",
       });
 
       const active = await repos.executions.listActive(a.id, { limit: 10 });

@@ -53,6 +53,7 @@ ALTER TABLE "executions" ADD CONSTRAINT "executions_user_id_users_id_fk" FOREIGN
 ALTER TABLE "executions" ADD CONSTRAINT "executions_task_id_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."tasks"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "execution_steps_execution_seq_idx" ON "execution_steps" USING btree ("execution_id","seq");--> statement-breakpoint
 CREATE UNIQUE INDEX "executions_user_idempotency_idx" ON "executions" USING btree ("user_id","idempotency_key");--> statement-breakpoint
+CREATE UNIQUE INDEX "executions_task_live_idx" ON "executions" USING btree ("task_id") WHERE "executions"."status" not in ('done', 'failed', 'cancelled');--> statement-breakpoint
 CREATE INDEX "executions_user_status_created_idx" ON "executions" USING btree ("user_id","status","created_at");--> statement-breakpoint
 CREATE INDEX "executions_task_idx" ON "executions" USING btree ("task_id");--> statement-breakpoint
 CREATE INDEX "executions_user_created_idx" ON "executions" USING btree ("user_id","created_at");
