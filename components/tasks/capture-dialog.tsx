@@ -24,6 +24,9 @@ import * as React from "react";
  *      Never blocking: Esc dismisses, triage continues in the background.
  *   4. Optional context, never required: a separate "Add context" affordance
  *      reveals a second textarea so the empty state stays calm.
+ *   5. Drafts survive dismissal: Escape (or any close that isn't a capture)
+ *      keeps the typed text for the next open. Only a successful capture or
+ *      an explicit Discard clears it. Session-only — never persisted.
  */
 
 export function CaptureDialog({
@@ -40,14 +43,25 @@ export function CaptureDialog({
   const [showContext, setShowContext] = React.useState(false);
   const textRef = React.useRef<HTMLTextAreaElement>(null);
 
+  const hasDraft = text.length > 0 || context.length > 0;
+
+  const clearDraft = () => {
+    setText("");
+    setContext("");
+    setShowContext(false);
+  };
+
   React.useEffect(() => {
-    if (!open) {
-      setText("");
-      setContext("");
-      setShowContext(false);
-    } else {
-      requestAnimationFrame(() => textRef.current?.focus());
-    }
+    if (!open) return;
+    requestAnimationFrame(() => {
+      const el = textRef.current;
+      if (!el) return;
+      el.focus();
+      // A restored draft should read as "pick up where you left off": caret
+      // at the end, not at the start of the text.
+      const end = el.value.length;
+      el.setSelectionRange(end, end);
+    });
   }, [open]);
 
   const submit = () => {
@@ -56,6 +70,7 @@ export function CaptureDialog({
       sourceText: text,
       sourceContext: context.trim() || null,
     });
+    clearDraft();
     onOpenChange(false);
     // Open the sheet on the next frame so this dialog's close (and its
     // focus restore) doesn't fight the sheet's focus trap.
@@ -117,6 +132,18 @@ export function CaptureDialog({
             {showContext ? "Hide context" : "Add context"}
           </button>
           <div className="flex items-center gap-3">
+            {hasDraft ? (
+              <button
+                type="button"
+                onClick={() => {
+                  clearDraft();
+                  onOpenChange(false);
+                }}
+                className="text-[12.5px] text-[var(--fg-subtle)] hover:text-[var(--fg)] transition-colors"
+              >
+                Discard
+              </button>
+            ) : null}
             <span className="hidden sm:flex items-center gap-1.5 text-[11.5px] text-[var(--fg-subtle)]">
               <Kbd>⌘</Kbd>
               <Kbd>↵</Kbd>
