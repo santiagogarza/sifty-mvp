@@ -321,7 +321,9 @@ export const useStore = create<SiftyState>()(
               done: false,
               order: st.order,
             })),
-            editedFields: [...source.editedFields],
+            // `due` is deliberately empty on the copy, so it must not stay
+            // protected: a later re-sift should be free to propose a date.
+            editedFields: source.editedFields.filter((f) => f !== "due"),
             createdAt: now,
             updatedAt: now,
             completedAt: null,

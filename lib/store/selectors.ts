@@ -2,7 +2,7 @@
 
 import { focusScore } from "@/lib/domain/priority";
 import type { Lifecycle, Task } from "@/lib/domain/types";
-import { dayDelta, isOverdue } from "@/lib/utils/dates";
+import { isOverdue, isToday } from "@/lib/utils/dates";
 import { useMemo } from "react";
 import { useStore } from "./store";
 
@@ -52,7 +52,7 @@ function applyCommonFilters(tasks: Task[], args: ViewArgs): Task[] {
  *    are out of play.
  */
 export function isTodayTask(t: Task, now = new Date()): boolean {
-  const dueForces = isOverdue(t.due, now) || (!!t.due && dayDelta(new Date(t.due), now) === 0);
+  const dueForces = isOverdue(t.due, now) || isToday(t.due, now);
   if (t.lifecycle === "inbox" || t.lifecycle === "active") {
     return dueForces || t.priorityBucket === "do_now";
   }

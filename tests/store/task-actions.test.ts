@@ -98,6 +98,12 @@ describe("duplicateTask", () => {
     expect(copy!.aiStatus).toBe("ready");
   });
 
+  it("keeps the user's edit protections except for the cleared due date", () => {
+    seed({ id: "task_src", editedFields: ["title", "due", "effort"] });
+    const copy = useStore.getState().duplicateTask("task_src")!;
+    expect(copy.editedFields).toEqual(["title", "effort"]);
+  });
+
   it("leaves the original untouched", () => {
     const original = seed({ id: "task_src" });
     useStore.getState().duplicateTask("task_src");

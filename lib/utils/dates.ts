@@ -10,6 +10,21 @@
 
 const dayMs = 24 * 60 * 60 * 1000;
 
+const DAY_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * Parse a stored date. Due dates are day-precision `YYYY-MM-DD` strings
+ * meaning "that calendar day", so they must resolve in the user's local
+ * zone — `new Date("2026-10-13")` would read UTC midnight, which is still
+ * the 12th anywhere west of Greenwich. Full ISO timestamps parse as usual.
+ */
+export function parseDay(value: string | Date): Date {
+  if (value instanceof Date) return value;
+  const m = DAY_ONLY.exec(value);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return new Date(value);
+}
+
 function startOfDay(d: Date): Date {
   const out = new Date(d);
   out.setHours(0, 0, 0, 0);
@@ -25,7 +40,7 @@ export function formatRelativeDay(
   now = new Date(),
 ): string | null {
   if (!value) return null;
-  const date = typeof value === "string" ? new Date(value) : value;
+  const date = parseDay(value);
   if (Number.isNaN(date.getTime())) return null;
   const delta = dayDelta(date, now);
   if (delta === 0) return "Today";
@@ -47,14 +62,14 @@ export function formatRelativeDay(
 
 export function isOverdue(due: string | Date | null | undefined, now = new Date()): boolean {
   if (!due) return false;
-  const date = typeof due === "string" ? new Date(due) : due;
+  const date = parseDay(due);
   if (Number.isNaN(date.getTime())) return false;
   return dayDelta(date, now) < 0;
 }
 
 export function isToday(due: string | Date | null | undefined, now = new Date()): boolean {
   if (!due) return false;
-  const date = typeof due === "string" ? new Date(due) : due;
+  const date = parseDay(due);
   if (Number.isNaN(date.getTime())) return false;
   return dayDelta(date, now) === 0;
 }
