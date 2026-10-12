@@ -11,6 +11,7 @@ import { TaskEmptyState } from "./empty-state";
 import { BOARD_BREAKOUT_CLASS, BOARD_GUTTER_CLASS, TaskBoard } from "./task-board";
 import { TaskList } from "./task-list";
 import { ViewModeToggle } from "./view-mode-toggle";
+import { WelcomeCard } from "./welcome-card";
 
 /**
  * Reusable view that renders the standard structure for Today/Inbox/Focus/etc.
@@ -73,6 +74,7 @@ export function TaskView({
       ) : (
         header
       )}
+      <WelcomeCard />
       {!hydrated ? (
         <TaskListSkeleton />
       ) : board ? (

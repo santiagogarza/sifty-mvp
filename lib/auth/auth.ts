@@ -1,14 +1,11 @@
 import { getDb } from "@/lib/db/client";
 import { type Repos, getPersistenceMode, getRepos } from "@/lib/db/repos";
 import * as schema from "@/lib/db/schema";
-import {
-  isDemoSeedEnabled,
-  seedDefaultLabels,
-  seedDemoWorkspaceIfEmpty,
-} from "@/lib/demo/seed-demo";
+import { isDemoSeedEnabled, seedDemoWorkspaceIfEmpty } from "@/lib/demo/seed-demo";
 import { sendTemplate } from "@/lib/email/templates";
 import { TRIAL_DAYS, creatorSnapshot } from "@/lib/entitlements/entitlements";
 import { reportError } from "@/lib/observability/report-error";
+import { seedStarterWorkspaceIfEmpty } from "@/lib/onboarding/seed";
 import { id as makeId } from "@/lib/utils/ids";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -286,7 +283,7 @@ async function onUserCreated(repos: Repos, user: AuthUser): Promise<void> {
   if (isDemoSeedEnabled()) {
     await seedDemoWorkspaceIfEmpty(repos, user.id);
   } else {
-    await seedDefaultLabels(repos, user.id);
+    await seedStarterWorkspaceIfEmpty(repos, user.id);
   }
 
   // OAuth sign-ups arrive verified and never pass through
