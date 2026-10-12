@@ -45,6 +45,7 @@ const PROTECTED_PREFIXES = [
   "/memory",
   "/settings",
   "/redeem",
+  "/admin",
 ];
 
 const SIGN_IN_PATH = "/sign-in";
