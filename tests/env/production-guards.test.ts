@@ -68,24 +68,20 @@ describe("production guards", () => {
     });
   });
 
-  it("a short BETTER_AUTH_SECRET blocks; a missing DATABASE_URL only warns", () => {
+  it("a short BETTER_AUTH_SECRET and a missing DATABASE_URL both block", () => {
     const { blocking, warnings } = findProductionEnvProblems({
       VERCEL_ENV: "production",
       BETTER_AUTH_SECRET: "short",
     });
-    expect(blocking).toHaveLength(1);
-    expect(blocking[0]).toMatch(/^BETTER_AUTH_SECRET/);
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toMatch(/^DATABASE_URL/);
+    expect(blocking.some((p) => p.startsWith("BETTER_AUTH_SECRET"))).toBe(true);
+    expect(blocking.some((p) => p.startsWith("DATABASE_URL"))).toBe(true);
+    expect(warnings).toEqual([]);
   });
 
-  it("assertProductionEnv boots without DATABASE_URL but logs the warning", () => {
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("assertProductionEnv refuses to boot without DATABASE_URL", () => {
     const { DATABASE_URL: _omit, ...noDb } = SAFE_PRODUCTION;
-    const warnings = assertProductionEnv(noDb);
-    expect(warnings).toHaveLength(1);
-    expect(error).toHaveBeenCalledWith(expect.stringContaining("DATABASE_URL is not set"));
-    error.mockRestore();
+    expect(() => assertProductionEnv(noDb)).toThrow(ProductionEnvError);
+    expect(() => assertProductionEnv(noDb)).toThrow(/DATABASE_URL is not set/);
   });
 
   it("assertProductionEnv throws a ProductionEnvError listing the problems", () => {

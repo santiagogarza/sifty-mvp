@@ -7,12 +7,9 @@
  *
  * - `assertProductionEnv()` runs at build time (`next.config.ts`) and at
  *   server start (`instrumentation.ts`) and throws when `VERCEL_ENV` is
- *   `production` and a demo flag is set or the auth secret is missing.
- *   A bad deploy therefore fails before it serves a request.
- * - A missing `DATABASE_URL` in production is reported, not fatal: the app
- *   boots on the in-memory store so the first deploy can render before Neon
- *   exists, `register()` logs the problem, and `/api/health` answers 503.
- *   Move it into `blocking` once the database is provisioned.
+ *   `production` and a demo flag is set, the auth secret is missing, or
+ *   `DATABASE_URL` is missing (the in-memory store would silently lose user
+ *   data). A bad deploy therefore fails before it serves a request.
  * - `demoFlagEnabled()` is what every flag consumer reads. It is false on
  *   Vercel production regardless of the variable, so even if the boot
  *   guard were bypassed, auth, seeding, and offline AI stay off.
@@ -65,7 +62,7 @@ export function demoFlagEnabled(flag: DemoFlag, env: Env = snapshotEnv()): boole
 export interface ProductionEnvProblems {
   /** Refuse to build or boot. */
   blocking: string[];
-  /** Boot, but say so loudly (logs, `/api/health` 503). */
+  /** Boot, but say so loudly (logs, `/api/health` 503). Currently none. */
   warnings: string[];
 }
 
@@ -93,8 +90,8 @@ export function findProductionEnvProblems(env: Env = snapshotEnv()): ProductionE
   }
 
   if (!env.DATABASE_URL) {
-    warnings.push(
-      "DATABASE_URL is not set; running on the in-memory store, which loses all data on every restart. Provision Neon (Vercel Marketplace) and redeploy.",
+    blocking.push(
+      "DATABASE_URL is not set; the in-memory store is refused in production because it loses all data on every restart. Connect Neon (Vercel Marketplace) and redeploy.",
     );
   }
 
