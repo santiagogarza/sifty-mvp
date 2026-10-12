@@ -9,8 +9,8 @@ import { HANDLED_EVENTS } from "@/lib/billing/webhook-events";
 import { getRepos } from "@/lib/db/repos";
 import { emptySnapshot, isGraceActive } from "@/lib/entitlements/entitlements";
 import { reportError } from "@/lib/observability/report-error";
-import { buildRateLimitKey, consumeToken, rateLimitResponseInit } from "@/lib/ratelimit/limiter";
-import { STRIPE_WEBHOOK_POLICY, clientIdFromRequest } from "@/lib/ratelimit/policies";
+import { enforceRateLimit } from "@/lib/ratelimit/guard";
+import { STRIPE_WEBHOOK_POLICY } from "@/lib/ratelimit/policies";
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 
@@ -29,13 +29,12 @@ export const runtime = "nodejs";
  * actually re-run the reducer instead of falsely deduping.
  */
 export async function POST(req: Request) {
-  const limit = consumeToken(
-    buildRateLimitKey("stripe-webhook", clientIdFromRequest(req)),
-    STRIPE_WEBHOOK_POLICY,
-  );
-  if (!limit.ok) {
-    return NextResponse.json({ error: "Webhook rate limited" }, rateLimitResponseInit(limit));
-  }
+  const limit = await enforceRateLimit(req, {
+    route: "stripe-webhook",
+    ip: STRIPE_WEBHOOK_POLICY,
+    message: "Webhook rate limited",
+  });
+  if (!limit.ok) return limit.response;
 
   const signature = req.headers.get("stripe-signature");
   if (!signature) {

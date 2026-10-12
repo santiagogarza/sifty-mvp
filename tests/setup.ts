@@ -13,11 +13,16 @@ process.env.CREATOR_EMAIL ??= "s.gonzalez.garza@gmail.com";
 let _handle = createMemoryRepos();
 let _outbox = createConsoleProvider({ silent: true });
 
-beforeEach(() => {
+beforeEach(async () => {
   _handle = createMemoryRepos();
   setReposForTesting(_handle);
   _outbox = createConsoleProvider({ silent: true });
   setEmailProviderForTesting(_outbox);
+  // Auth endpoints are rate limited per email; the helper signs users up
+  // through them, so each test starts with empty buckets. Imported lazily so
+  // a test file's `vi.mock()` of the limiter's dependencies still applies.
+  const { __resetRateLimits } = await import("@/lib/ratelimit/limiter");
+  __resetRateLimits();
 });
 
 afterEach(() => {

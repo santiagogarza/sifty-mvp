@@ -1,5 +1,5 @@
 import { BRIEF_PROMPT_VERSION, generateAgentBrief } from "@/lib/ai/agent-brief";
-import { gateAiRequest, resolveOfflineMode } from "@/lib/ai/ai-gate";
+import { gateAiRequest, gateAiRequestByIp, resolveOfflineMode } from "@/lib/ai/ai-gate";
 import { recordAiRun } from "@/lib/ai/ai-runs";
 import { AiConfigError } from "@/lib/ai/provider";
 import { getSession } from "@/lib/auth/session";
@@ -20,6 +20,9 @@ const Body = z.object({
 });
 
 export async function POST(req: Request) {
+  const ipGate = await gateAiRequestByIp(req, "brief");
+  if (!ipGate.ok) return ipGate.response;
+
   const json = await req.json().catch(() => null);
   const parsed = Body.safeParse(json);
   if (!parsed.success) {
