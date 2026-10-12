@@ -157,7 +157,9 @@ describe("memory proposals in the Decisions inbox", () => {
 
     const res = await answer(cookie, proposal!.id, "Remember");
     expect(res.status).toBe(200);
-    expect((await res.json()).mode).toBe("remembered");
+    const body = await res.json();
+    expect(body.mode).toBe("remembered");
+    expect(body.memory).toMatchObject({ text: "Ana = accountant", kind: "fact", pinned: true });
     const memories = await repos.memories.list(user.id);
     expect(memories).toHaveLength(1);
     expect(memories[0]).toMatchObject({ text: "Ana = accountant", kind: "fact", pinned: true });
@@ -311,5 +313,18 @@ describe("memory proposals in the Decisions inbox", () => {
         expiresAt: null,
       }),
     ).toBeNull();
+  });
+});
+
+describe("describeWaiting", () => {
+  it("names questions and proposals separately", async () => {
+    const { describeWaiting } = await import("@/lib/decisions/copy");
+    expect(describeWaiting(1, 0)).toBe(
+      "One question Sifty could not answer on its own. One tap each, or let it decide.",
+    );
+    expect(describeWaiting(0, 1)).toBe("One thing Sifty noticed about you. Remember it, or not.");
+    expect(describeWaiting(2, 3)).toBe(
+      "2 questions Sifty could not answer on its own, and 3 things Sifty noticed about you. One tap each.",
+    );
   });
 });

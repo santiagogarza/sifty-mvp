@@ -3,7 +3,7 @@ import { type EnqueueResult, enqueueSift } from "@/lib/ai/sift/enqueue";
 import { withAnswer } from "@/lib/ai/sift/execute-stage";
 import type { Session } from "@/lib/auth/session";
 import { type Repos, getRepos } from "@/lib/db/repos";
-import type { Decision, DecisionAnswer, Task } from "@/lib/domain/types";
+import type { Decision, DecisionAnswer, Memory, Task } from "@/lib/domain/types";
 import { answerText, resolveDecision, wakeDecisionRun } from "./service";
 
 /**
@@ -39,6 +39,8 @@ export type AnswerResult =
       task: Task | null;
       mode: AnswerMode;
       sift: EnqueueResult | null;
+      /** The pinned memory a confirmed proposal became; the client adopts it. */
+      memory?: Memory | null;
     }
   | { ok: false; reason: "not_found" | "already_resolved"; decision: Decision | null };
 
@@ -63,7 +65,7 @@ export async function answerDecision(args: {
     before?.status === "open" && before.payload.kind === "memory_proposal"
       ? memoryFromProposal(before)
       : null;
-  if (memory) await repos.memories.create(userId, memory);
+  const stored = memory ? await repos.memories.create(userId, memory) : null;
 
   const resolved = await resolveDecision(
     userId,
@@ -83,7 +85,7 @@ export async function answerDecision(args: {
   const payload = decision.payload;
 
   if (payload.kind === "memory_proposal") {
-    return { ok: true, decision, task: null, mode: "remembered", sift: null };
+    return { ok: true, decision, task: null, mode: "remembered", sift: null, memory: stored };
   }
   if (payload.kind !== "clarifying_question" || !decision.taskId) {
     // Nothing is waiting on a kind without follow-up work, but wake anyway

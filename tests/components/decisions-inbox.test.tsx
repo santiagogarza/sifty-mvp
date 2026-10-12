@@ -186,6 +186,9 @@ describe("DecisionsInbox", () => {
 
     await userEvent.click(screen.getByTestId("memory-proposal-dismiss"));
     expect(dismiss).toHaveBeenCalledWith("dec_mem");
+    expect(useToastStore.getState().toasts.map((t) => t.message)).toContain(
+      "Noted — Sifty won't suggest that again.",
+    );
   });
 
   it("shows the empty state that explains what lands here", () => {

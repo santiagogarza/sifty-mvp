@@ -62,5 +62,6 @@ export async function POST(req: Request, ctx: RouteContext) {
     task: result.task,
     mode: result.mode,
     sift: result.sift?.ok ? { runId: result.sift.runId } : null,
+    memory: result.memory ?? null,
   });
 }

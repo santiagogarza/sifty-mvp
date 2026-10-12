@@ -1,6 +1,7 @@
-// @vitest-environment jsdom
 import { useDecisionsStore } from "@/lib/decisions/client";
 import type { Decision } from "@/lib/domain/types";
+// @vitest-environment jsdom
+import { useStore } from "@/lib/store/store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -107,5 +108,33 @@ describe("useDecisionsStore", () => {
     expect(useDecisionsStore.getState().error).toMatch(/500/);
     // The last good list is kept.
     expect(useDecisionsStore.getState().decisions.map((d) => d.id)).toEqual(["a"]);
+  });
+
+  it("a confirmed memory proposal is adopted into the workspace without a reload or a push", async () => {
+    const store = useDecisionsStore.getState();
+    useStore.setState({ memories: [] });
+    const memory = {
+      id: "mem_dec_m",
+      text: "Ana = accountant",
+      kind: "fact" as const,
+      pinned: true,
+      createdAt: "2026-10-12T10:00:00.000Z",
+    };
+    fetchMock.mockImplementationOnce(
+      async () =>
+        new Response(JSON.stringify({ decision: {}, task: null, mode: "remembered", memory })),
+    );
+    useDecisionsStore.setState({ decisions: [decision("m")], count: 1 });
+    const result = await store.answer("m", { text: null, option: "Remember" });
+    expect(result).toEqual({ ok: true, mode: "remembered" });
+    expect(useStore.getState().memories).toEqual([memory]);
+    // Idempotent: a second adoption of the same id does not duplicate it.
+    fetchMock.mockImplementationOnce(
+      async () =>
+        new Response(JSON.stringify({ decision: {}, task: null, mode: "remembered", memory })),
+    );
+    useDecisionsStore.setState({ decisions: [decision("m")], count: 1 });
+    await store.answer("m", { text: null, option: "Remember" });
+    expect(useStore.getState().memories).toHaveLength(1);
   });
 });
