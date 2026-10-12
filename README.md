@@ -387,10 +387,12 @@ Routes: `POST /api/tasks/:id/execute` (202; 402 `execution_pro` /
 `GET /api/executions/:id` (execution + steps), `POST /api/executions/:id/cancel`,
 `GET/PUT/DELETE /api/execution-policies`.
 
-Secrets other workers must store (a user's Cursor API key, connector
-material) go through `lib/crypto/secretbox.ts`: AES-256-GCM under
-`DATA_ENCRYPTION_KEY`, versioned ciphertext, optional associated data to
-bind a value to its row, and no development fallback key.
+Secrets Sifty must hold itself (a connector credential, a user's Cursor
+API key) go through `lib/crypto/aes-gcm.ts` (shared with the connector
+framework): AES-256-GCM under `DATA_ENCRYPTION_KEY`, a versioned
+`v1.<iv>.<ciphertext>.<tag>` envelope, and required associated data that
+binds a value to its row. Production refuses to start without the key;
+elsewhere a fixed development key keeps the keyless setup working.
 
 ## Configuration
 
