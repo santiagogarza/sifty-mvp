@@ -16,13 +16,11 @@ describe("repository tenancy", () => {
     const repos = getTestRepos();
     const a = await repos.users.create({
       email: "a@example.com",
-      passwordHash: null,
       displayName: "A",
       isCreator: false,
     });
     const b = await repos.users.create({
       email: "b@example.com",
-      passwordHash: null,
       displayName: "B",
       isCreator: false,
     });
@@ -76,13 +74,11 @@ describe("repository tenancy", () => {
     const repos = getTestRepos();
     const a = await repos.users.create({
       email: "la@example.com",
-      passwordHash: null,
       displayName: "A",
       isCreator: false,
     });
     const b = await repos.users.create({
       email: "lb@example.com",
-      passwordHash: null,
       displayName: "B",
       isCreator: false,
     });
@@ -99,13 +95,11 @@ describe("repository tenancy", () => {
     const repos = getTestRepos();
     const a = await repos.users.create({
       email: "ma@example.com",
-      passwordHash: null,
       displayName: "A",
       isCreator: false,
     });
     const b = await repos.users.create({
       email: "mb@example.com",
-      passwordHash: null,
       displayName: "B",
       isCreator: false,
     });

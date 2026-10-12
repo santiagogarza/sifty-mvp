@@ -26,7 +26,7 @@ beforeEach(() => {
 
 async function makeUser(email: string, isCreator = false) {
   const repos = getTestRepos();
-  const user = await repos.users.create({ email, passwordHash: null, displayName: "U", isCreator });
+  const user = await repos.users.create({ email, displayName: "U", isCreator });
   // Lapsed trial → free, so a comp is visible as a tier change.
   await repos.entitlements.upsert(
     user.id,
@@ -341,7 +341,6 @@ describe("redeem atomicity and Stripe-fact preservation", () => {
     const repos = getTestRepos();
     const user = await repos.users.create({
       email: "norow@example.com",
-      passwordHash: null,
       displayName: "N",
       isCreator: false,
     });

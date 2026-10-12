@@ -69,6 +69,28 @@ describe("resend provider", () => {
     await expect(provider.send(message)).rejects.toThrow(/domain not verified/);
   });
 
+  it("aborts a stalled request after timeoutMs instead of pinning the function", async () => {
+    // A fetch that only settles when its signal aborts: without a firing
+    // timeout this would hang forever.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (_url: string, init: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+          }),
+      ),
+    );
+    const provider = createResendProvider({
+      apiKey: "re_test",
+      from: "x@sifty.example",
+      timeoutMs: 50,
+    });
+    const started = Date.now();
+    await expect(provider.send(message)).rejects.toThrow(EmailSendError);
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
   it("treats a 200 without a message id as a failure", async () => {
     stubFetch(200, {});
     const provider = createResendProvider({ apiKey: "re_test", from: "x@sifty.example" });

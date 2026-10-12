@@ -1,19 +1,26 @@
 import bcrypt from "bcryptjs";
+import { verifyPassword as verifyScrypt } from "better-auth/crypto";
 
 /**
- * Password hashing.
+ * Password verification.
  *
- * bcrypt with a sane work factor. Anything pinning the value above 12 starts
- * to feel slow on serverless cold-starts; below 10 is too cheap.
+ * New passwords are hashed by Better Auth (scrypt). Accounts imported from
+ * the hand-rolled auth still carry bcrypt hashes (`$2a$` / `$2b$` / `$2y$`);
+ * those keep verifying, so nobody has to reset a password because of the
+ * migration. A legacy hash is replaced with scrypt the next time the user
+ * changes or resets their password.
  */
 
-const ROUNDS = process.env.NODE_ENV === "test" ? 4 : 11;
+const BCRYPT_PREFIX = /^\$2[aby]\$/;
 
-export async function hashPassword(plain: string): Promise<string> {
-  return bcrypt.hash(plain, ROUNDS);
+export function isBcryptHash(hash: string): boolean {
+  return BCRYPT_PREFIX.test(hash);
 }
 
-export async function verifyPassword(plain: string, hash: string | null): Promise<boolean> {
-  if (!hash) return false;
-  return bcrypt.compare(plain, hash);
+export async function verifyPasswordHash(data: {
+  hash: string;
+  password: string;
+}): Promise<boolean> {
+  if (isBcryptHash(data.hash)) return bcrypt.compare(data.password, data.hash);
+  return verifyScrypt(data);
 }

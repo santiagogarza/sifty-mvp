@@ -21,11 +21,15 @@ import type {
  * predicate; a regression test in `tests/db/tenancy.test.ts` enforces this.
  */
 
+/**
+ * Accounts are normally created by Better Auth (`lib/auth/auth.ts`); this
+ * input exists for the auth-bypass bootstrap, the in-memory mirror, and
+ * tests. Credentials never pass through here.
+ */
 export interface UserCreateInput {
   /** Optional caller-fixed id (used by the auth-bypass bootstrap). */
   id?: string;
   email: string;
-  passwordHash: string | null;
   displayName: string;
   isCreator: boolean;
 }
@@ -109,7 +113,7 @@ export interface AiRunWriteInput {
 export interface UserRepo {
   create(input: UserCreateInput): Promise<UserProfile>;
   getById(id: string): Promise<UserProfile | null>;
-  getByEmail(email: string): Promise<(UserProfile & { passwordHash: string | null }) | null>;
+  getByEmail(email: string): Promise<UserProfile | null>;
   setStripeCustomerId(userId: string, customerId: string): Promise<void>;
   findByStripeCustomerId(customerId: string): Promise<UserProfile | null>;
 }
@@ -202,12 +206,6 @@ export interface AiRunRepo {
   >;
 }
 
-export interface SessionRepo {
-  create(userId: string, ttlMs: number): Promise<{ id: string; expiresAt: string }>;
-  get(id: string): Promise<{ userId: string; expiresAt: string } | null>;
-  delete(id: string): Promise<void>;
-}
-
 export interface StripeEventRepo {
   /** Returns true if this is the first time we've seen this event id. */
   recordIfNew(eventId: string, type: string): Promise<boolean>;
@@ -292,7 +290,6 @@ export interface Repos {
   labels: LabelRepo;
   memories: MemoryRepo;
   aiRuns: AiRunRepo;
-  sessions: SessionRepo;
   stripeEvents: StripeEventRepo;
   inviteCodes: InviteCodeRepo;
 }

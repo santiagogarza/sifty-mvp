@@ -76,9 +76,12 @@ Sifty optimises three things, in this order:
 ```
 app/
   (app)/...                    # signed-in app shell + pages
-  (auth)/sign-in, sign-up      # auth pages
+  (auth)/sign-in, sign-up,     # auth pages
+         forgot-password, reset-password
   api/
-    auth/{sign-in,sign-up,sign-out,me}/route.ts
+    auth/[...all]/route.ts     # Better Auth (sign-in/up, verify, reset,
+                               # magic link, Google callback, sessions)
+    auth/me/route.ts           # who am I (sync layer)
     tasks/route.ts             # GET (list), POST (create, client ids ok)
     tasks/[id]/route.ts        # GET, PATCH, DELETE
     labels/route.ts            # GET, PUT (idempotent ensure-by-name)
@@ -87,7 +90,8 @@ app/
     agent-brief/route.ts       # "Prepare for agent" handoff brief
     stripe/{checkout,portal,webhook}/route.ts
 middleware.ts                  # gates /today, /focus, /inbox, /waiting,
-                               # /someday, /memory, /settings on a JWT cookie
+                               # /someday, /memory, /settings on the session
+                               # cookie; (app)/layout.tsx validates it
 
 components/
   app-shell/                   # frame, sidebar, top bar, palette, bottom nav
@@ -100,7 +104,9 @@ lib/
   ai/                          # models registry, provider resolver,
                                # generateObject-based triage agent, prompts,
                                # ai_runs accessor
-  auth/                        # jwt, passwords (bcryptjs), service, session
+  auth/                        # Better Auth instance (Drizzle adapter,
+                               # email+password, magic link, Google, hooks),
+                               # getSession(), legacy bcrypt verifier
   billing/                     # Stripe SDK singleton, pure event reducer
   email/                       # EmailProvider seam (Resend | console),
                                # React Email templates, sendTemplate()
@@ -151,7 +157,8 @@ Required for production:
 
 | Variable | What it's for |
 | --- | --- |
-| `AUTH_SECRET` | HS256 key for the session JWT. ≥ 32 chars. |
+| `BETTER_AUTH_SECRET` | Signs session cookies and email tokens. ≥ 32 chars. Replaces `AUTH_SECRET`. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google sign-in. Optional: the button is hidden until both are set. Redirect URI: `<app url>/api/auth/callback/google`. |
 | `CREATOR_EMAIL` | Email address that gets the permanent unlimited tier. |
 | `INVITE_CODE_PEPPER` | Pepper for invite-code hashes (`openssl rand -hex 32`). |
 | `DATABASE_URL` | Postgres connection (Vercel Postgres / Neon / Supabase). |
@@ -315,8 +322,11 @@ Tests in this repo justify their maintenance cost. We have tests for:
   idempotency.
 - Cross-tenant tenancy invariants on the repo layer (no cross-user reads
   or writes).
-- Auth — sign-up / sign-in success and failure paths, middleware gating
-  protected and public routes.
+- Auth — sign-up, email verification, sign-in gating on verification,
+  password reset (with session revocation), magic link, per-session and
+  all-other-sessions revocation, legacy bcrypt import; middleware gating
+  protected and public routes. All against Better Auth's memory adapter and
+  the console email outbox.
 - One Playwright smoke per stage that exercises the happy path on the
   live server.
 

@@ -1,37 +1,65 @@
-import { signSessionToken } from "@/lib/auth/jwt";
-import { SESSION_COOKIE_NAME } from "@/lib/auth/session";
-import { isCreatorEmail } from "@/lib/auth/session-shared";
+import { getAuth } from "@/lib/auth/auth";
 import type { Repos } from "@/lib/db/repos/types";
 import type { UserProfile } from "@/lib/domain/types";
-import { TRIAL_DAYS, creatorSnapshot } from "@/lib/entitlements/entitlements";
 
 /**
- * Test helpers — create a user, mint a real JWT session cookie, and return
- * a header that route handlers will accept.
+ * Test helpers — create a verified user through Better Auth, sign in, and
+ * return the session cookie header that route handlers will accept.
+ *
+ * Creator vs. trial entitlement is decided by the email (same hook as
+ * production); `isCreator` is accepted for readability at call sites.
  */
 
-const SESSION_TTL_S = 60 * 60;
+export const TEST_PASSWORD = "correct-horse-battery";
 
 export async function createUserWithCookie(
   repos: Repos,
   input: { email: string; password?: string; isCreator?: boolean; displayName?: string },
 ): Promise<{ user: UserProfile; cookie: string }> {
-  const isCreator = input.isCreator ?? isCreatorEmail(input.email);
-  const user = await repos.users.create({
-    email: input.email,
-    passwordHash: input.password ?? "test-hash",
-    displayName: input.displayName ?? input.email.split("@")[0]!,
-    isCreator,
+  const auth = getAuth();
+  const email = input.email.toLowerCase();
+  const password = input.password ?? TEST_PASSWORD;
+
+  const signedUp = await auth.api.signUpEmail({
+    body: { email, password, name: input.displayName ?? email.split("@")[0]! },
   });
-  if (isCreator) {
-    await repos.entitlements.upsert(user.id, creatorSnapshot());
-  } else {
-    await repos.entitlements.startTrialIfMissing(user.id, TRIAL_DAYS);
-  }
-  const session = await repos.sessions.create(user.id, SESSION_TTL_S * 1000);
-  const token = await signSessionToken(
-    { sub: user.id, sid: session.id, email: user.email },
-    SESSION_TTL_S,
-  );
-  return { user, cookie: `${SESSION_COOKIE_NAME}=${token}` };
+  await markEmailVerified(signedUp.user.id);
+
+  const cookie = await signInCookie(email, password);
+  const user = await repos.users.getById(signedUp.user.id);
+  if (!user) throw new Error("user was not mirrored into repos");
+  return { user, cookie };
+}
+
+/** Flip `emailVerified` without going through the emailed link. */
+export async function markEmailVerified(userId: string): Promise<void> {
+  const ctx = await getAuth().$context;
+  await ctx.internalAdapter.updateUser(userId, { emailVerified: true });
+}
+
+/** Sign in with email + password and return a `Cookie` header value. */
+export async function signInCookie(email: string, password: string): Promise<string> {
+  const res = await getAuth().api.signInEmail({
+    body: { email, password },
+    asResponse: true,
+  });
+  if (!res.ok) throw new Error(`sign-in failed: ${res.status} ${await res.text()}`);
+  return cookieHeaderFromResponse(res);
+}
+
+/** Collapse a response's `Set-Cookie` headers into one `Cookie` request header. */
+export function cookieHeaderFromResponse(res: Response): string {
+  const pairs = res.headers
+    .getSetCookie()
+    .map((c) => c.split(";")[0]!)
+    .filter((kv) => !kv.endsWith("="));
+  if (!pairs.length) throw new Error("response set no cookies");
+  return pairs.join("; ");
+}
+
+/** Pull the first `https?://...` URL out of an email body. */
+export function firstUrl(text: string): string {
+  const match = text.match(/https?:\/\/[^\s)]+/);
+  if (!match) throw new Error("no url in email");
+  return match[0];
 }

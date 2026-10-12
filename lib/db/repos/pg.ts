@@ -21,7 +21,6 @@ import {
   type MemoryCreateInput,
   type MemoryRepo,
   type Repos,
-  type SessionRepo,
   type StripeEventRepo,
   type TaskCreateInput,
   type TaskRepo,
@@ -49,7 +48,6 @@ export function createPostgresRepos(): Repos {
         .values({
           id,
           email: input.email,
-          passwordHash: input.passwordHash,
           displayName: input.displayName,
           isCreator: input.isCreator,
           createdAt: now,
@@ -89,7 +87,6 @@ export function createPostgresRepos(): Repos {
         displayName: row.displayName,
         isCreator: row.isCreator,
         createdAt: row.createdAt.toISOString(),
-        passwordHash: row.passwordHash,
       };
     },
     async setStripeCustomerId(userId, customerId) {
@@ -493,30 +490,6 @@ export function createPostgresRepos(): Repos {
     },
   };
 
-  const sessions: SessionRepo = {
-    async create(userId, ttlMs) {
-      const db = getDb();
-      const id = nanoid(32);
-      const expiresAt = new Date(Date.now() + ttlMs);
-      await db.insert(schema.sessions).values({ id, userId, expiresAt });
-      return { id, expiresAt: expiresAt.toISOString() };
-    },
-    async get(id) {
-      const db = getDb();
-      const [row] = await db.select().from(schema.sessions).where(eq(schema.sessions.id, id));
-      if (!row) return null;
-      if (row.expiresAt.getTime() < Date.now()) {
-        await db.delete(schema.sessions).where(eq(schema.sessions.id, id));
-        return null;
-      }
-      return { userId: row.userId, expiresAt: row.expiresAt.toISOString() };
-    },
-    async delete(id) {
-      const db = getDb();
-      await db.delete(schema.sessions).where(eq(schema.sessions.id, id));
-    },
-  };
-
   const stripeEvents: StripeEventRepo = {
     async recordIfNew(eventId, type) {
       const db = getDb();
@@ -694,7 +667,6 @@ export function createPostgresRepos(): Repos {
     labels,
     memories,
     aiRuns,
-    sessions,
     stripeEvents,
     inviteCodes,
   };

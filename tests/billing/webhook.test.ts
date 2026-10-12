@@ -87,7 +87,6 @@ describe("POST /api/stripe/webhook", () => {
     const repos = getTestRepos();
     const user = await repos.users.create({
       email: "u@example.com",
-      passwordHash: null,
       displayName: "U",
       isCreator: false,
     });
@@ -141,7 +140,6 @@ describe("POST /api/stripe/webhook", () => {
     const repos = getTestRepos();
     const user = await repos.users.create({
       email: "u2@example.com",
-      passwordHash: null,
       displayName: "U2",
       isCreator: false,
     });
@@ -183,7 +181,6 @@ describe("POST /api/stripe/webhook", () => {
     const repos = getTestRepos();
     const user = await repos.users.create({
       email: "u3@example.com",
-      passwordHash: null,
       displayName: "U3",
       isCreator: false,
     });

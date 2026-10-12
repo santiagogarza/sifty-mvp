@@ -1,4 +1,5 @@
 import { AuthForm } from "@/components/auth/auth-form";
+import { isGoogleAuthEnabled } from "@/lib/auth/auth";
 import Link from "next/link";
 
 export const metadata = { title: "Create a Sifty account" };
@@ -16,7 +17,7 @@ export default async function SignUpPage({
         Start with 30 days of Pro. No card up front; Free afterwards.
       </p>
       <div className="mt-6">
-        <AuthForm mode="sign-up" next={params.next} />
+        <AuthForm mode="sign-up" next={params.next} googleEnabled={isGoogleAuthEnabled()} />
       </div>
       <div className="mt-6 text-[13px] text-[var(--fg-muted)]">
         Already have an account?{" "}

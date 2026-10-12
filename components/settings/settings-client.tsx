@@ -13,6 +13,7 @@ import {
   type StageRoute,
   getModelPreference,
 } from "@/lib/ai/models";
+import { authClient } from "@/lib/auth/client";
 import type { Entitlement, Tier } from "@/lib/domain/types";
 import { tierLabel, tierSummary } from "@/lib/entitlements/entitlements";
 import { useStore } from "@/lib/store/store";
@@ -21,6 +22,7 @@ import { cn } from "@/lib/utils/cn";
 import { Check, Cpu, CreditCard, LogOut, Monitor, Moon, Sun } from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
+import { SessionsPanel } from "./sessions-panel";
 
 export interface SettingsAccount {
   email: string;
@@ -42,7 +44,7 @@ export function SettingsClient({ account }: { account: SettingsAccount }) {
   const signOut = async () => {
     setSigningOut(true);
     try {
-      await fetch("/api/auth/sign-out", { method: "POST", credentials: "include" });
+      await authClient.signOut();
     } finally {
       // Clear the local cache so the next account on this browser starts
       // clean instead of inheriting this workspace.
@@ -91,6 +93,15 @@ export function SettingsClient({ account }: { account: SettingsAccount }) {
           </div>
         </div>
       </SectionCard>
+
+      {account.authBypass ? null : (
+        <SectionCard
+          title="Sessions"
+          description="Every device signed in to this account. Signing out elsewhere takes effect immediately."
+        >
+          <SessionsPanel />
+        </SectionCard>
+      )}
 
       <SectionCard
         title="Appearance"
