@@ -102,10 +102,14 @@ async function processEvent(
   const user = await repos.users.findByStripeCustomerId(customerId);
   const userId = user?.id ?? null;
   if (!user || !userId) {
-    // No matching user — this can happen if a webhook arrives before the
-    // app records the Stripe customer linkage. Throw so the caller drops
-    // the dedupe record and returns 5xx; Stripe will retry and the next
-    // attempt can resolve the user.
+    // Account deletion removes the Stripe customer, and Stripe then sends
+    // the subscription cancellation for a user who no longer exists. There
+    // is nothing left to downgrade; acknowledge so Stripe stops retrying.
+    if (event.type === "customer.subscription.deleted") return;
+    // Otherwise a webhook arrived before the app recorded the Stripe
+    // customer linkage. Throw so the caller drops the dedupe record and
+    // returns 5xx; Stripe will retry and the next attempt can resolve the
+    // user.
     throw new Error(
       `[stripe.webhook] No user for stripe customer ${customerId} (event ${event.id})`,
     );
