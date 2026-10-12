@@ -147,7 +147,7 @@ export function createUpstashStore(
         if (res.reason === "timeout") {
           reportError(new Error("Upstash rate limit timed out"), {
             area: "ratelimit.upstash",
-            tags: { key, timeoutMs: timeout },
+            tags: { scope: keyScope(key), timeoutMs: timeout },
           });
           return fallback.consume(key, config);
         }
@@ -158,11 +158,19 @@ export function createUpstashStore(
           retryAfterSeconds: res.success ? 0 : retryAfter(res.reset, now),
         };
       } catch (err) {
-        reportError(err, { area: "ratelimit.upstash", tags: { key } });
+        reportError(err, { area: "ratelimit.upstash", tags: { scope: keyScope(key) } });
         return fallback.consume(key, config);
       }
     },
   };
+}
+
+/**
+ * `route:scope` prefix of a key, without the identifier. Subject keys carry
+ * emails and user ids, which must not end up in error logs.
+ */
+function keyScope(key: string): string {
+  return key.split(":").slice(0, 2).join(":");
 }
 
 // ---------------------------------------------------------------------------

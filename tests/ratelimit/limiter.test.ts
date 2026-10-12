@@ -85,10 +85,15 @@ describe("rate limit stores", () => {
     redis.failWith = new Error("ECONNRESET");
     const store = createUpstashStore(redis.asRedis());
     const results = [];
-    for (let i = 0; i < 4; i += 1) results.push((await store.consume("k", POLICY)).ok);
+    for (let i = 0; i < 4; i += 1) {
+      results.push((await store.consume("auth:subject:victim@example.com", POLICY)).ok);
+    }
     expect(results).toEqual([true, true, true, false]);
     expect(reportError).toHaveBeenCalled();
-    expect(vi.mocked(reportError).mock.calls[0]![1]).toMatchObject({ area: "ratelimit.upstash" });
+    const ctx = vi.mocked(reportError).mock.calls[0]![1];
+    expect(ctx).toMatchObject({ area: "ratelimit.upstash", tags: { scope: "auth:subject" } });
+    // The identifier (here an email) never reaches the error sink.
+    expect(JSON.stringify(ctx)).not.toContain("victim@example.com");
   });
 
   it("upstash store: a Redis timeout also falls back instead of failing open", async () => {
