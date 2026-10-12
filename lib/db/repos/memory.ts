@@ -429,8 +429,9 @@ export function createMemoryRepos(): MemoryReposHandle {
   };
 
   const taskEvents: TaskEventRepo = {
-    async list(userId) {
-      return state.taskEvents.filter((e) => e.userId === userId).map(stripUserId);
+    async list(userId, limit) {
+      const mine = state.taskEvents.filter((e) => e.userId === userId);
+      return (limit === undefined ? mine : mine.slice(0, limit)).map(stripUserId);
     },
   };
 

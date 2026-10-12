@@ -14,6 +14,17 @@ import type { Label, Memory, Task, UserProfile } from "@/lib/domain/types";
 
 export const EXPORT_FORMAT_VERSION = 1;
 
+/**
+ * Hard ceilings on the append-only histories so one request can never
+ * read or serialize an unbounded result set. Tasks, labels and memories
+ * are bounded by what a person can create by hand; runs and events grow
+ * with every sift, so they are capped and the export says when it was.
+ */
+export const EXPORT_LIMITS = {
+  aiRuns: 10_000,
+  taskEvents: 10_000,
+} as const;
+
 export interface AccountExport {
   format: "sifty-export";
   version: number;
@@ -25,6 +36,8 @@ export interface AccountExport {
   memories: Memory[];
   taskEvents: TaskEventRecord[];
   aiRuns: AiRunRecord[];
+  /** Lists that hit their ceiling; the newest `aiRuns` / oldest `taskEvents` are included. */
+  truncated: Array<"aiRuns" | "taskEvents">;
 }
 
 export async function exportAccount(repos: Repos, userId: string): Promise<AccountExport | null> {
@@ -35,9 +48,12 @@ export async function exportAccount(repos: Repos, userId: string): Promise<Accou
     repos.tasks.list(userId),
     repos.labels.list(userId),
     repos.memories.list(userId),
-    repos.taskEvents.list(userId),
-    repos.aiRuns.list(userId),
+    repos.taskEvents.list(userId, EXPORT_LIMITS.taskEvents),
+    repos.aiRuns.list(userId, EXPORT_LIMITS.aiRuns),
   ]);
+  const truncated: AccountExport["truncated"] = [];
+  if (aiRuns.length >= EXPORT_LIMITS.aiRuns) truncated.push("aiRuns");
+  if (taskEvents.length >= EXPORT_LIMITS.taskEvents) truncated.push("taskEvents");
   return {
     format: "sifty-export",
     version: EXPORT_FORMAT_VERSION,
@@ -49,6 +65,7 @@ export async function exportAccount(repos: Repos, userId: string): Promise<Accou
     memories,
     taskEvents,
     aiRuns,
+    truncated,
   };
 }
 

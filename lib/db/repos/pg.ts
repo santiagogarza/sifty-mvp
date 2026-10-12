@@ -511,13 +511,14 @@ export function createPostgresRepos(): Repos {
   };
 
   const taskEvents: TaskEventRepo = {
-    async list(userId) {
+    async list(userId, limit) {
       const db = getDb();
-      const rows = await db
+      const query = db
         .select()
         .from(schema.taskEvents)
         .where(eq(schema.taskEvents.userId, userId))
         .orderBy(schema.taskEvents.createdAt);
+      const rows = limit === undefined ? await query : await query.limit(limit);
       return rows.map((r) => ({
         id: r.id,
         taskId: r.taskId,

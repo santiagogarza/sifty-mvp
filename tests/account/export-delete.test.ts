@@ -116,12 +116,53 @@ describe("GET /api/account/export", () => {
       "transport",
     ]);
     expect(data.taskEvents).toEqual([]);
+    expect(data.truncated).toEqual([]);
     expect(JSON.stringify(data)).not.toContain("Task b");
     expect(JSON.stringify(data)).not.toContain("b-export@example.com");
   });
 
   it("requires a session", async () => {
     expect((await exportFor(null)).status).toBe(401);
+  });
+
+  it("is rate limited per user", async () => {
+    vi.stubEnv("RATELIMIT_ACCOUNT_EXPORT_PER_MIN", "2");
+    const repos = getTestRepos();
+    const a = await createUserWithCookie(repos, { email: "burst@example.com" });
+    expect((await exportFor(a.cookie)).status).toBe(200);
+    expect((await exportFor(a.cookie)).status).toBe(200);
+    const limited = await exportFor(a.cookie);
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get("retry-after")).toBeTruthy();
+  });
+
+  it("caps the append-only histories and says so", async () => {
+    const repos = getTestRepos();
+    const a = await createUserWithCookie(repos, { email: "heavy@example.com" });
+    const { exportAccount, EXPORT_LIMITS } = await import("@/lib/auth/account");
+    const original = repos.aiRuns.list;
+    repos.aiRuns.list = async (userId, limit) => {
+      expect(limit).toBe(EXPORT_LIMITS.aiRuns);
+      return Array.from({ length: limit ?? 0 }, (_, i) => ({
+        id: `run_${i}`,
+        taskId: null,
+        stage: null,
+        model: "m",
+        transport: "gateway",
+        status: "succeeded" as const,
+        durationMs: 1,
+        inputTokens: null,
+        outputTokens: null,
+        costCents: null,
+        offline: false,
+        error: null,
+        createdAt: new Date().toISOString(),
+      }));
+    };
+    const data = await exportAccount(repos, a.user.id);
+    repos.aiRuns.list = original;
+    expect(data?.aiRuns).toHaveLength(EXPORT_LIMITS.aiRuns);
+    expect(data?.truncated).toEqual(["aiRuns"]);
   });
 });
 

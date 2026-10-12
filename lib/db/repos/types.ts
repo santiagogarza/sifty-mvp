@@ -231,7 +231,8 @@ export interface TaskEventRecord {
 }
 
 export interface TaskEventRepo {
-  list(userId: string): Promise<TaskEventRecord[]>;
+  /** Oldest first. `limit` undefined returns every event. */
+  list(userId: string, limit?: number): Promise<TaskEventRecord[]>;
 }
 
 export interface StripeEventRepo {
