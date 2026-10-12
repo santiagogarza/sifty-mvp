@@ -96,8 +96,11 @@ function openPath(claims: DecisionLinkClaims): string {
   return `/decisions?focus=${encodeURIComponent(claims.decisionId)}`;
 }
 
-function linkFailure(reason: "not_found" | "already_resolved"): string {
-  return reason === "already_resolved" ? "used" : "gone";
+function linkFailure(reason: "not_found" | "already_resolved" | "invalid_answer"): string {
+  if (reason === "already_resolved") return "used";
+  // A link minted for an option a memory proposal does not take: treat as invalid.
+  if (reason === "invalid_answer") return "invalid";
+  return "gone";
 }
 
 function redirect(path: string): NextResponse {

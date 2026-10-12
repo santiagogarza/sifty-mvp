@@ -7,6 +7,7 @@ import { DecisionsEmptyState } from "@/components/decisions/decisions-empty-stat
 import { DecisionsInbox } from "@/components/decisions/decisions-inbox";
 import { toast } from "@/components/ui/toast";
 import { useDecisionsStore } from "@/lib/decisions/client";
+import { describeWaiting } from "@/lib/decisions/copy";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 
@@ -69,6 +70,8 @@ function DecisionsView() {
 
   const focusId = search.get("focus");
   const count = decisions.length;
+  const proposals = decisions.filter((d) => d.kind === "memory_proposal").length;
+  const questions = count - proposals;
 
   return (
     <>
@@ -77,8 +80,8 @@ function DecisionsView() {
         title="Decisions"
         description={
           count === 0
-            ? "Questions Sifty could not answer on its own, in one place."
-            : `${count === 1 ? "One question" : `${count} questions`} Sifty could not answer on its own. One tap each, or let it decide.`
+            ? "Questions Sifty could not answer on its own, and things it noticed, in one place."
+            : describeWaiting(questions, proposals)
         }
       />
       {error && loaded ? (

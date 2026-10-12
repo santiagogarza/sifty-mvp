@@ -542,6 +542,14 @@ export function createMemoryRepos(): MemoryReposHandle {
         .slice(0, opts.limit)
         .map(stripUserId);
     },
+    async listByKind(userId, kind, opts) {
+      return Array.from(state.decisions.values())
+        .reverse()
+        .filter((d) => d.userId === userId && d.kind === kind)
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+        .slice(0, opts.limit)
+        .map(stripUserId);
+    },
     async resolve(userId, id, input) {
       const d = state.decisions.get(id);
       if (!d || d.userId !== userId || d.status !== "open") return null;

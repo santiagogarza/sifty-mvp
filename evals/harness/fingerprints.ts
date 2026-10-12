@@ -6,6 +6,13 @@ import {
   BRIEF_TEMPERATURE,
   buildBriefUserPrompt,
 } from "@/lib/ai/agent-brief";
+import {
+  MEMORY_PROMPT_VERSION,
+  MEMORY_SYSTEM_PROMPT,
+  MEMORY_TEMPERATURE,
+  MemoryExtractionOutput,
+  buildMemoryUserPrompt,
+} from "@/lib/ai/memory/extract";
 import { type PlanContext, toCandidate } from "@/lib/ai/plan/context";
 import {
   DAILY_PLAN_PROMPT_VERSION,
@@ -127,6 +134,22 @@ export function computeFingerprints(): Fingerprints {
     user: dailyPlanUser(planCtx),
     schema: asSchema(DailyPlanOutput).jsonSchema,
     temperature: DAILY_PLAN_TEMPERATURE,
+  });
+
+  out[MEMORY_PROMPT_VERSION] = hash({
+    system: MEMORY_SYSTEM_PROMPT,
+    user: buildMemoryUserPrompt({
+      task,
+      trigger: "edit",
+      contradictions: [{ field: "urgency", aiValue: 0.8, userValue: 0.3 }],
+      existing: CANONICAL_CAPTURE.preferences.map((text) => ({
+        text,
+        kind: "preference" as const,
+      })),
+      todayIso: CANONICAL_TODAY,
+    }),
+    schema: asSchema(MemoryExtractionOutput).jsonSchema,
+    temperature: MEMORY_TEMPERATURE,
   });
 
   out[BRIEF_PROMPT_VERSION] = hash({

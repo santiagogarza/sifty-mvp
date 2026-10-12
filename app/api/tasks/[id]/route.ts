@@ -1,3 +1,5 @@
+import { resolveOfflineMode } from "@/lib/ai/ai-gate";
+import { editTouchesSignalField, maybeExtractFromEdit } from "@/lib/ai/memory/edit-trigger";
 import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
 import { expireOpenDecisionsForTask } from "@/lib/decisions/service";
@@ -37,8 +39,24 @@ export async function PATCH(req: Request, ctx: RouteContext) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
   const { editedFields, ...patch } = parsed.data;
-  const task = await getRepos().tasks.update(session.user.id, id, patch, { editedFields });
+  const repos = getRepos();
+  // Only an edit to a priority/effort/date/delegation/label field can
+  // contradict the sift; everything else skips the extra read.
+  const before = editTouchesSignalField(editedFields)
+    ? await repos.tasks.get(session.user.id, id)
+    : null;
+  const task = await repos.tasks.update(session.user.id, id, patch, { editedFields });
   if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (before) {
+    await maybeExtractFromEdit(repos, {
+      req,
+      session,
+      before,
+      patch,
+      editedFields,
+      offline: resolveOfflineMode(req),
+    });
+  }
   return NextResponse.json({ task });
 }
 

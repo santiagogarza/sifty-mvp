@@ -313,6 +313,39 @@ describe("siftTask with a clarifying question (offline stages)", () => {
     expect(slotHooks()).toHaveLength(1);
     expect(slotHooks()[0]!.disposed).toBe(false);
   });
+
+  it("the memory tail step files a proposal after the task is ready, and its failure never fails the sift", async () => {
+    const { siftTask } = await import("@/lib/workflows/sift-task");
+    const { repos, user, task, input } = await seed({
+      offline: true,
+      sourceText: "Send the Q3 numbers to Ana, my accountant, before Friday",
+    });
+    await expect(siftTask(input)).resolves.toEqual({ outcome: "completed" });
+    expect((await repos.tasks.get(user.id, task.id))!.aiStatus).toBe("ready");
+    const open = await repos.decisions.listOpen(user.id, { limit: 10 });
+    expect(open.map((d) => d.kind)).toEqual(["memory_proposal"]);
+    expect(open[0]!.payload).toMatchObject({ text: "Ana = accountant" });
+
+    // Second sift of a similar capture: the memory step blows up, the sift still completes.
+    const { setMemorySinkForTesting } = await import("@/lib/ai/memory/propose");
+    setMemorySinkForTesting(async () => {
+      throw new Error("inbox down");
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const second = await repos.tasks.create(user.id, {
+        sourceText: "Ask Jure, my lawyer, about the lease",
+        sourceContext: null,
+      });
+      await repos.tasks.update(user.id, second.id, { siftId: "sift_wf2", aiStatus: "pending" });
+      await expect(siftTask({ ...input, taskId: second.id, siftId: "sift_wf2" })).resolves.toEqual({
+        outcome: "completed",
+      });
+      expect((await repos.tasks.get(user.id, second.id))!.aiStatus).toBe("ready");
+    } finally {
+      setMemorySinkForTesting(null);
+    }
+  });
 });
 
 describe("siftTask with the mock model", () => {
