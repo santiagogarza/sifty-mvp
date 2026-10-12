@@ -1,5 +1,5 @@
 import { Heading, Text } from "react-email";
-import { ActionButton, EmailLayout, styles } from "./layout";
+import { ActionButton, EmailLayout, formatEmailDate, styles } from "./layout";
 
 export interface PaymentFailedProps {
   name: string;
@@ -15,10 +15,7 @@ export const paymentFailedSubject = () => "Your Sifty payment didn't go through"
 
 export function PaymentFailed({ name, amount, retryUntil, billingUrl }: PaymentFailedProps) {
   const deadline = retryUntil
-    ? new Date(retryUntil).toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-      })
+    ? formatEmailDate(retryUntil, { month: "long", day: "numeric" })
     : null;
   return (
     <EmailLayout

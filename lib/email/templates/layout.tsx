@@ -127,6 +127,17 @@ export function UnsubscribeFooter({ unsubscribeUrl }: { unsubscribeUrl?: string 
   );
 }
 
+/**
+ * Dates in email are rendered in UTC: the server's zone is an accident of
+ * the deploy region, and a midnight-UTC timestamp must not print as the
+ * previous day. Throws on unparseable input rather than printing "Invalid Date".
+ */
+export function formatEmailDate(iso: string, opts: Intl.DateTimeFormatOptions): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) throw new Error(`invalid date in email: ${iso}`);
+  return d.toLocaleDateString("en-US", { ...opts, timeZone: "UTC" });
+}
+
 /** Button plus a plain URL fallback for clients that strip links. */
 export function ActionButton({ href, label }: { href: string; label: string }) {
   return (

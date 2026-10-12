@@ -1,5 +1,5 @@
 import { Heading, Text } from "react-email";
-import { ActionButton, EmailLayout, styles } from "./layout";
+import { ActionButton, EmailLayout, formatEmailDate, styles } from "./layout";
 
 export interface InviteRedeemedProps {
   name: string;
@@ -15,11 +15,7 @@ export const inviteRedeemedSubject = (p: InviteRedeemedProps) =>
 
 export function InviteRedeemed({ name, grant, expiresAt, appUrl }: InviteRedeemedProps) {
   const duration = expiresAt
-    ? `until ${new Date(expiresAt).toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      })}`
+    ? `until ${formatEmailDate(expiresAt, { month: "long", day: "numeric", year: "numeric" })}`
     : "with no end date";
   return (
     <EmailLayout

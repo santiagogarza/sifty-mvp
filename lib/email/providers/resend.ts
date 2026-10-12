@@ -12,10 +12,15 @@ export interface ResendProviderConfig {
   apiKey: string;
   from: string;
   replyTo?: string;
+  /** Abort the HTTP call after this long so a stalled send cannot pin a function. */
+  timeoutMs?: number;
 }
+
+export const DEFAULT_RESEND_TIMEOUT_MS = 10_000;
 
 export function createResendProvider(config: ResendProviderConfig): EmailProvider {
   const client = new Resend(config.apiKey);
+  const timeoutMs = config.timeoutMs ?? DEFAULT_RESEND_TIMEOUT_MS;
 
   return {
     name: "resend",
@@ -31,11 +36,13 @@ export function createResendProvider(config: ResendProviderConfig): EmailProvide
           headers: message.headers,
           tags: [{ name: "category", value: message.category }],
         },
-        message.idempotencyKey ? { idempotencyKey: message.idempotencyKey } : undefined,
+        {
+          signal: AbortSignal.timeout(timeoutMs),
+          ...(message.idempotencyKey ? { idempotencyKey: message.idempotencyKey } : {}),
+        },
       );
-      if (error || !data) {
-        throw new EmailSendError("resend", error?.message ?? "Resend returned no message id");
-      }
+      if (error) throw new EmailSendError("resend", error.message);
+      if (!data?.id) throw new EmailSendError("resend", "Resend returned no message id");
       return { id: data.id, provider: "resend" };
     },
   };
