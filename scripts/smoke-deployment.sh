@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
 # Probe a deployed Sifty: public pages render and /api/health is green.
 # Usage: scripts/smoke-deployment.sh https://sifty-app.vercel.app
-# Exit 1 on the first unexpected status. Used by the `smoke` CI job after a
-# production deployment; also handy against a preview URL with a bypass
-# cookie already set in $CURL_EXTRA.
+# Exit 1 if any hard probe fails. Used by the `smoke` CI job after a
+# production deployment. For a Vercel-Authentication-protected preview, set
+# SMOKE_BYPASS_SECRET to the project's protection-bypass secret.
 set -euo pipefail
 
 base="${1:?base url}"
-extra=(${CURL_EXTRA:-})
+case "$base" in
+  https://*|http://127.0.0.1:*|http://localhost:*) ;;
+  *) echo "refusing non-https base url: $base"; exit 2 ;;
+esac
+extra=()
+if [[ -n "${SMOKE_BYPASS_SECRET:-}" ]]; then
+  extra=(-H "x-vercel-protection-bypass: ${SMOKE_BYPASS_SECRET}")
+fi
 fail=0
 
 # probe PATH EXPECTED_CODE [MUST_CONTAIN] [soft]
