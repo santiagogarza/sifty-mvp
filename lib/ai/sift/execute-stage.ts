@@ -169,10 +169,11 @@ export async function buildSiftContext(
   const [labels, memories, tasks] = await Promise.all([
     repos.labels.list(userId),
     repos.memories.list(userId),
-    repos.tasks.list(userId),
+    // +1 so the task being sifted, when it is itself open, does not cost a slot.
+    repos.tasks.list(userId, { lifecycles: OPEN_LIFECYCLES, limit: OPEN_TASKS_IN_CONTEXT + 1 }),
   ]);
   const openTasks: OpenTaskSummary[] = tasks
-    .filter((t) => t.id !== task.id && OPEN_LIFECYCLES.has(t.lifecycle))
+    .filter((t) => t.id !== task.id)
     .slice(0, OPEN_TASKS_IN_CONTEXT)
     .map((t) => ({
       title: t.title,
@@ -194,4 +195,4 @@ export async function buildSiftContext(
   };
 }
 
-const OPEN_LIFECYCLES = new Set<Task["lifecycle"]>(["inbox", "active", "waiting"]);
+const OPEN_LIFECYCLES: readonly Task["lifecycle"][] = ["inbox", "active", "waiting"];

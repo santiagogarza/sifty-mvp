@@ -5,6 +5,7 @@ import { getRepos } from "@/lib/db/repos";
 import { IdConflictError } from "@/lib/db/repos/types";
 import { TASK_LIMITS } from "@/lib/domain/limits";
 import { ClientId, TaskPatchSchema } from "@/lib/domain/task-patch-schema";
+import { TASK_EDITABLE_FIELDS } from "@/lib/domain/types";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -37,6 +38,21 @@ const CreateBody = TaskPatchSchema.extend({
   modelPreference: z.string().min(1).max(64).optional(),
 });
 
+/**
+ * Fields the sift writes. A replayed create (same id, after a lost 201)
+ * carries the client's un-sifted capture, so these only come through when
+ * the user explicitly edited them (`editedFields`).
+ */
+const SIFT_OWNED_FIELDS = [
+  ...TASK_EDITABLE_FIELDS,
+  "aiStatus",
+  "aiError",
+  "aiAttempts",
+  "confidence",
+  "clarifyingQuestion",
+  "rationale",
+] as const;
+
 export async function POST(req: Request) {
   const session = await getSession(req);
   if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
@@ -52,13 +68,15 @@ export async function POST(req: Request) {
   const repos = getRepos();
   const userId = session.user.id;
   try {
-    // A replayed create (same id) must not reset a sift the server already
-    // owns: the client's `aiStatus: "pending"` is stale by then.
+    // A replayed create (same id) must not write the stale capture over a
+    // sift the server already ran or is running.
     const existing = id ? await repos.tasks.get(userId, id) : null;
     if (existing?.siftId) {
-      enrichment.aiStatus = undefined;
-      enrichment.aiError = undefined;
-      enrichment.aiAttempts = undefined;
+      for (const key of SIFT_OWNED_FIELDS) {
+        if (!editedFields?.includes(key as (typeof TASK_EDITABLE_FIELDS)[number])) {
+          enrichment[key] = undefined;
+        }
+      }
     }
 
     let task = await repos.tasks.create(userId, {
@@ -82,6 +100,9 @@ export async function POST(req: Request) {
         task,
         modelPreference: modelPreference ?? null,
         offline: resolveOfflineMode(req),
+        // /api/triage applies the per-IP limit before parsing; capture is
+        // the default sifting path, so it applies the same limit here.
+        checkIp: true,
       });
       task = result.task;
       sift = result.ok

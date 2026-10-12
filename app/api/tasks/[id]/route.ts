@@ -21,9 +21,7 @@ export async function GET(req: Request, ctx: RouteContext) {
   const repos = getRepos();
   const task = await repos.tasks.get(session.user.id, id);
   if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const labels = task.labelIds.length
-    ? (await repos.labels.list(session.user.id)).filter((l) => task.labelIds.includes(l.id))
-    : [];
+  const labels = await repos.labels.listByIds(session.user.id, task.labelIds);
   return NextResponse.json({ task, labels });
 }
 

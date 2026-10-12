@@ -21,9 +21,18 @@ import { getSyncHooks, useStore } from "@/lib/store/store";
  */
 
 const inFlight = new Set<string>();
+/** Re-sift requests in progress, so a double click cannot burn two sifts. */
+const resifting = new Set<string>();
+/**
+ * The sift a watcher must see before it may settle: set while a re-sift
+ * request is in flight (`"pending"`), then the `siftId` the server
+ * answered with. A poll that still shows the superseded run (another
+ * `siftId`, possibly already `ready`) is skipped, not adopted.
+ */
+const expectedSift = new Map<string, string>();
 
 export function isTriageInFlight(taskId: string): boolean {
-  return inFlight.has(taskId);
+  return inFlight.has(taskId) || resifting.has(taskId);
 }
 
 const POLL_MS = 1200;
@@ -57,8 +66,9 @@ export async function watchSift(taskId: string): Promise<void> {
     // response, and until then there is nothing to poll.
     await getSyncHooks()?.waitForTask(taskId);
 
-    const deadline = Date.now() + WATCH_TIMEOUT_MS;
+    let deadline = Date.now() + WATCH_TIMEOUT_MS;
     let delay = POLL_MS;
+    let awaiting = expectedSift.get(taskId);
     while (Date.now() < deadline) {
       if (!useStore.getState().tasks.some((t) => t.id === taskId)) return;
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
@@ -69,8 +79,23 @@ export async function watchSift(taskId: string): Promise<void> {
       if (res.status === 404 || res.status === 401) return;
       if (res.ok) {
         const data = (await res.json()) as TaskResponse;
+        const expected = expectedSift.get(taskId);
+        if (expected !== awaiting) {
+          // A re-sift started while this watcher was running: re-arm.
+          awaiting = expected;
+          deadline = Date.now() + WATCH_TIMEOUT_MS;
+          delay = POLL_MS;
+        }
+        if (awaiting && data.task.siftId !== awaiting) {
+          // Still the superseded run (or the re-sift has not landed yet).
+          await sleep(delay);
+          continue;
+        }
         await adopt(data);
-        if (settled(data.task.aiStatus)) return;
+        if (settled(data.task.aiStatus)) {
+          expectedSift.delete(taskId);
+          return;
+        }
       }
       await sleep(delay);
       delay = Math.min(POLL_MAX_MS, Math.round(delay * 1.25));
@@ -90,8 +115,11 @@ export async function watchSift(taskId: string): Promise<void> {
 export async function resiftTask(taskId: string): Promise<void> {
   const store = useStore.getState();
   const task = store.tasks.find((t) => t.id === taskId);
-  if (!task || inFlight.has(taskId)) return;
+  if (!task || resifting.has(taskId)) return;
 
+  resifting.add(taskId);
+  // Until the server answers, no watcher may settle on a poll result.
+  expectedSift.set(taskId, "pending");
   store.patchTaskFromServer(taskId, { aiStatus: "pending", aiError: null, siftStage: null });
   try {
     await getSyncHooks()?.waitForTask(taskId);
@@ -101,13 +129,20 @@ export async function resiftTask(taskId: string): Promise<void> {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ taskId, modelPreference: useStore.getState().modelPreference }),
     });
-    if (!res.ok) {
+    if (res.ok) {
+      const body = (await res.json().catch(() => null)) as { siftId?: string } | null;
+      if (body?.siftId) expectedSift.set(taskId, body.siftId);
+      else expectedSift.delete(taskId);
+    } else {
+      expectedSift.delete(taskId);
       const body = (await res.json().catch(() => null)) as {
         error?: string;
         task?: Task;
       } | null;
       if (body?.task) {
-        useStore.getState().replaceTaskFromServer(body.task);
+        // The server marked the task (cap, could not start). Adopt it the
+        // same way a poll result is adopted: never over unpushed edits.
+        await adopt({ task: body.task, labels: [] });
       } else {
         useStore.getState().patchTaskFromServer(taskId, {
           aiStatus: "failed",
@@ -117,12 +152,16 @@ export async function resiftTask(taskId: string): Promise<void> {
       return;
     }
   } catch (err) {
+    expectedSift.delete(taskId);
     useStore.getState().patchTaskFromServer(taskId, {
       aiStatus: "failed",
       aiError: err instanceof Error ? err.message : "Sifting failed",
     });
     return;
+  } finally {
+    resifting.delete(taskId);
   }
+  // A watcher already running re-arms on the new expectation; otherwise start one.
   await watchSift(taskId);
 }
 

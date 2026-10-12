@@ -1,5 +1,6 @@
 import { SIFT_ACCOUNTING_STAGE } from "@/lib/db/repos/types";
 import { FREE_SIFTS_PER_DAY, TRIAL_DAYS, trialSnapshot } from "@/lib/entitlements/entitlements";
+import { __resetRateLimits } from "@/lib/ratelimit/limiter";
 import { type WorkflowClient, setWorkflowClientForTesting } from "@/lib/workflows/dispatch";
 import { siftTask } from "@/lib/workflows/sift-task";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -23,6 +24,7 @@ let userId: string;
 beforeEach(async () => {
   vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
   vi.stubEnv("RATELIMIT_TRIAGE_PER_MIN", "100000");
+  __resetRateLimits();
   client.start.mockReset();
   client.start.mockResolvedValue({ runId: "wrun_create" });
   setWorkflowClientForTesting(client);
@@ -109,6 +111,67 @@ describe("POST /api/tasks enqueues siftTask", () => {
     expect(again.task.siftStage).toBe("triage");
     expect(again.task.title).toBe("Enriched title");
     expect(client.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("a replayed create never writes the stale capture over sift-written fields", async () => {
+    await create({ id: "task_stale", sourceText: "Draft the update", aiStatus: "pending" });
+    const repos = getTestRepos();
+    // The workflow enriched and routed the task meanwhile.
+    await repos.tasks.update(userId, "task_stale", {
+      aiStatus: "ready",
+      title: "Investor update",
+      due: "2026-10-16",
+      lifecycle: "waiting",
+      confidence: 0.8,
+      rationale: "why",
+    });
+
+    // The client retries the create with its full un-sifted snapshot, plus
+    // one field the user did edit in the meantime.
+    const res = await create({
+      id: "task_stale",
+      sourceText: "Draft the update",
+      aiStatus: "pending",
+      title: "Draft the update",
+      due: null,
+      confidence: 0,
+      rationale: null,
+      nextAction: "Open last quarter's doc",
+      editedFields: ["nextAction"],
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.sift).toEqual({ enqueued: false, reason: "already_sifting" });
+    expect(body.task.title).toBe("Investor update");
+    expect(body.task.due).toBe("2026-10-16");
+    expect(body.task.lifecycle).toBe("waiting");
+    expect(body.task.confidence).toBe(0.8);
+    expect(body.task.rationale).toBe("why");
+    expect(body.task.aiStatus).toBe("ready");
+    expect(body.task.nextAction).toBe("Open last quarter's doc");
+    expect(body.task.editedFields).toEqual(["nextAction"]);
+  });
+
+  it("the per-IP AI limit covers capture: the task is created, the sift is refused", async () => {
+    vi.stubEnv("RATELIMIT_TRIAGE_IP_PER_MIN", "1");
+    const headers = { "x-forwarded-for": "9.9.9.9" };
+    const { POST } = await import("@/app/api/tasks/route");
+    const fire = (id: string) =>
+      POST(
+        new Request("http://localhost/api/tasks", {
+          method: "POST",
+          headers: { "content-type": "application/json", cookie, ...headers },
+          body: JSON.stringify({ id, sourceText: "Burst", aiStatus: "pending" }),
+        }),
+      );
+    const first = await (await fire("task_ip1")).json();
+    expect(first.sift.enqueued).toBe(true);
+    const second = await (await fire("task_ip2")).json();
+    expect(second.sift).toEqual({ enqueued: false, reason: "denied", code: "rate_limited" });
+    expect(second.task.aiStatus).toBe("failed");
+    expect(second.task.aiError).toMatch(/Too many AI requests/);
+    expect(client.start).toHaveBeenCalledTimes(1);
+    expect((await getTestRepos().tasks.get(userId, "task_ip2"))?.sourceText).toBe("Burst");
   });
 
   it("offline=1 is passed through to the workflow", async () => {

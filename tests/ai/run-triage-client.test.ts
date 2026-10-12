@@ -52,10 +52,24 @@ describe("resiftTask", () => {
     useStore.getState().setModelPreference("openai");
     const task = useStore.getState().createTask({ sourceText: "Call the bank tomorrow" });
 
+    // Every poll carries the siftId the 202 announced; a watcher never
+    // settles on a snapshot from another run.
     const states: Array<Partial<Task>> = [
-      { aiStatus: "running", siftStage: "enrich", title: "Call the bank" },
-      { aiStatus: "running", siftStage: "plan", title: "Call the bank", nextAction: "Call" },
-      { aiStatus: "ready", siftStage: null, title: "Call the bank", nextAction: "Call" },
+      { aiStatus: "running", siftStage: "enrich", title: "Call the bank", siftId: "s" },
+      {
+        aiStatus: "running",
+        siftStage: "plan",
+        title: "Call the bank",
+        nextAction: "Call",
+        siftId: "s",
+      },
+      {
+        aiStatus: "ready",
+        siftStage: null,
+        title: "Call the bank",
+        nextAction: "Call",
+        siftId: "s",
+      },
     ];
     const fetchMock = vi.fn(async (url: string) => {
       if (url === "/api/triage") {
@@ -64,7 +78,7 @@ describe("resiftTask", () => {
           202,
         );
       }
-      const next = states.shift() ?? { aiStatus: "ready" as const, siftStage: null };
+      const next = states.shift() ?? { aiStatus: "ready" as const, siftStage: null, siftId: "s" };
       return json({ task: serverTask(task, next), labels: [] });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -86,6 +100,88 @@ describe("resiftTask", () => {
     expect(updated?.aiStatus).toBe("ready");
     expect(updated?.title).toBe("Call the bank");
     expect(updated?.nextAction).toBe("Call");
+    registerSyncHooks(null);
+  });
+
+  it("a double click sends one POST (the lock) and a re-sift while watching re-arms the watcher", async () => {
+    vi.useFakeTimers();
+    const { useStore, registerSyncHooks } = await setup();
+    const { isTriageInFlight, resiftTask, watchSift } = await import("@/lib/ai/run-triage");
+    const task = useStore.getState().createTask({ sourceText: "Call the bank" });
+
+    // Poll answers: the first run finishes (ready, attempt 1); after the
+    // re-sift the server reports pending → running → ready (attempt 2).
+    let posts = 0;
+    let pollsAfterResift = 0;
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === "/api/triage") {
+        posts += 1;
+        return json(
+          { task: serverTask(task, { aiStatus: "pending" }), siftId: "s2", runId: "r2" },
+          202,
+        );
+      }
+      if (posts === 0) {
+        return json({
+          task: serverTask(task, { aiStatus: "ready", aiAttempts: 1, siftId: "s1" }),
+          labels: [],
+        });
+      }
+      pollsAfterResift += 1;
+      // The first poll after the POST still shows the superseded run.
+      const state: Partial<Task> =
+        pollsAfterResift === 1
+          ? { aiStatus: "ready", siftStage: null, aiAttempts: 1, siftId: "s1" }
+          : pollsAfterResift === 2
+            ? { aiStatus: "running", siftStage: "enrich", aiAttempts: 1, siftId: "s2" }
+            : { aiStatus: "ready", siftStage: null, aiAttempts: 2, siftId: "s2" };
+      return json({ task: serverTask(task, state), labels: [] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    // Watcher running; its first poll (old run's final state) is in flight
+    // when the user re-sifts twice in a row.
+    const watch = watchSift(task.id);
+    const a = resiftTask(task.id);
+    const b = resiftTask(task.id);
+    expect(isTriageInFlight(task.id)).toBe(true);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await Promise.all([watch, a, b]);
+
+    expect(posts).toBe(1);
+    const updated = useStore.getState().tasks.find((t) => t.id === task.id);
+    expect(updated?.aiStatus).toBe("ready");
+    expect(updated?.aiAttempts).toBe(2);
+    registerSyncHooks(null);
+  });
+
+  it("a denial while local edits are unpushed keeps the edits and adopts only the status", async () => {
+    const { useStore, registerSyncHooks } = await setup({ dirty: () => true });
+    const { resiftTask } = await import("@/lib/ai/run-triage");
+    const task = useStore.getState().createTask({ sourceText: "One more" });
+    useStore.getState().updateTask(task.id, { title: "My title" }, { editedFields: ["title"] });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        json(
+          {
+            error: "You've used today's 5 free sifts.",
+            code: "free_cap",
+            task: serverTask(task, {
+              title: "Server title",
+              aiStatus: "failed",
+              aiError: "You've used today's 5 free sifts.",
+            }),
+          },
+          402,
+        ),
+      ),
+    );
+    await resiftTask(task.id);
+    const updated = useStore.getState().tasks.find((t) => t.id === task.id);
+    expect(updated?.title).toBe("My title");
+    expect(updated?.aiStatus).toBe("failed");
+    expect(updated?.aiError).toBe("You've used today's 5 free sifts.");
     registerSyncHooks(null);
   });
 

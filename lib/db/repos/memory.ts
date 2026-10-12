@@ -203,10 +203,13 @@ export function createMemoryRepos(): MemoryReposHandle {
   };
 
   const tasks: TaskRepo = {
-    async list(userId) {
+    async list(userId, opts = {}) {
       return Array.from(state.tasks.values())
-        .filter((t) => t.userId === userId)
+        .filter(
+          (t) => t.userId === userId && (!opts.lifecycles || opts.lifecycles.includes(t.lifecycle)),
+        )
         .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+        .slice(0, opts.limit)
         .map(stripUserId);
     },
     async get(userId, taskId) {
@@ -344,6 +347,11 @@ export function createMemoryRepos(): MemoryReposHandle {
     async list(userId) {
       return Array.from(state.labels.values())
         .filter((l) => l.userId === userId)
+        .map(stripUserId);
+    },
+    async listByIds(userId, ids) {
+      return Array.from(state.labels.values())
+        .filter((l) => l.userId === userId && ids.includes(l.id))
         .map(stripUserId);
     },
     async ensure(userId, input) {

@@ -205,6 +205,17 @@ export function createPostgresRepos(): Repos {
         .orderBy(schema.labels.createdAt);
       return rows.map(rowToLabel);
     },
+    async listByIds(userId, ids) {
+      if (!ids.length) return [];
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.labels)
+        .where(and(eq(schema.labels.userId, userId), inArray(schema.labels.id, [...ids])))
+        .orderBy(schema.labels.createdAt)
+        .limit(ids.length);
+      return rows.map(rowToLabel);
+    },
     async ensure(userId, input) {
       const db = getDb();
       const findByName = () =>
@@ -243,16 +254,36 @@ export function createPostgresRepos(): Repos {
   };
 
   const tasks: TaskRepo = {
-    async list(userId) {
+    async list(userId, opts = {}) {
       const db = getDb();
-      const [rows, labelRows] = await Promise.all([
-        db
-          .select()
-          .from(schema.tasks)
-          .where(eq(schema.tasks.userId, userId))
-          .orderBy(desc(schema.tasks.updatedAt)),
-        db.select().from(schema.taskLabels).where(eq(schema.taskLabels.userId, userId)),
-      ]);
+      const rowsQuery = db
+        .select()
+        .from(schema.tasks)
+        .where(
+          and(
+            eq(schema.tasks.userId, userId),
+            opts.lifecycles ? inArray(schema.tasks.lifecycle, [...opts.lifecycles]) : undefined,
+          ),
+        )
+        .orderBy(desc(schema.tasks.updatedAt));
+      const rows = opts.limit === undefined ? await rowsQuery : await rowsQuery.limit(opts.limit);
+      if (!rows.length) return [];
+      // Unbounded list: one query for every link. Bounded: only the links
+      // of the rows returned, so a LIMIT stays a LIMIT.
+      const labelRows = await db
+        .select()
+        .from(schema.taskLabels)
+        .where(
+          and(
+            eq(schema.taskLabels.userId, userId),
+            opts.limit === undefined && !opts.lifecycles
+              ? undefined
+              : inArray(
+                  schema.taskLabels.taskId,
+                  rows.map((r) => r.id),
+                ),
+          ),
+        );
       const byTask = groupLabelIds(labelRows);
       return rows.map((row) => rowToTask(row, byTask.get(row.id) ?? []));
     },

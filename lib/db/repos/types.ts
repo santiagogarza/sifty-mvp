@@ -172,6 +172,8 @@ export class IdConflictError extends Error {
 
 export interface LabelRepo {
   list(userId: string): Promise<Label[]>;
+  /** Only the labels in `ids` that belong to the user; bounded by `ids.length`. */
+  listByIds(userId: string, ids: readonly string[]): Promise<Label[]>;
   /**
    * Idempotent ensure-by-name (case-insensitive). Returns the existing
    * label when the name is already taken, and mints a fresh id when the
@@ -181,8 +183,15 @@ export interface LabelRepo {
   ensure(userId: string, input: LabelEnsureInput): Promise<Label>;
 }
 
+export interface TaskListOptions {
+  /** Keep only these lifecycles. */
+  lifecycles?: readonly Task["lifecycle"][];
+  /** Newest-updated first; undefined returns every matching task. */
+  limit?: number;
+}
+
 export interface TaskRepo {
-  list(userId: string): Promise<Task[]>;
+  list(userId: string, opts?: TaskListOptions): Promise<Task[]>;
   get(userId: string, taskId: string): Promise<Task | null>;
   create(userId: string, input: TaskCreateInput): Promise<Task>;
   update(

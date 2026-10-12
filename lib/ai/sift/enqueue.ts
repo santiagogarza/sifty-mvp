@@ -6,7 +6,7 @@ import { reportError } from "@/lib/observability/report-error";
 import { id as makeId } from "@/lib/utils/ids";
 import { startWorkflow } from "@/lib/workflows/dispatch";
 import { siftTask } from "@/lib/workflows/sift-task";
-import { type AiAdmission, admitAiRun } from "../ai-gate";
+import { type AiAdmission, admitAiRun, gateAiRequestByIp } from "../ai-gate";
 import type { SiftInput } from "./execute-stage";
 import { SIFT_PROMPT_VERSION } from "./stages";
 
@@ -41,16 +41,27 @@ export async function enqueueSift(args: {
   offline: boolean;
   /** Rate-limit bucket; "triage" for both capture and re-sift. */
   bucket?: string;
+  /** Also apply the per-IP AI limit (routes that did not already apply it). */
+  checkIp?: boolean;
 }): Promise<EnqueueResult> {
   const repos = getRepos();
   const { session, task } = args;
   const userId = session.user.id;
+  const bucket = args.bucket ?? "triage";
 
-  const admission = await admitAiRun({
-    req: args.req,
-    session,
-    bucket: args.bucket ?? "triage",
-  });
+  let admission: AiAdmission = { ok: true };
+  if (args.checkIp) {
+    const ip = await gateAiRequestByIp(args.req, bucket);
+    if (!ip.ok) {
+      admission = {
+        ok: false,
+        status: 429,
+        body: (await ip.response.clone().json()) as Record<string, unknown>,
+        headers: Object.fromEntries(ip.response.headers.entries()),
+      };
+    }
+  }
+  if (admission.ok) admission = await admitAiRun({ req: args.req, session, bucket });
   if (!admission.ok) {
     // The task exists either way; the denial is recorded on it so the UI
     // can show the cap message and offer the upgrade path.
