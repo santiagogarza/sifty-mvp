@@ -48,9 +48,14 @@ describe("/api/auth/[...all] route", () => {
     const { user } = (await signUp.json()) as { user: { id: string } };
 
     const blocked = await POST(
-      post("/api/auth/sign-in/email", { email: "route@example.com", password: TEST_PASSWORD }),
+      post("/api/auth/sign-in/email", {
+        email: "route@example.com",
+        password: TEST_PASSWORD,
+        callbackURL: "/today",
+      }),
     );
     expect(blocked.status).toBe(403);
+    // The blocked attempt re-sent the link; the newest one is used below.
 
     const verifyUrl = firstUrl(getTestOutbox().outbox.at(-1)!.text);
     const verified = await GET(new Request(verifyUrl, { redirect: "manual" }));

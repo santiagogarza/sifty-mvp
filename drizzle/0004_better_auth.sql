@@ -7,9 +7,10 @@
 -- 3. `users` gains `email_verified` + `image`; existing bcrypt hashes move to
 --    `accounts.password` (provider `credential`) and `password_hash` is
 --    dropped so there is exactly one copy of each hash.
--- 4. Accounts that pre-date email verification are marked verified: they
---    could not have proven their address, and locking them out of their own
---    data would be worse than trusting the sign-ups that already happened.
+-- 4. Migrated users stay `email_verified = false`: the old sign-up never
+--    proved the address, so the first sign-in sends a verification link and
+--    the first magic link strips any unproven password (Better Auth's
+--    revoke-unproven-access). Nobody loses data; everyone clicks one email.
 CREATE TABLE "accounts" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
@@ -42,7 +43,6 @@ ALTER TABLE "sessions" ADD COLUMN "user_agent" text;--> statement-breakpoint
 ALTER TABLE "sessions" ADD COLUMN "updated_at" timestamp with time zone DEFAULT now() NOT NULL;--> statement-breakpoint
 ALTER TABLE "users" ADD COLUMN "email_verified" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "users" ADD COLUMN "image" text;--> statement-breakpoint
-UPDATE "users" SET "email_verified" = true;--> statement-breakpoint
 INSERT INTO "accounts" ("id", "user_id", "account_id", "provider_id", "password", "created_at", "updated_at")
 SELECT 'acct_' || "id", "id", "id", 'credential', "password_hash", "created_at", now()
 FROM "users"

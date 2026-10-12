@@ -149,6 +149,9 @@ function createAuth(repos: Repos) {
     },
     emailVerification: {
       sendOnSignUp: true,
+      // A blocked sign-in (unverified address, incl. accounts migrated from
+      // the pre-verification era) re-sends the link instead of dead-ending.
+      sendOnSignIn: true,
       autoSignInAfterVerification: true,
       expiresIn: 60 * 60,
       sendVerificationEmail: async ({ user, url }) => {

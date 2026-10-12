@@ -330,15 +330,16 @@ describe("session revocation", () => {
 });
 
 describe("legacy bcrypt accounts", () => {
-  it("verifies an imported bcrypt hash and keeps the user's row and id", async () => {
+  it("asks a migrated user to confirm their email once, then the old bcrypt password works", async () => {
     const auth = getAuth();
     const repos = getTestRepos();
     const ctx = await auth.$context;
 
-    // Simulate what migration 0003 leaves behind: a users row plus a
-    // credential account carrying the old bcrypt hash.
+    // What migration 0004 leaves behind: the users row (unverified, since the
+    // old sign-up never proved the address) plus a credential account
+    // carrying the old bcrypt hash.
     const user = await ctx.internalAdapter.createUser(
-      { id: "user_legacy1", email: "legacy@example.com", name: "Legacy", emailVerified: true },
+      { id: "user_legacy1", email: "legacy@example.com", name: "Legacy", emailVerified: false },
       { method: "email" },
     );
     await ctx.internalAdapter.linkAccount({
@@ -348,6 +349,19 @@ describe("legacy bcrypt accounts", () => {
       password: await bcrypt.hash("old-bcrypt-password", 4),
     });
 
+    // First sign-in after the migration: blocked, and a verification link
+    // goes out automatically.
+    const sent = getTestOutbox().outbox.length;
+    const blocked = await auth.api.signInEmail({
+      body: { email: "legacy@example.com", password: "old-bcrypt-password" },
+      asResponse: true,
+    });
+    expect(blocked.status).toBe(403);
+    expect(getTestOutbox().outbox.length).toBe(sent + 1);
+    const token = new URL(firstUrl(lastEmail().text)).searchParams.get("token")!;
+    await auth.api.verifyEmail({ query: { token } });
+
+    // The password set before the migration survives verification by email.
     const cookie = await signInCookie("legacy@example.com", "old-bcrypt-password");
     const session = await getSession(new Request("http://x", { headers: { cookie } }));
     expect(session?.user.id).toBe("user_legacy1");
@@ -358,5 +372,36 @@ describe("legacy bcrypt accounts", () => {
       asResponse: true,
     });
     expect(wrong.status).toBe(401);
+  });
+
+  it("a migrated user's first proof via magic link strips the unproven legacy password", async () => {
+    const auth = getAuth();
+    const ctx = await auth.$context;
+    const user = await ctx.internalAdapter.createUser(
+      { id: "user_legacy2", email: "legacy2@example.com", name: "Legacy", emailVerified: false },
+      { method: "email" },
+    );
+    await ctx.internalAdapter.linkAccount({
+      userId: user.id,
+      providerId: "credential",
+      accountId: user.id,
+      password: await bcrypt.hash("old-bcrypt-password", 4),
+    });
+
+    await auth.api.signInMagicLink({
+      body: { email: "legacy2@example.com", callbackURL: "/today" },
+      headers: new Headers(),
+    });
+    const res = await auth.handler(new Request(firstUrl(lastEmail().text), { redirect: "manual" }));
+    const session = await getSession(
+      new Request("http://x", { headers: { cookie: cookieHeaderFromResponse(res) } }),
+    );
+    expect(session?.user.id).toBe("user_legacy2");
+
+    const old = await auth.api.signInEmail({
+      body: { email: "legacy2@example.com", password: "old-bcrypt-password" },
+      asResponse: true,
+    });
+    expect(old.status).toBe(401);
   });
 });
