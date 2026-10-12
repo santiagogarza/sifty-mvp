@@ -272,6 +272,26 @@ describe("applyStripeEvent — dunning grace period", () => {
     }
   });
 
+  it("payment_failed records the invoice's subscription so checkout sees it as open", () => {
+    const next = applyStripeEvent(lapsedTrial(), failed(), NOW);
+    expect(next.stripeSubscriptionId).toBe("sub_test");
+    expect(hasOpenStripeSubscription(next)).toBe(true);
+  });
+
+  it("invoices of a replaced subscription leave the current one alone", () => {
+    const resubscribed = { ...paying(), stripeSubscriptionId: "sub_new" };
+    expect(applyStripeEvent(resubscribed, failed(), NOW)).toBe(resubscribed);
+    const inGrace = applyStripeEvent(
+      { ...paying(), stripeSubscriptionId: "sub_new" },
+      {
+        type: "invoice.payment_failed",
+        data: { object: { customer: "cus_X", subscription: "sub_new" } },
+      },
+      NOW,
+    );
+    expect(applyStripeEvent(inGrace, paid(), NOW)).toBe(inGrace);
+  });
+
   it("once the window has passed the resolved tier is free, with the facts intact", () => {
     const inGrace = applyStripeEvent(paying(), failed(), NOW);
     const afterWindow = new Date(NOW.getTime() + (GRACE_PERIOD_DAYS + 1) * DAY);

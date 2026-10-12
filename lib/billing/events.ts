@@ -87,6 +87,12 @@ export function hasOpenStripeSubscription(snapshot: EntitlementSnapshot | null):
   return !!snapshot.stripeSubscriptionId && OPEN_STATUSES.has(snapshot.stripeStatus ?? "");
 }
 
+function invoiceSubscriptionId(invoice: StripeInvoiceLike): string | null {
+  const sub = invoice.subscription;
+  if (!sub) return null;
+  return typeof sub === "string" ? sub : sub.id;
+}
+
 export function graceEndFrom(now: Date): string {
   return new Date(now.getTime() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000).toISOString();
 }
@@ -113,6 +119,12 @@ export function applyStripeEvent(
     if (current.graceEndsAt) return current.graceEndsAt;
     if (DUNNING_STATUSES.has(current.stripeStatus ?? "")) return null;
     return graceEndFrom(at);
+  };
+  // Stripe keeps retrying invoices of a replaced subscription; they say
+  // nothing about the one we have on file.
+  const isOtherSubscriptionInvoice = (invoice: StripeInvoiceLike): boolean => {
+    const subId = invoiceSubscriptionId(invoice);
+    return !!subId && !!current.stripeSubscriptionId && subId !== current.stripeSubscriptionId;
   };
 
   switch (event.type) {
@@ -149,6 +161,7 @@ export function applyStripeEvent(
       // Subscription events drive state; a paid invoice only matters when it
       // recovers a dunning cycle, which may arrive before the matching
       // `subscription.updated` (status active).
+      if (isOtherSubscriptionInvoice(event.data.object)) return current;
       if (!current.graceEndsAt && !DUNNING_STATUSES.has(current.stripeStatus ?? "")) {
         return current;
       }
@@ -160,9 +173,12 @@ export function applyStripeEvent(
       // of those owe the user Pro: the event changes nothing, so the webhook
       // sends no dunning mail either. Only a live (or not yet recorded)
       // subscription enters dunning here.
+      if (isOtherSubscriptionInvoice(event.data.object)) return current;
       if (NO_DUNNING_STATUSES.has(current.stripeStatus ?? "")) return current;
       return resolve({
         subscriptionActive: false,
+        stripeSubscriptionId:
+          invoiceSubscriptionId(event.data.object) ?? current.stripeSubscriptionId,
         stripeStatus: "past_due",
         graceEndsAt: keepOrOpenGrace(),
       });

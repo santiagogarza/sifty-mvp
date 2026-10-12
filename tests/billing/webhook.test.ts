@@ -368,13 +368,19 @@ describe("POST /api/stripe/webhook", () => {
       const user = await payingUser("retry@example.com", "cus_R", "sub_R");
       const first = new Date("2026-10-12T12:00:00.000Z");
       await deliver(
-        makeEvent({ type: "invoice.payment_failed", customer: "cus_R", created: first }).body,
+        makeEvent({
+          type: "invoice.payment_failed",
+          customer: "cus_R",
+          subscriptionId: "sub_R",
+          created: first,
+        }).body,
       );
       const graceEnd = (await repos.entitlements.get(user.id))?.graceEndsAt;
       await deliver(
         makeEvent({
           type: "invoice.payment_failed",
           customer: "cus_R",
+          subscriptionId: "sub_R",
           created: new Date(first.getTime() + 3 * 24 * 60 * 60 * 1000),
         }).body,
       );
@@ -391,7 +397,11 @@ describe("POST /api/stripe/webhook", () => {
           throw new Error("smtp down");
         },
       });
-      const { id, body } = makeEvent({ type: "invoice.payment_failed", customer: "cus_M" });
+      const { id, body } = makeEvent({
+        type: "invoice.payment_failed",
+        customer: "cus_M",
+        subscriptionId: "sub_M",
+      });
       const res = await deliver(body);
       expect(res.status).toBe(200);
       expect((await repos.entitlements.get(user.id))?.stripeStatus).toBe("past_due");
@@ -404,11 +414,21 @@ describe("POST /api/stripe/webhook", () => {
       const user = await payingUser("lapsed@example.com", "cus_LP", "sub_LP");
       const first = new Date("2026-10-12T12:00:00.000Z");
       await deliver(
-        makeEvent({ type: "invoice.payment_failed", customer: "cus_LP", created: first }).body,
+        makeEvent({
+          type: "invoice.payment_failed",
+          customer: "cus_LP",
+          subscriptionId: "sub_LP",
+          created: first,
+        }).body,
       );
       const retryAt = new Date(first.getTime() + (GRACE_PERIOD_DAYS + 2) * 24 * 60 * 60 * 1000);
       await deliver(
-        makeEvent({ type: "invoice.payment_failed", customer: "cus_LP", created: retryAt }).body,
+        makeEvent({
+          type: "invoice.payment_failed",
+          customer: "cus_LP",
+          subscriptionId: "sub_LP",
+          created: retryAt,
+        }).body,
       );
       const outbox = getTestOutbox().outbox;
       expect(outbox).toHaveLength(2);
@@ -431,11 +451,21 @@ describe("POST /api/stripe/webhook", () => {
         trialEndsAt: new Date(first.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       });
       await deliver(
-        makeEvent({ type: "invoice.payment_failed", customer: "cus_TR", created: first }).body,
+        makeEvent({
+          type: "invoice.payment_failed",
+          customer: "cus_TR",
+          subscriptionId: "sub_TR",
+          created: first,
+        }).body,
       );
       const retryAt = new Date(first.getTime() + (GRACE_PERIOD_DAYS + 2) * 24 * 60 * 60 * 1000);
       await deliver(
-        makeEvent({ type: "invoice.payment_failed", customer: "cus_TR", created: retryAt }).body,
+        makeEvent({
+          type: "invoice.payment_failed",
+          customer: "cus_TR",
+          subscriptionId: "sub_TR",
+          created: retryAt,
+        }).body,
       );
       expect((await repos.entitlements.get(user.id))?.tier).toBe("trialing");
       const outbox = getTestOutbox().outbox;
@@ -469,7 +499,10 @@ describe("POST /api/stripe/webhook", () => {
     it("recovery: subscription.updated(active) clears grace and sends no mail", async () => {
       const repos = getTestRepos();
       const user = await payingUser("recover@example.com", "cus_V", "sub_V");
-      await deliver(makeEvent({ type: "invoice.payment_failed", customer: "cus_V" }).body);
+      await deliver(
+        makeEvent({ type: "invoice.payment_failed", customer: "cus_V", subscriptionId: "sub_V" })
+          .body,
+      );
       await deliver(
         makeEvent({
           type: "customer.subscription.updated",
@@ -496,7 +529,8 @@ describe("POST /api/stripe/webhook", () => {
         compedUntil: null,
       });
       const res = await deliver(
-        makeEvent({ type: "invoice.payment_failed", customer: "cus_CP" }).body,
+        makeEvent({ type: "invoice.payment_failed", customer: "cus_CP", subscriptionId: "sub_CP" })
+          .body,
       );
       expect(res.status).toBe(200);
       const after = await repos.entitlements.get(user.id);
