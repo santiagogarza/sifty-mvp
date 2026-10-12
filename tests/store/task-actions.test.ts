@@ -1,3 +1,4 @@
+import { TASK_LIMITS } from "@/lib/domain/limits";
 import type { Task } from "@/lib/domain/types";
 import { type SyncHooks, registerSyncHooks, useStore } from "@/lib/store/store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -96,6 +97,23 @@ describe("duplicateTask", () => {
     expect(copy!.confidence).toBe(0);
     expect(copy!.aiAttempts).toBe(0);
     expect(copy!.aiStatus).toBe("ready");
+  });
+
+  it("keeps the (copy) suffix on a title already at the limit", () => {
+    const longTitle = "x".repeat(TASK_LIMITS.title);
+    seed({ id: "task_long", title: longTitle });
+    const copy = useStore.getState().duplicateTask("task_long")!;
+    expect(copy.title.length).toBeLessThanOrEqual(TASK_LIMITS.title);
+    expect(copy.title.endsWith(" (copy)")).toBe(true);
+  });
+
+  it("copies an unsifted or failed original as idle, never pending", () => {
+    seed({ id: "task_pending", aiStatus: "pending" });
+    seed({ id: "task_failed", aiStatus: "failed", aiError: "boom" });
+    expect(useStore.getState().duplicateTask("task_pending")!.aiStatus).toBe("idle");
+    const failedCopy = useStore.getState().duplicateTask("task_failed")!;
+    expect(failedCopy.aiStatus).toBe("idle");
+    expect(failedCopy.aiError).toBeNull();
   });
 
   it("keeps the user's edit protections except for the cleared due date", () => {

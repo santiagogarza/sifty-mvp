@@ -283,7 +283,8 @@ export const useStore = create<SiftyState>()(
           const source = findTask(sourceId);
           if (!source) return null;
           const now = new Date().toISOString();
-          const title = `${source.title} (copy)`.slice(0, TASK_LIMITS.title);
+          const suffix = " (copy)";
+          const title = `${source.title.slice(0, TASK_LIMITS.title - suffix.length)}${suffix}`;
           // A finished or dropped original is new work again: it lands in
           // the Inbox so the filing strip offers where it goes next.
           const lifecycle: Lifecycle =

@@ -74,9 +74,9 @@ export function Toaster() {
       aria-live="polite"
       className={cn(
         "pointer-events-none fixed z-40 flex flex-col items-center gap-2",
-        // Above the bottom nav and above the sync notice's slot (92px), so
-        // a toast's Undo is never painted over by a sync pill.
-        "bottom-[136px] left-1/2 -translate-x-1/2",
+        // Clear of the bottom nav and of the sync notice's slot (it sits
+        // 92px up and may wrap to two lines), so Undo is never painted over.
+        "bottom-[172px] left-1/2 -translate-x-1/2",
         "md:bottom-4 md:left-auto md:right-4 md:translate-x-0 md:items-end",
       )}
     >

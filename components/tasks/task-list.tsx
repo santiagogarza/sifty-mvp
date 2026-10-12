@@ -86,10 +86,16 @@ export function TaskList({
   }, []);
 
   const selectRangeTo = (targetId: string) => {
-    const anchor = anchorRef.current ?? tasks[activeIndex]?.id ?? null;
+    // An anchor that left the view (filed, completed, snoozed away) is no
+    // anchor: fall back to the active row, else start a new range here.
+    const remembered = anchorRef.current;
+    const anchor =
+      remembered && visibleIds.includes(remembered)
+        ? remembered
+        : (tasks[activeIndex]?.id ?? targetId);
     const range = rangeBetween(visibleIds, anchor, targetId);
     if (range.length === 0) return;
-    if (!anchorRef.current) anchorRef.current = anchor ?? targetId;
+    anchorRef.current = anchor;
     setSelectedIds(new Set(range));
   };
 
@@ -99,7 +105,9 @@ export function TaskList({
     onOpen(id);
   };
 
-  const { pendingSnooze, handleSnoozeKey } = useSnoozeKeys(() => tasks[activeIndex] ?? null);
+  const { pendingSnooze, handleSnoozeKey, cancelSnooze } = useSnoozeKeys(
+    () => tasks[activeIndex] ?? null,
+  );
 
   React.useEffect(() => {
     if (activeIndex >= tasks.length) setActiveIndex(tasks.length - 1);
@@ -144,9 +152,12 @@ export function TaskList({
   }, [activeIndex]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape" && selectedIds.size > 0) {
-      e.preventDefault();
-      clearSelection();
+    if (e.key === "Escape") {
+      // One Escape clears everything transient: a pending snooze chord and
+      // a range selection alike.
+      const cancelled = cancelSnooze();
+      if (selectedIds.size > 0) clearSelection();
+      if (cancelled || selectedIds.size > 0) e.preventDefault();
       return;
     }
     if (tasks.length === 0) return;
@@ -353,23 +364,34 @@ const SNOOZE_SEQUENCE_MS = 2000;
 function useSnoozeKeys(getActiveTask: () => Task | null): {
   pendingSnooze: boolean;
   handleSnoozeKey: (e: React.KeyboardEvent) => boolean;
+  /** Drop a pending chord; true when there was one. */
+  cancelSnooze: () => boolean;
 } {
   const [pending, setPending] = React.useState(false);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const cancel = React.useCallback(() => {
+  const cancelSnooze = React.useCallback(() => {
+    const had = timerRef.current !== null;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = null;
     setPending(false);
+    return had;
   }, []);
 
-  React.useEffect(() => cancel, [cancel]);
+  React.useEffect(() => () => void cancelSnooze(), [cancelSnooze]);
 
   const handleSnoozeKey = (e: React.KeyboardEvent): boolean => {
+    // Auto-repeat from a held key is never a chord step.
+    if (e.repeat) return pending;
     if (pending) {
-      cancel();
+      // A second `s` keeps the chord armed instead of dropping it.
+      if (e.key === "s") {
+        e.preventDefault();
+        return true;
+      }
+      cancelSnooze();
       const preset = presetForKey(e.key);
-      if (!preset) return e.key === "Escape";
+      if (!preset) return false;
       e.preventDefault();
       const task = getActiveTask();
       if (task) snoozeTask(task, preset);
@@ -378,11 +400,14 @@ function useSnoozeKeys(getActiveTask: () => Task | null): {
     if (e.key !== "s" || !getActiveTask()) return false;
     e.preventDefault();
     setPending(true);
-    timerRef.current = setTimeout(() => setPending(false), SNOOZE_SEQUENCE_MS);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      setPending(false);
+    }, SNOOZE_SEQUENCE_MS);
     return true;
   };
 
-  return { pendingSnooze: pending, handleSnoozeKey };
+  return { pendingSnooze: pending, handleSnoozeKey, cancelSnooze };
 }
 
 export function snoozeTask(task: Task, preset: SnoozePreset): void {

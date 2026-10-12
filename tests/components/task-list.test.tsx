@@ -260,6 +260,25 @@ describe("TaskList bulk select", () => {
     expect(useToastStore.getState().toasts.map((t) => t.message)).toEqual(["Moved 3 to Someday"]);
   });
 
+  it("an anchor that left the list is replaced by the active row", async () => {
+    const user = userEvent.setup();
+    seedStore(five);
+    const { rerenderWith } = renderList(five);
+
+    // Anchor on B, then B leaves the view; focus recovery makes C active.
+    await user.click(row("Task B"));
+    rerenderWith(five.filter((t) => t.id !== "b"));
+    expect(row("Task C")).toHaveFocus();
+
+    await user.keyboard("{Shift>}");
+    await user.click(row("Task E"));
+    await user.keyboard("{/Shift}");
+    expect(screen.getByTestId("bulk-bar")).toHaveTextContent("3 selected");
+    for (const name of ["Task C", "Task D", "Task E"]) {
+      expect(row(name)).toHaveAttribute("data-selected", "true");
+    }
+  });
+
   it("the complete circle still completes one task without touching the selection", async () => {
     const user = userEvent.setup();
     seedStore(five);
@@ -321,6 +340,44 @@ describe("TaskList snooze keys", () => {
     // j continues from the clicked row.
     await user.keyboard("{ArrowDown}");
     expect(row("Gamma")).toHaveFocus();
+  });
+
+  it("a held s (key repeat) or a second s keeps the chord armed", async () => {
+    const user = userEvent.setup();
+    const tasks = [makeTask("a", "Alpha")];
+    useStore.setState({ tasks, labels: [] });
+    render(<TaskList tasks={tasks} onOpen={vi.fn()} />);
+
+    await user.keyboard("{ArrowDown}");
+    await user.keyboard("s");
+    expect(screen.getByTestId("snooze-hint")).toBeInTheDocument();
+    fireEvent.keyDown(row("Alpha"), { key: "s", repeat: true });
+    fireEvent.keyDown(row("Alpha"), { key: "s" });
+    expect(screen.getByTestId("snooze-hint")).toBeInTheDocument();
+
+    await user.keyboard("t");
+    expect(useStore.getState().tasks[0]!.due).toBe(resolveSnooze("tomorrow"));
+  });
+
+  it("Escape cancels a pending chord and a selection together", async () => {
+    const user = userEvent.setup();
+    const tasks = [makeTask("a", "Alpha"), makeTask("b", "Beta"), makeTask("c", "Gamma")];
+    useStore.setState({ tasks, labels: [] });
+    render(<TaskList tasks={tasks} onOpen={vi.fn()} />);
+
+    await user.click(row("Alpha"));
+    await user.keyboard("{Shift>}");
+    await user.click(row("Gamma"));
+    await user.keyboard("{/Shift}");
+    expect(screen.getByTestId("bulk-bar")).toHaveTextContent("3 selected");
+    await user.keyboard("s");
+    expect(screen.getByTestId("snooze-hint")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("bulk-bar")).toBeNull();
+    expect(screen.queryByTestId("snooze-hint")).toBeNull();
+    await user.keyboard("t");
+    expect(useStore.getState().tasks.every((t) => t.due === null)).toBe(true);
   });
 
   it("s then w lands on next Monday; Escape cancels a pending snooze", async () => {
