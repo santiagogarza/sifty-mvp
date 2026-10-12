@@ -132,6 +132,15 @@ describe("ShortcutsSheet", () => {
     }
   });
 
+  it("renders alternatives with 'or' and sequences with 'then', never arrows as a sequence", () => {
+    render(<ShortcutsSheet open onOpenChange={vi.fn()} />);
+    const down = screen.getByText("Move down the list").closest("li")!;
+    expect(down).toHaveTextContent(/↓\s*or\s*j/);
+    expect(down).not.toHaveTextContent("then");
+    const snooze = screen.getByText("Snooze until tomorrow").closest("li")!;
+    expect(snooze).toHaveTextContent(/s\s*then\s*t/);
+  });
+
   it("Escape closes it", async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
