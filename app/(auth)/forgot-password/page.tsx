@@ -1,7 +1,7 @@
 import { ForgotPasswordForm } from "@/components/auth/password-forms";
 import Link from "next/link";
 
-export const metadata = { title: "Reset your Sifty password" };
+export const metadata = { title: { absolute: "Reset your Sifty password" } };
 
 export default function ForgotPasswordPage() {
   return (

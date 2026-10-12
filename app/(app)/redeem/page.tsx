@@ -5,7 +5,7 @@ import { getSession } from "@/lib/auth/session";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-export const metadata = { title: "Redeem an invite — Sifty" };
+export const metadata = { title: "Redeem an invite" };
 
 /**
  * Landing page for invite links (`/redeem?code=sifty-…`). Signed-out

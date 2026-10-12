@@ -1,10 +1,23 @@
+import { SITE_DESCRIPTION, getSiteUrl } from "@/lib/site/config";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Sifty — calm AI productivity",
-  description:
-    "Capture instantly. Sifty's AI organizes, prioritizes, and surfaces the next action — without slowing you down.",
+  metadataBase: new URL(getSiteUrl()),
+  title: { default: "Sifty — write it down, Sifty does the rest", template: "%s — Sifty" },
+  description: SITE_DESCRIPTION,
+  openGraph: {
+    type: "website",
+    siteName: "Sifty",
+    title: "Sifty — write it down, Sifty does the rest",
+    description: SITE_DESCRIPTION,
+    url: "/",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Sifty — write it down, Sifty does the rest",
+    description: SITE_DESCRIPTION,
+  },
   applicationName: "Sifty",
   appleWebApp: {
     title: "Sifty",

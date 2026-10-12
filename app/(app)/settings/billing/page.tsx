@@ -6,7 +6,7 @@ import { getSession } from "@/lib/auth/session";
 import { deriveEntitlement } from "@/lib/entitlements/entitlements";
 import { redirect } from "next/navigation";
 
-export const metadata = { title: "Billing — Sifty" };
+export const metadata = { title: "Billing" };
 
 export default async function BillingPage() {
   const session = await getSession();

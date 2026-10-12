@@ -15,6 +15,42 @@ test("home redirects to today and renders the shell", async ({ page }) => {
   await expect(page.getByText(/Today|Inbox|Focus/i).first()).toBeVisible();
 });
 
+test("root sends a signed-in visitor straight into the app", async ({ page }) => {
+  // The bypass session counts as signed in, so `/` must skip the landing page.
+  await page.goto("/", { waitUntil: "networkidle" });
+  await expect(page).toHaveURL(/\/today$/);
+});
+
+test("public pages render for anyone", async ({ page, request }) => {
+  await page.goto("/pricing", { waitUntil: "networkidle" });
+  await expect(page).toHaveTitle("Pricing — Sifty");
+  await expect(page.getByRole("heading", { name: "Free", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pro", exact: true })).toBeVisible();
+  await expect(page.getByText("$10")).toBeVisible();
+  // The invite link must land on the real redeem page, not the 404.
+  const redeem = page.getByRole("link", { name: /redeem it here/i });
+  await expect(redeem).toHaveAttribute("href", "/redeem");
+  await redeem.click();
+  await expect(page).toHaveURL(/\/redeem$/);
+  await expect(page.getByRole("heading", { name: /redeem an invite/i })).toBeVisible();
+  await page.goBack();
+
+  for (const path of ["/privacy", "/terms"]) {
+    await page.goto(path, { waitUntil: "networkidle" });
+    await expect(page.getByText("Waimaka, Inc").first()).toBeVisible();
+    await expect(page.getByRole("note")).toContainText("Draft");
+  }
+
+  const security = await request.get("/.well-known/security.txt");
+  expect(security.status()).toBe(200);
+  expect(await security.text()).toContain("Contact: mailto:");
+
+  for (const path of ["/robots.txt", "/sitemap.xml", "/opengraph-image"]) {
+    const res = await request.get(path);
+    expect(res.status(), path).toBe(200);
+  }
+});
+
 test("offline triage round-trips through the API", async ({ request }) => {
   const res = await request.post("/api/triage?offline=1", {
     data: {

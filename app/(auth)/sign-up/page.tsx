@@ -2,7 +2,7 @@ import { AuthForm } from "@/components/auth/auth-form";
 import { isGoogleAuthEnabled } from "@/lib/auth/auth";
 import Link from "next/link";
 
-export const metadata = { title: "Create a Sifty account" };
+export const metadata = { title: { absolute: "Create a Sifty account" } };
 
 export default async function SignUpPage({
   searchParams,
