@@ -1,4 +1,4 @@
-import { scrubUrlsDeep, stripQuery } from "@/lib/observability/scrub";
+import { SCRUBBED, scrubUrlsDeep, stripQuery } from "@/lib/observability/scrub";
 import { describe, expect, it } from "vitest";
 
 describe("stripQuery", () => {
@@ -37,6 +37,31 @@ describe("scrubUrlsDeep", () => {
     expect(out.contexts.nextjs.request_path).toBe("/redeem");
     expect(out.breadcrumbs[0]?.data.to).toBe("/redeem");
     expect(out.message).toBe("plain text with code=notaurl stays");
+  });
+
+  it("removes query-shaped fields that Sentry stores separately from the URL", () => {
+    const event = {
+      request: {
+        url: "https://sifty-app.vercel.app/reset-password",
+        query_string: "token=secret-reset-token",
+        headers: { Referer: "https://sifty-app.vercel.app/redeem" },
+      },
+      contexts: {
+        nextjs: { request_path: "/redeem" },
+        trace: { data: { query: { code: "sifty-secret" }, "http.query": "code=sifty-secret" } },
+      },
+      breadcrumbs: [
+        { category: "fetch", data: { url: "/api/redeem", query_params: [["code", "s"]] } },
+      ],
+    };
+    const out = scrubUrlsDeep(event);
+    const json = JSON.stringify(out);
+    expect(json).not.toContain("secret");
+    expect(json).not.toContain("sifty-secret");
+    expect(out.request.query_string).toBe(SCRUBBED);
+    expect(out.contexts.trace.data.query).toBe(SCRUBBED);
+    expect(out.breadcrumbs[0]?.data.query_params).toBe(SCRUBBED);
+    expect(out.request.url).toBe("https://sifty-app.vercel.app/reset-password");
   });
 
   it("leaves non-URL values and primitives untouched", () => {
