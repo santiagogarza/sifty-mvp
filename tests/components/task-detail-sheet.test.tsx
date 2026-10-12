@@ -56,6 +56,20 @@ afterEach(() => {
   cleanup();
 });
 
+describe("TaskDetailSheet header", () => {
+  it("shows the confidence pill once sifted, and the thinking line while organizing", () => {
+    const { rerender } = render(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
+    const pill = screen.getByTestId("confidence-pill");
+    expect(pill).toHaveTextContent("Sifted · 90%");
+    expect(pill).toHaveAttribute("data-band", "ok");
+
+    useStore.setState({ tasks: [{ ...task, aiStatus: "running" }] });
+    rerender(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
+    expect(screen.queryByTestId("confidence-pill")).toBeNull();
+    expect(screen.getByText(/Sifty is organizing this/)).toBeInTheDocument();
+  });
+});
+
 describe("TaskDetailSheet duplicate", () => {
   it("the Duplicate button creates the copy and opens it", async () => {
     const user = userEvent.setup();

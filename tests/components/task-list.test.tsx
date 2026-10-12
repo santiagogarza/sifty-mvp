@@ -4,7 +4,7 @@ import { Toaster, useToastStore } from "@/components/ui/toast";
 import { resolveSnooze } from "@/lib/domain/snooze";
 import type { Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -108,6 +108,41 @@ describe("TaskList focus recovery", () => {
     rerenderWith([]);
     const empty = screen.getByText("All clear");
     expect(empty).toBeInTheDocument();
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement?.contains(empty)).toBe(true);
+  });
+
+  it("keeps focus through a completion ghost and lands on the empty state after it collapses", async () => {
+    const user = userEvent.setup();
+    const only = makeTask("solo", "Solo");
+    // Real completion path: the task stays in the store as done, so the
+    // list renders a ghost before the empty state takes over.
+    useStore.setState({ tasks: [only], labels: [] });
+    const onOpen = vi.fn();
+    const view = render(
+      <TaskList tasks={[only]} onOpen={onOpen} emptyState={<div>All clear</div>} />,
+    );
+
+    await user.keyboard("{ArrowDown}");
+    expect(row("Solo")).toHaveFocus();
+
+    useStore.setState({ tasks: [{ ...only, lifecycle: "done" }] });
+    view.rerender(<TaskList tasks={[]} onOpen={onOpen} emptyState={<div>All clear</div>} />);
+
+    // Ghost phase: the struck row lingers, focus stays inside the list.
+    const ghost = screen.getByRole("option", { name: /Solo/ });
+    expect(ghost).toBeInTheDocument();
+    expect(document.activeElement).not.toBe(document.body);
+    expect(screen.getByRole("listbox", { name: "Tasks" })).toContainElement(
+      document.activeElement as HTMLElement,
+    );
+
+    // jsdom has no AnimationEvent, so React listens for the webkit-prefixed
+    // name there; hand-build the event with the animation name React reads.
+    const end = new Event("webkitAnimationEnd", { bubbles: true });
+    Object.defineProperty(end, "animationName", { value: "sifty-ghost-collapse" });
+    fireEvent(ghost.closest(".ghost-collapse")!, end);
+    const empty = screen.getByText("All clear");
     expect(document.activeElement).not.toBe(document.body);
     expect(document.activeElement?.contains(empty)).toBe(true);
   });
