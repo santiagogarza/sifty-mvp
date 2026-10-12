@@ -199,6 +199,23 @@ describe("CaptureDialog natural-language due date", () => {
     expect(useStore.getState().tasks[0]!.due).toBeNull();
   });
 
+  it("a removed chip comes back when the phrase grows into a different day", async () => {
+    const user = userEvent.setup();
+    renderCapture();
+
+    const textarea = screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    await user.type(textarea, "Send the report tomorrow");
+    await user.click(screen.getByRole("button", { name: "Remove due date" }));
+    expect(screen.queryByTestId("capture-due-chip")).toBeNull();
+
+    // "tomorrow" → "day after tomorrow": same words, another day.
+    textarea.setSelectionRange("Send the report ".length, "Send the report ".length);
+    await user.keyboard("day after ");
+    expect(textarea).toHaveValue("Send the report day after tomorrow");
+    expect(screen.getByTestId("capture-due-chip")).toBeInTheDocument();
+    expect(screen.getByText("from “day after tomorrow”")).toBeInTheDocument();
+  });
+
   it("a removed chip stays removed with the draft across Escape and reopen", async () => {
     const user = userEvent.setup();
     const { reopen } = renderCapture();

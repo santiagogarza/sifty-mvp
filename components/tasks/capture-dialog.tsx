@@ -47,18 +47,26 @@ export function CaptureDialog({
   const [text, setText] = React.useState("");
   const [context, setContext] = React.useState("");
   const [showContext, setShowContext] = React.useState(false);
-  /** The date phrase the user removed; the chip stays away while it still parses to this. */
-  const [dismissedPhrase, setDismissedPhrase] = React.useState<string | null>(null);
+  /**
+   * The date the user declined: its phrase and the day it resolved to. The
+   * chip stays away while that phrase still names that day.
+   */
+  const [dismissed, setDismissed] = React.useState<{ phrase: string; due: string } | null>(null);
   const textRef = React.useRef<HTMLTextAreaElement>(null);
 
   const hasDraft = text.length > 0 || context.length > 0;
 
   const dateMatch = React.useMemo(() => parseNaturalDate(text), [text]);
-  // Declined once, a phrase stays declined even as it grows ("tomorrow" →
-  // "tomorrow 3pm"): the chip returns only for a phrase the user has not
-  // yet said no to.
+  // Declined once, a date stays declined as its phrase grows ("tomorrow" →
+  // "tomorrow 3pm"); a phrase that now names a different day ("Friday" →
+  // "next Friday") is a new offer.
   const dueChip =
-    dateMatch && !(dismissedPhrase && dateMatch.text.toLowerCase().includes(dismissedPhrase))
+    dateMatch &&
+    !(
+      dismissed &&
+      dateMatch.text.toLowerCase().includes(dismissed.phrase) &&
+      dateMatch.due === dismissed.due
+    )
       ? dateMatch
       : null;
 
@@ -67,16 +75,14 @@ export function CaptureDialog({
     // A removed chip stays removed while its phrase is still in the text;
     // once the phrase is gone (deleted, or the field retyped) a fresh
     // phrase earns a fresh chip.
-    if (dismissedPhrase && !next.toLowerCase().includes(dismissedPhrase)) {
-      setDismissedPhrase(null);
-    }
+    if (dismissed && !next.toLowerCase().includes(dismissed.phrase)) setDismissed(null);
   };
 
   const clearDraft = () => {
     setText("");
     setContext("");
     setShowContext(false);
-    setDismissedPhrase(null);
+    setDismissed(null);
   };
 
   React.useEffect(() => {
@@ -154,7 +160,7 @@ export function CaptureDialog({
                 <button
                   type="button"
                   onClick={() => {
-                    setDismissedPhrase(dueChip.text.toLowerCase());
+                    setDismissed({ phrase: dueChip.text.toLowerCase(), due: dueChip.due });
                     textRef.current?.focus();
                   }}
                   aria-label="Remove due date"
