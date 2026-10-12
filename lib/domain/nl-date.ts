@@ -217,12 +217,12 @@ const RULES: Rule[] = [
   {
     re: new RegExp(`\\b${PREP}(\\d{1,2})/(\\d{1,2})(?:/(\\d{4}|\\d{2}))?\\b`, "gi"),
     resolve: (m, today, text) => {
-      // "1/2 cup" is a fraction; a slash date needs a preposition in front
-      // or nothing but punctuation behind it.
-      const hasPrep = /^[a-z]/i.test(m[0]);
+      // "1/2 cup" and "by 1/2 of the budget" are fractions. A slash date is
+      // the ambiguous form, so it only counts with nothing but punctuation
+      // or a time of day behind it, preposition or not; month names carry
+      // no such restriction.
       const tail = text.slice(m.index + m[0].length);
       if (
-        !hasPrep &&
         !/^(?:\s*$|\s*[,.;!?)]|\s+(?:at\s+)?(?:\d{1,2}(?::\d{2})?\s*(?:am|pm)|\d{1,2}:\d{2}|noon|midday|midnight)\b)/i.test(
           tail,
         )
