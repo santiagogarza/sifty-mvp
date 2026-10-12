@@ -203,13 +203,42 @@ export function createPostgresRepos(): Repos {
   };
 
   const labels: LabelRepo = {
-    async list(userId) {
+    async list(userId, opts = {}) {
       const db = getDb();
-      const rows = await db
+      const query = db
         .select()
         .from(schema.labels)
         .where(eq(schema.labels.userId, userId))
         .orderBy(schema.labels.createdAt);
+      const rows = opts.limit === undefined ? await query : await query.limit(opts.limit);
+      return rows.map(rowToLabel);
+    },
+    async findByNames(userId, names) {
+      if (!names.length) return [];
+      const db = getDb();
+      const lowered = Array.from(new Set(names.map((n) => n.toLowerCase())));
+      const rows = await db
+        .select()
+        .from(schema.labels)
+        .where(
+          and(
+            eq(schema.labels.userId, userId),
+            inArray(sql`lower(${schema.labels.name})`, lowered),
+          ),
+        )
+        .orderBy(schema.labels.createdAt)
+        .limit(lowered.length);
+      return rows.map(rowToLabel);
+    },
+    async listByIds(userId, ids) {
+      if (!ids.length) return [];
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.labels)
+        .where(and(eq(schema.labels.userId, userId), inArray(schema.labels.id, [...ids])))
+        .orderBy(schema.labels.createdAt)
+        .limit(ids.length);
       return rows.map(rowToLabel);
     },
     async ensure(userId, input) {
@@ -250,16 +279,36 @@ export function createPostgresRepos(): Repos {
   };
 
   const tasks: TaskRepo = {
-    async list(userId) {
+    async list(userId, opts = {}) {
       const db = getDb();
-      const [rows, labelRows] = await Promise.all([
-        db
-          .select()
-          .from(schema.tasks)
-          .where(eq(schema.tasks.userId, userId))
-          .orderBy(desc(schema.tasks.updatedAt)),
-        db.select().from(schema.taskLabels).where(eq(schema.taskLabels.userId, userId)),
-      ]);
+      const rowsQuery = db
+        .select()
+        .from(schema.tasks)
+        .where(
+          and(
+            eq(schema.tasks.userId, userId),
+            opts.lifecycles ? inArray(schema.tasks.lifecycle, [...opts.lifecycles]) : undefined,
+          ),
+        )
+        .orderBy(desc(schema.tasks.updatedAt));
+      const rows = opts.limit === undefined ? await rowsQuery : await rowsQuery.limit(opts.limit);
+      if (!rows.length) return [];
+      // Unbounded list: one query for every link. Bounded: only the links
+      // of the rows returned, so a LIMIT stays a LIMIT.
+      const labelRows = await db
+        .select()
+        .from(schema.taskLabels)
+        .where(
+          and(
+            eq(schema.taskLabels.userId, userId),
+            opts.limit === undefined && !opts.lifecycles
+              ? undefined
+              : inArray(
+                  schema.taskLabels.taskId,
+                  rows.map((r) => r.id),
+                ),
+          ),
+        );
       const byTask = groupLabelIds(labelRows);
       return rows.map((row) => rowToTask(row, byTask.get(row.id) ?? []));
     },
@@ -323,12 +372,23 @@ export function createPostgresRepos(): Repos {
         now: new Date(),
       });
 
+      // The sift guard is part of the UPDATE's own predicate, so the
+      // check and the write are one statement.
+      const siftGuard =
+        opts && "ifSiftId" in opts
+          ? opts.ifSiftId === null || opts.ifSiftId === undefined
+            ? isNull(schema.tasks.siftId)
+            : eq(schema.tasks.siftId, opts.ifSiftId)
+          : undefined;
+
       // Task row + label links change together — one transaction.
-      await db.transaction(async (tx) => {
-        await tx
+      const written = await db.transaction(async (tx) => {
+        const updated = await tx
           .update(schema.tasks)
           .set(columns)
-          .where(and(eq(schema.tasks.id, taskId), eq(schema.tasks.userId, userId)));
+          .where(and(eq(schema.tasks.id, taskId), eq(schema.tasks.userId, userId), siftGuard))
+          .returning({ id: schema.tasks.id });
+        if (updated.length === 0) return false;
 
         if (patch.labelIds) {
           // Only link labels this user owns; a stale/foreign id is dropped.
@@ -350,7 +410,9 @@ export function createPostgresRepos(): Repos {
               .onConflictDoNothing();
           }
         }
+        return true;
       });
+      if (!written) return null;
 
       return tasks.get(userId, taskId);
     },
@@ -386,13 +448,19 @@ export function createPostgresRepos(): Repos {
   };
 
   const memories: MemoryRepo = {
-    async list(userId) {
+    async list(userId, opts = {}) {
       const db = getDb();
-      const rows = await db
+      const query = db
         .select()
         .from(schema.memories)
-        .where(eq(schema.memories.userId, userId))
+        .where(
+          and(
+            eq(schema.memories.userId, userId),
+            opts.pinned === undefined ? undefined : eq(schema.memories.pinned, opts.pinned),
+          ),
+        )
         .orderBy(desc(schema.memories.createdAt));
+      const rows = opts.limit === undefined ? await query : await query.limit(opts.limit);
       return rows.map(rowToMemory);
     },
     async create(userId, input: MemoryCreateInput) {
@@ -882,6 +950,9 @@ function rowToTask(row: typeof schema.tasks.$inferSelect, labelIds: string[]): T
     clarifyingQuestion: row.clarifyingQuestion,
     rationale: row.rationale,
     agentBrief: row.agentBrief,
+    siftId: row.siftId,
+    siftStage: row.siftStage,
+    plan: row.plan ?? null,
     labelIds,
     subtasks: row.subtasks ?? [],
     editedFields: (row.editedFields ?? []) as TaskEditableField[],

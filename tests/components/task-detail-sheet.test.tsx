@@ -13,7 +13,7 @@ vi.mock("@/components/app-shell/app-frame", () => ({
   useFrame: () => ({ openDetail, openCapture: vi.fn(), openCommand: vi.fn() }),
 }));
 vi.mock("@/lib/ai/run-triage", () => ({
-  runTriage: vi.fn(),
+  resiftTask: vi.fn(),
   isTriageInFlight: () => false,
 }));
 
@@ -39,6 +39,9 @@ const task: Task = {
   clarifyingQuestion: null,
   rationale: "Recurring ritual.",
   agentBrief: null,
+  siftId: null,
+  siftStage: null,
+  plan: null,
   labelIds: [],
   subtasks: [{ id: "st_1", title: "Review calendar", done: true, order: 0 }],
   editedFields: [],
@@ -67,6 +70,22 @@ describe("TaskDetailSheet header", () => {
     rerender(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
     expect(screen.queryByTestId("confidence-pill")).toBeNull();
     expect(screen.getByText(/Sifty is organizing this/)).toBeInTheDocument();
+  });
+
+  it("names the running stage in the five-step strip", () => {
+    useStore.setState({ tasks: [{ ...task, aiStatus: "running", siftStage: "prioritize" }] });
+    render(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
+    const strip = screen.getByTestId("sift-progress");
+    expect(strip).toHaveTextContent("Prioritizing…");
+    expect(strip).toHaveAttribute("aria-label", "Prioritizing (step 2 of 5)");
+  });
+
+  it("Reorganize asks the server to re-sift", async () => {
+    const user = userEvent.setup();
+    const { resiftTask } = await import("@/lib/ai/run-triage");
+    render(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: "Reorganize with Sifty" }));
+    expect(resiftTask).toHaveBeenCalledWith("task_src");
   });
 });
 

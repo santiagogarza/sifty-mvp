@@ -132,6 +132,25 @@ export const tasks = pgTable(
     rationale: text("rationale"),
     /** Markdown handoff brief from "Prepare for agent". */
     agentBrief: text("agent_brief"),
+    /**
+     * The sift (workflow run) that currently owns this task's AI fields.
+     * Steps compare it before writing, so a re-sift supersedes an older run
+     * that is still in flight instead of racing it.
+     */
+    siftId: text("sift_id"),
+    /** Stage in progress (or the one that failed); null when idle/ready. */
+    siftStage: text("sift_stage", {
+      enum: ["enrich", "prioritize", "triage", "subtasks", "plan"],
+    }),
+    /** Output of the `plan` stage: can AI do it, which executor, which connectors. */
+    plan: jsonb("plan").$type<{
+      executor: "self" | "ai_agent" | "cursor_agent" | "person" | "none";
+      approach: string | null;
+      connectors: string[];
+      readyForAi: boolean;
+      blockers: string | null;
+      promptVersion: string;
+    }>(),
     /** Field names the user has manually edited; protected from re-triage. */
     editedFields: jsonb("edited_fields").$type<string[]>().notNull().default([]),
     /** Inline subtasks (small list, no need for a join). */

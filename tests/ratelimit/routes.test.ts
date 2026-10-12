@@ -6,6 +6,7 @@ import {
   createUpstashStore,
   setRateLimitStoreForTesting,
 } from "@/lib/ratelimit/limiter";
+import { setWorkflowClientForTesting } from "@/lib/workflows/dispatch";
 import { middleware } from "@/middleware";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -66,10 +67,17 @@ describe.each(STORES)("per-route rate limits — $name", ({ make }) => {
     vi.stubEnv("INVITE_CODE_PEPPER", "test-pepper-with-enough-length-0123");
     vi.stubEnv("AUTH_SECRET", "test-auth-secret-do-not-use-in-production-please-32");
     vi.mocked(resolveProvider).mockReturnValue(mockResolvedProvider("triage"));
+    // Admitted re-sifts are enqueued through the dispatch seam; stub it so
+    // they answer 202 without a Workflow runtime.
+    setWorkflowClientForTesting({
+      start: async () => ({ runId: "wrun_limit" }),
+      wait: async () => ({ status: "pending" }),
+    });
   });
 
   afterEach(() => {
     __resetRateLimits();
+    setWorkflowClientForTesting(null);
     vi.useRealTimers();
   });
 
@@ -79,46 +87,29 @@ describe.each(STORES)("per-route rate limits — $name", ({ make }) => {
     const repos = getTestRepos();
     const a = await createUserWithCookie(repos, { email: "a@example.com", isCreator: false });
     const b = await createUserWithCookie(repos, { email: "b@example.com", isCreator: false });
-    const { generateObject } = await import("ai");
-    vi.mocked(generateObject).mockResolvedValue({
-      object: {
-        title: "T",
-        description: null,
-        nextAction: null,
-        urgency: 0.4,
-        importance: 0.4,
-        effort: "small",
-        dueHint: null,
-        delegationCandidate: "self",
-        suggestedLabels: [],
-        subtasks: [],
-        rationale: null,
-        confidence: 0.7,
-        clarifyingQuestion: null,
-      },
-      usage: { inputTokens: 10, outputTokens: 5 },
-    } as unknown as Awaited<ReturnType<typeof generateObject>>);
+    const taskA = await repos.tasks.create(a.user.id, { sourceText: "A", sourceContext: null });
+    const taskB = await repos.tasks.create(b.user.id, { sourceText: "B", sourceContext: null });
     const { POST } = await import("@/app/api/triage/route");
     const fire = (cookie: string, ip: string) =>
       POST(
         json(
           "http://localhost/api/triage",
-          { sourceText: "Test" },
+          { taskId: cookie === a.cookie ? taskA.id : taskB.id },
           { cookie, "x-forwarded-for": ip },
         ),
       );
 
     // Same IP, two users: the third request from that IP is refused even
     // though each user is under their own cap.
-    expect((await fire(a.cookie, "9.9.9.9")).status).toBe(200);
-    expect((await fire(b.cookie, "9.9.9.9")).status).toBe(200);
-    expect((await fire(a.cookie, "9.9.9.9")).status).toBe(200);
+    expect((await fire(a.cookie, "9.9.9.9")).status).toBe(202);
+    expect((await fire(b.cookie, "9.9.9.9")).status).toBe(202);
+    expect((await fire(a.cookie, "9.9.9.9")).status).toBe(202);
     await expect429(await fire(b.cookie, "9.9.9.9"));
 
     // Same user from fresh IPs: already used 2 of 2 → refused regardless of IP.
     await expect429(await fire(a.cookie, "7.7.7.7"));
     // The other user had 1 of 2 → one more from a fresh IP passes.
-    expect((await fire(b.cookie, "8.8.8.8")).status).toBe(200);
+    expect((await fire(b.cookie, "8.8.8.8")).status).toBe(202);
   });
 
   it("/api/agent-brief: own per-user budget, 429 before any task lookup", async () => {
@@ -220,7 +211,7 @@ describe.each(STORES)("per-route rate limits — $name", ({ make }) => {
     await flood(() =>
       redeem(json("http://localhost/api/invites/redeem", { code: "sifty-x" }, anon)),
     );
-    await flood(() => triage(json("http://localhost/api/triage", { sourceText: "x" }, anon)));
+    await flood(() => triage(json("http://localhost/api/triage", { taskId: "t" }, anon)));
     await flood(() => brief(json("http://localhost/api/agent-brief", { taskId: "t" }, anon)));
   });
 

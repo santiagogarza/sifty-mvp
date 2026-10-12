@@ -9,13 +9,20 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
+/**
+ * The sift poller reads this. `labels` carries the task's labels so a
+ * client that has never seen a label the enrich stage just created can
+ * render it without a second round trip.
+ */
 export async function GET(req: Request, ctx: RouteContext) {
   const { id } = await ctx.params;
   const session = await getSession(req);
   if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
-  const task = await getRepos().tasks.get(session.user.id, id);
+  const repos = getRepos();
+  const task = await repos.tasks.get(session.user.id, id);
   if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json({ task });
+  const labels = await repos.labels.listByIds(session.user.id, task.labelIds);
+  return NextResponse.json({ task, labels });
 }
 
 export async function PATCH(req: Request, ctx: RouteContext) {

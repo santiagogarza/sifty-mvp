@@ -40,11 +40,24 @@ export async function gateAiRequestByIp(req: Request, bucket: string): Promise<A
   return limit.ok ? { ok: true } : { ok: false, response: limit.response };
 }
 
-export async function gateAiRequest(args: {
+/**
+ * Transport-free admission decision, so `POST /api/tasks` can create the
+ * task and record a denied sift on it instead of failing the request.
+ */
+export type AiAdmission =
+  | { ok: true }
+  | {
+      ok: false;
+      status: 429 | 402;
+      body: Record<string, unknown>;
+      headers?: Record<string, string>;
+    };
+
+export async function admitAiRun(args: {
   req: Request;
   session: Session;
   bucket: string;
-}): Promise<AiGateResult> {
+}): Promise<AiAdmission> {
   const { req, session, bucket } = args;
   const userId = session.user.id;
 
@@ -53,7 +66,14 @@ export async function gateAiRequest(args: {
     subject: { id: userId, policy: TRIAGE_POLICY },
     message: TOO_MANY,
   });
-  if (!limit.ok) return { ok: false, response: limit.response };
+  if (!limit.ok) {
+    return {
+      ok: false,
+      status: 429,
+      body: { error: TOO_MANY, message: TOO_MANY, code: "rate_limited" },
+      headers: Object.fromEntries(limit.response.headers.entries()),
+    };
+  }
 
   const windowStart = new Date(Date.now() - TRIAGE_POLICY.windowMs);
   const [runsInWindow, aiRunsToday] = await Promise.all([
@@ -65,16 +85,9 @@ export async function gateAiRequest(args: {
     const retryAfterSeconds = Math.max(1, Math.ceil(TRIAGE_POLICY.windowMs / 1000 / 2));
     return {
       ok: false,
-      response: NextResponse.json(
-        { error: TOO_MANY, message: TOO_MANY, code: "rate_limited" },
-        {
-          status: 429,
-          headers: {
-            "Retry-After": String(retryAfterSeconds),
-            "X-RateLimit-Remaining": "0",
-          },
-        },
-      ),
+      status: 429,
+      body: { error: TOO_MANY, message: TOO_MANY, code: "rate_limited" },
+      headers: { "Retry-After": String(retryAfterSeconds), "X-RateLimit-Remaining": "0" },
     };
   }
 
@@ -87,14 +100,28 @@ export async function gateAiRequest(args: {
   if (!allowed.ok) {
     return {
       ok: false,
-      response: NextResponse.json(
-        { error: allowed.reason, code: allowed.code, entitlement },
-        { status: 402 },
-      ),
+      status: 402,
+      body: { error: allowed.reason, code: allowed.code, entitlement },
     };
   }
 
   return { ok: true };
+}
+
+export async function gateAiRequest(args: {
+  req: Request;
+  session: Session;
+  bucket: string;
+}): Promise<AiGateResult> {
+  const admission = await admitAiRun(args);
+  if (admission.ok) return { ok: true };
+  return {
+    ok: false,
+    response: NextResponse.json(admission.body, {
+      status: admission.status,
+      headers: admission.headers,
+    }),
+  };
 }
 
 /**
