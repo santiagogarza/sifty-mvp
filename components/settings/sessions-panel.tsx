@@ -20,7 +20,7 @@ interface SessionRow {
  * `revoke-other-sessions`.
  */
 export function SessionsPanel() {
-  const { data: current } = authClient.useSession();
+  const { data: current, isPending: currentPending } = authClient.useSession();
   const [sessions, setSessions] = React.useState<SessionRow[] | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
 
@@ -53,11 +53,13 @@ export function SessionsPanel() {
     }
   }
 
-  if (sessions === null) {
+  // Until the current session is known, every row would look revocable,
+  // including this device's.
+  if (sessions === null || currentPending || !current) {
     return <div className="text-[13px] text-[var(--fg-muted)]">Loading sessions…</div>;
   }
 
-  const currentToken = current?.session.token;
+  const currentToken = current.session.token;
   const others = sessions.filter((s) => s.token !== currentToken);
 
   return (

@@ -244,8 +244,20 @@ function Divider() {
   );
 }
 
-/** Only same-origin paths; anything else falls back to /today. */
-function safeNext(next?: string): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/today";
+/**
+ * Only same-origin paths; anything else falls back to /today. Rejects
+ * protocol-relative (`//`) and backslash (`/\evil`) forms, which browsers
+ * and server redirects can treat as a new host.
+ */
+export function safeNext(next?: string): string {
+  if (!next) return "/today";
+  const isLocalPath = (p: string) => /^\/(?![/\\])[^\\]*$/.test(p);
+  try {
+    // Check the raw and the once-decoded form: `/%5Cevil` decodes to `/\evil`.
+    if (!isLocalPath(next) || !isLocalPath(decodeURIComponent(next))) return "/today";
+    if (new URL(next, "http://sifty.local").origin !== "http://sifty.local") return "/today";
+  } catch {
+    return "/today";
+  }
   return next;
 }
