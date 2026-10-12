@@ -70,6 +70,7 @@ export class ConnectorApiError extends Error {
 }
 
 const MAX_ERROR_DETAIL = 300;
+const PROVIDER_TIMEOUT_MS = 15_000;
 
 /** `fetch` with the bearer token attached and non-2xx turned into `ConnectorApiError`. */
 export async function providerFetch(
@@ -79,6 +80,7 @@ export async function providerFetch(
 ): Promise<Response> {
   const res = await ctx.fetch(url, {
     ...init,
+    signal: init.signal ?? AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${ctx.token}`,
       Accept: "application/json",

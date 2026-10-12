@@ -97,17 +97,20 @@ const getMessage = defineTool({
   },
 });
 
+/** Header values go on their own RFC822 line; a CR or LF would start a new header. */
+const NO_LINE_BREAKS = /^[^\r\n]*$/;
+
 const createDraft = defineTool({
   name: "google_gmail_create_draft",
   description:
     "Create a Gmail draft (never sends). Pass threadId to draft a reply inside an existing thread.",
   kind: "write",
   inputSchema: z.object({
-    to: z.string().min(3),
-    subject: z.string().max(300),
+    to: z.string().min(3).regex(NO_LINE_BREAKS, "Must not contain line breaks."),
+    subject: z.string().max(300).regex(NO_LINE_BREAKS, "Must not contain line breaks."),
     body: z.string().max(50_000),
     threadId: z.string().optional(),
-    inReplyTo: z.string().optional(),
+    inReplyTo: z.string().regex(NO_LINE_BREAKS, "Must not contain line breaks.").optional(),
   }),
   async execute(input, ctx) {
     const lines = [

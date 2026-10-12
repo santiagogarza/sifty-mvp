@@ -260,11 +260,15 @@ export async function completeConnect(
   const broker = brokerFor(spec);
   const result = await broker.complete({ spec, userId, connection: row, query });
   if (!result.ok) {
-    await repos.connections.update(userId, provider, {
-      status: "error",
-      authState: null,
-      lastError: result.reason,
-    });
+    // Only a callback bound to this attempt's state may end it; an unbound
+    // hit during the consent window must leave the real redirect a pending row.
+    if (state) {
+      await repos.connections.update(userId, provider, {
+        status: "error",
+        authState: null,
+        lastError: result.reason,
+      });
+    }
     return { ok: false, code: "denied", reason: result.reason };
   }
   const connection = await repos.connections.update(userId, provider, {
@@ -289,14 +293,14 @@ export async function disconnect(
   const spec = resolveProvider(provider);
   const row = await repos.connections.get(userId, provider);
   if (!row) return false;
-  if (row.status === "connected") {
-    try {
-      await brokerFor(spec).revoke(row, spec);
-    } catch (err) {
-      // The row goes regardless: a grant we can no longer reach is still
-      // unusable without the reference, and the user asked for it gone.
-      reportError(err, { area: "connectors.disconnect", userId, tags: { provider } });
-    }
+  // Revoke in every state: an `error` or `pending` row can still sit on top
+  // of a live grant at the broker.
+  try {
+    await brokerFor(spec).revoke(row, spec);
+  } catch (err) {
+    // The row goes regardless: a grant we can no longer reach is still
+    // unusable without the reference, and the user asked for it gone.
+    reportError(err, { area: "connectors.disconnect", userId, tags: { provider } });
   }
   return repos.connections.delete(userId, provider);
 }
