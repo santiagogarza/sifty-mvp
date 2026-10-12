@@ -42,6 +42,7 @@ describe("model registry", () => {
       "plan",
       "execute",
       "digest",
+      "memory",
     ]);
     for (const stage of STAGES) {
       const route = STAGE_ROUTES[stage];

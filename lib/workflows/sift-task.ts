@@ -1,3 +1,4 @@
+import { type MemoryExtractOutcome, extractMemories } from "@/lib/ai/memory/execute";
 import {
   type PendingQuestion,
   type SiftInput,
@@ -25,6 +26,7 @@ import { acquireUserSlot } from "./user-lock";
  * `siftTask` — the durable sifting pipeline.
  *
  *   enrich → prioritize (list-aware) → triage → subtasks → plan
+ *   (→ memory, best effort, after the task is ready)
  *
  * Each stage is one step: it re-reads the task, calls the stage's model (or
  * the offline heuristic), writes its fields with `editedFields` protection,
@@ -71,7 +73,7 @@ export async function siftTask(input: SiftInput): Promise<SiftOutcome> {
     if (!first.question) {
       const finished = await finishStep(input);
       if (finished !== "applied") return { outcome: finished, at: "finish" };
-      return { outcome: "completed" };
+      return completed(input, workflowRunId, { outcome: "completed" });
     }
 
     // Register the hook before the decision exists, so an answer that
@@ -95,7 +97,7 @@ export async function siftTask(input: SiftInput): Promise<SiftOutcome> {
       resolution = await expireDecisionStep(input, first.question.decisionId);
     }
     if (resolution.status !== "answered") {
-      return { outcome: "completed", decision: resolution.status };
+      return completed(input, workflowRunId, { outcome: "completed", decision: resolution.status });
     }
 
     slot = await acquireUserSlot("sift", input.userId, SIFT_SLOTS_PER_USER);
@@ -105,13 +107,32 @@ export async function siftTask(input: SiftInput): Promise<SiftOutcome> {
     if (second.outcome !== "applied") return second;
     const done = await finishStep(input);
     if (done !== "applied") return { outcome: done, at: "finish" };
-    return { outcome: "completed", decision: "answered" };
+    return completed(input, workflowRunId, { outcome: "completed", decision: "answered" });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[workflow] sift ${input.siftId}: failed — ${message}`);
     await failStep(input, message);
     throw err;
   }
+}
+
+/**
+ * Best effort, after the task is already `ready`: a memory proposal is a
+ * nice-to-have and must never turn a finished sift into a failed one.
+ */
+async function completed(
+  input: SiftInput,
+  workflowRunId: string,
+  outcome: SiftOutcome,
+): Promise<SiftOutcome> {
+  try {
+    await memoryStep(input, workflowRunId);
+  } catch (err) {
+    console.error(
+      `[workflow] sift ${input.siftId}: memory extraction failed — ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  return outcome;
 }
 
 type PassResult =
@@ -207,4 +228,20 @@ async function expireDecisionStep(
 async function failStep(input: SiftInput, message: string): Promise<StepOutcome> {
   "use step";
   return failSift(input, message);
+}
+
+async function memoryStep(input: SiftInput, runId: string): Promise<MemoryExtractOutcome> {
+  "use step";
+  return extractMemories(
+    {
+      userId: input.userId,
+      taskId: input.taskId,
+      siftId: input.siftId,
+      trigger: "sift",
+      contradictions: [],
+      modelPreference: input.modelPreference,
+      offline: input.offline,
+    },
+    runId,
+  );
 }

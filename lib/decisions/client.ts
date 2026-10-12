@@ -1,7 +1,7 @@
 "use client";
 
 import { watchSift } from "@/lib/ai/run-triage";
-import type { Decision, DecisionAnswer, Task } from "@/lib/domain/types";
+import type { Decision, DecisionAnswer, Memory, Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
 import { create } from "zustand";
 
@@ -120,6 +120,7 @@ export const useDecisionsStore = create<DecisionsState>()((set, get) => ({
       error?: string;
       mode?: string;
       task?: Task | null;
+      memory?: Memory | null;
     } | null;
     if (!res.ok) {
       // 409: someone (another tab, a link) got there first — drop it locally.
@@ -128,6 +129,7 @@ export const useDecisionsStore = create<DecisionsState>()((set, get) => ({
     }
     removeLocally(set, get, id);
     adoptTask(body?.task ?? null);
+    adoptMemory(body?.memory ?? null);
     return { ok: true, mode: body?.mode ?? "recorded" };
   },
 
@@ -166,6 +168,18 @@ function removeLocally(
  * The server's task after an answer/dismiss: adopt the AI bookkeeping and
  * follow the sift if one is running, so the task row shows the second pass.
  */
+/**
+ * A confirmed proposal is already on the server; put it in the workspace
+ * without marking it dirty, so the Memory page shows it at once and sync
+ * does not push a copy.
+ */
+function adoptMemory(memory: Memory | null): void {
+  if (!memory) return;
+  useStore.setState((s) =>
+    s.memories.some((m) => m.id === memory.id) ? s : { memories: [memory, ...s.memories] },
+  );
+}
+
 function adoptTask(task: Task | null): void {
   if (!task) return;
   const store = useStore.getState();

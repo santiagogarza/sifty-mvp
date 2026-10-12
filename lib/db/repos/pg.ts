@@ -653,6 +653,16 @@ export function createPostgresRepos(): Repos {
         .limit(opts.limit);
       return rows.map(rowToDecision);
     },
+    async listByKind(userId, kind, opts) {
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.decisions)
+        .where(and(eq(schema.decisions.userId, userId), eq(schema.decisions.kind, kind)))
+        .orderBy(desc(schema.decisions.createdAt), desc(schema.decisions.id))
+        .limit(opts.limit);
+      return rows.map(rowToDecision);
+    },
     async resolve(userId, id, input) {
       const db = getDb();
       const now = new Date();

@@ -1,8 +1,10 @@
+import { memoryFromProposal } from "@/lib/ai/memory/propose";
 import { type EnqueueResult, enqueueSift } from "@/lib/ai/sift/enqueue";
 import { withAnswer } from "@/lib/ai/sift/execute-stage";
 import type { Session } from "@/lib/auth/session";
 import { type Repos, getRepos } from "@/lib/db/repos";
-import type { Decision, DecisionAnswer, Task } from "@/lib/domain/types";
+import type { Decision, DecisionAnswer, Memory, Task } from "@/lib/domain/types";
+import { REMEMBER_OPTION } from "./copy";
 import { answerText, resolveDecision, wakeDecisionRun } from "./service";
 
 /**
@@ -26,6 +28,8 @@ export type AnswerMode =
   | "resumed"
   /** No run was waiting: the answer was folded in and a new sift started. */
   | "resifted"
+  /** A memory proposal was confirmed and written to `memories`. */
+  | "remembered"
   /** Recorded on the decision only (task gone, or a kind with no follow-up). */
   | "recorded";
 
@@ -36,8 +40,12 @@ export type AnswerResult =
       task: Task | null;
       mode: AnswerMode;
       sift: EnqueueResult | null;
+      /** The pinned memory a confirmed proposal became; the client adopts it. */
+      memory?: Memory | null;
     }
-  | { ok: false; reason: "not_found" | "already_resolved"; decision: Decision | null };
+  | { ok: false; reason: "not_found" | "already_resolved"; decision: Decision | null }
+  /** A memory proposal only takes `REMEMBER_OPTION`; anything else is a client bug. */
+  | { ok: false; reason: "invalid_answer"; decision: Decision };
 
 export async function answerDecision(args: {
   req: Request;
@@ -50,16 +58,43 @@ export async function answerDecision(args: {
 }): Promise<AnswerResult> {
   const repos = args.repos ?? getRepos();
   const userId = args.session.user.id;
+
+  // A memory proposal's confirmation *is* the write, so the memory goes in
+  // before the row is resolved: a failed write leaves the proposal open to
+  // retry, and the id derived from the decision makes a second tab's
+  // write a no-op rather than a duplicate.
+  const before = await repos.decisions.get(userId, args.decisionId);
+  if (before?.status === "open" && before.payload.kind === "memory_proposal") {
+    if (args.answer.option !== REMEMBER_OPTION) {
+      return { ok: false, reason: "invalid_answer", decision: before };
+    }
+  }
+  const memory =
+    before?.status === "open" && before.payload.kind === "memory_proposal"
+      ? memoryFromProposal(before)
+      : null;
+  const stored = memory ? await repos.memories.create(userId, memory) : null;
+
   const resolved = await resolveDecision(
     userId,
     args.decisionId,
     { status: "answered", answer: args.answer, wake: false },
     repos,
   );
-  if (!resolved.ok) return resolved;
+  if (!resolved.ok) {
+    // Lost the CAS. If the other side confirmed, the memory is theirs to
+    // keep; if it dismissed (or the row expired), take back what we wrote.
+    if (memory && resolved.decision?.status !== "answered") {
+      await repos.memories.delete(userId, memory.id);
+    }
+    return resolved;
+  }
   const { decision } = resolved;
   const payload = decision.payload;
 
+  if (payload.kind === "memory_proposal") {
+    return { ok: true, decision, task: null, mode: "remembered", sift: null, memory: stored };
+  }
   if (payload.kind !== "clarifying_question" || !decision.taskId) {
     // Nothing is waiting on a kind without follow-up work, but wake anyway
     // so a future kind's run is not left suspended.

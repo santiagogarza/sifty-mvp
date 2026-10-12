@@ -120,6 +120,10 @@ export async function expireOpenDecisionsForTask(
   });
   let expired = 0;
   for (const decision of open) {
+    // Only what the sift asked. A memory proposal is about the user, not
+    // the run, and must survive a re-sift or a delete of the task it
+    // happened to come from.
+    if (decision.payload.kind !== "clarifying_question") continue;
     const resolved = await repos.decisions.resolve(userId, decision.id, {
       status: "expired",
       answer: null,
