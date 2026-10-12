@@ -268,6 +268,12 @@ export interface DecisionRepo {
    */
   listOpenForTask(userId: string, taskId: string, opts: { limit: number }): Promise<Decision[]>;
   /**
+   * Decisions of one kind in any status, newest first, at most `limit`.
+   * Memory extraction reads this to avoid re-raising a proposal the user
+   * already has open, confirmed, or dismissed.
+   */
+  listByKind(userId: string, kind: DecisionKind, opts: { limit: number }): Promise<Decision[]>;
+  /**
    * Compare-and-set out of `open`: returns the resolved row, or null when
    * the decision does not exist for this user or was already resolved, so
    * two answers (two tabs, a link and the app) can never both win.

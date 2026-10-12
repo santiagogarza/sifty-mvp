@@ -177,8 +177,11 @@ const DecisionCard = React.forwardRef<
 
   const payload = decision.payload;
   const question = payload.kind === "clarifying_question" ? payload.question : null;
-  const options = payload.kind === "clarifying_question" ? payload.options : [];
-  const title = task?.title ?? "A task";
+  const proposal = payload.kind === "memory_proposal" ? payload : null;
+  // A memory proposal has one affirmative option, so `1` confirms it.
+  const options =
+    payload.kind === "clarifying_question" ? payload.options : proposal ? [REMEMBER_OPTION] : [];
+  const title = task?.title ?? (proposal ? "Something Sifty noticed" : "A task");
 
   const submit = React.useCallback(
     async (input: { text?: string; option?: string }) => {
@@ -194,9 +197,11 @@ const DecisionCard = React.forwardRef<
         return;
       }
       toast(
-        result.mode === "resumed" || result.mode === "resifted"
-          ? `Answered — Sifty is re-sifting “${title}”`
-          : "Answered",
+        result.mode === "remembered"
+          ? "Remembered — Sifty will use it from the next sift on."
+          : result.mode === "resumed" || result.mode === "resifted"
+            ? `Answered — Sifty is re-sifting “${title}”`
+            : "Answered",
       );
     },
     [answer, busy, decision.id, title],
@@ -211,8 +216,12 @@ const DecisionCard = React.forwardRef<
       toast(result.error);
       return;
     }
-    toast(`Sifty kept its own read of “${title}”. Re-sift the task anytime.`);
-  }, [busy, decision.id, dismiss, title]);
+    toast(
+      proposal
+        ? "Noted — Sifty won't suggest that again."
+        : `Sifty kept its own read of “${title}”. Re-sift the task anytime.`,
+    );
+  }, [busy, decision.id, dismiss, proposal, title]);
 
   React.useImperativeHandle(
     ref,
@@ -270,14 +279,65 @@ const DecisionCard = React.forwardRef<
         </span>
       </div>
 
-      <div className="mt-2 flex items-start gap-2">
-        <Sparkles size={14} className="mt-[3px] shrink-0 text-[var(--accent)]" />
-        <p className="text-[15px] leading-[1.45] text-[var(--fg)] tracking-[-0.005em]">
-          {question ?? "Sifty needs your input."}
-        </p>
-      </div>
+      {proposal ? (
+        <>
+          <div className="mt-2 flex items-start gap-2">
+            <Sparkles size={14} className="mt-[3px] shrink-0 text-[var(--accent)]" />
+            <div className="min-w-0">
+              <p className="text-eyebrow !text-[var(--ai)]">Remember this?</p>
+              <p
+                className="mt-1 text-[15px] leading-[1.45] text-[var(--fg)] tracking-[-0.005em]"
+                data-testid="memory-proposal-text"
+              >
+                {proposal.text}
+              </p>
+              {proposal.rationale ? (
+                <p className="mt-1 text-[12.5px] leading-[1.5] text-[var(--fg-muted)]">
+                  From: “{proposal.rationale}”
+                </p>
+              ) : null}
+            </div>
+          </div>
+          <div className="mt-3 flex items-center gap-1.5">
+            <Button
+              type="button"
+              size="sm"
+              variant="primary"
+              onClick={() => void submit({ option: REMEMBER_OPTION })}
+              disabled={!!busy}
+              data-testid="memory-proposal-remember"
+            >
+              <Check size={13} />
+              Remember
+              {active ? (
+                <Kbd className="hidden sm:inline-flex !h-4 min-w-[16px] text-[9.5px]">1</Kbd>
+              ) : null}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => void runDismiss()}
+              disabled={!!busy}
+              className="text-[var(--fg-muted)]"
+              data-testid="memory-proposal-dismiss"
+            >
+              Not this
+            </Button>
+          </div>
+        </>
+      ) : null}
 
-      {options.length > 0 ? (
+      {!proposal ? (
+        <div className="mt-2 flex items-start gap-2">
+          <Sparkles size={14} className="mt-[3px] shrink-0 text-[var(--accent)]" />
+          <p className="text-[15px] leading-[1.45] text-[var(--fg)] tracking-[-0.005em]">
+            {question ?? "Sifty needs your input."}
+          </p>
+        </div>
+      ) : null}
+
+      {!proposal && options.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Suggested answers">
           {options.map((option, i) => (
             <button
@@ -301,44 +361,49 @@ const DecisionCard = React.forwardRef<
         </div>
       ) : null}
 
-      <form
-        className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!text.trim()) return;
-          void submit({ text });
-          setText("");
-        }}
-      >
-        <Input
-          ref={inputRef}
-          value={text}
-          maxLength={DECISION_LIMITS.answerText}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={options.length ? "Or type an answer…" : "Type an answer…"}
-          aria-label="Your answer"
-          className="h-9 flex-1 text-[13.5px]"
-        />
-        <div className="flex items-center gap-1.5 justify-end">
-          <Button type="submit" size="sm" variant="primary" disabled={!text.trim() || !!busy}>
-            <Check size={13} />
-            Answer
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => void runDismiss()}
-            disabled={!!busy}
-            className="text-[var(--fg-muted)]"
-          >
-            Let Sifty decide
-          </Button>
-        </div>
-      </form>
+      {proposal ? null : (
+        <form
+          className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!text.trim()) return;
+            void submit({ text });
+            setText("");
+          }}
+        >
+          <Input
+            ref={inputRef}
+            value={text}
+            maxLength={DECISION_LIMITS.answerText}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={options.length ? "Or type an answer…" : "Type an answer…"}
+            aria-label="Your answer"
+            className="h-9 flex-1 text-[13.5px]"
+          />
+          <div className="flex items-center gap-1.5 justify-end">
+            <Button type="submit" size="sm" variant="primary" disabled={!text.trim() || !!busy}>
+              <Check size={13} />
+              Answer
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => void runDismiss()}
+              disabled={!!busy}
+              className="text-[var(--fg-muted)]"
+            >
+              Let Sifty decide
+            </Button>
+          </div>
+        </form>
+      )}
     </div>
   );
 });
+
+/** The one answer a memory proposal takes; stored on the decision as its option. */
+export const REMEMBER_OPTION = "Remember";
 
 function KeyboardHint() {
   return (

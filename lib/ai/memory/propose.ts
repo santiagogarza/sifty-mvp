@@ -1,12 +1,15 @@
 import type { Repos } from "@/lib/db/repos";
+import type { Decision, Memory, MemoryProposalPayload } from "@/lib/domain/types";
 import { MIN_MEMORY_CONFIDENCE, type MemoryProposal, normalizeMemoryText } from "./extract";
 
 /**
- * Where proposals go. Confirmation writes to `memories`; a dismissal is a
- * negative that stops the same proposal from being raised again. Both
- * live in the Decisions inbox (`decisions`, kind `memory_proposal`); this
- * seam exists so the extraction step can be built and tested before that
- * table lands, and so tests can capture proposals without a store.
+ * Proposals become `memory_proposal` decisions in the Decisions inbox.
+ * Confirming one writes it to `memories` (`lib/decisions/actions.ts`);
+ * dismissing one leaves the resolved row behind as a negative, so the
+ * same idea — matched by normalized text — is never raised again. An open
+ * or confirmed row blocks a duplicate the same way.
+ *
+ * The sink is a seam so tests can capture proposals without a store.
  */
 
 export interface MemoryProposalSource {
@@ -22,26 +25,46 @@ export type MemoryProposalSink = (
   source: MemoryProposalSource,
 ) => Promise<{ filed: number }>;
 
-/**
- * Until the Decisions inbox exists there is nowhere to ask the user, so
- * proposals are not persisted anywhere: they are logged and dropped. The
- * step still records its `ai_runs` row so the cost is visible.
- */
-export const logOnlySink: MemoryProposalSink = async (_repos, userId, proposals, source) => {
-  if (proposals.length) {
-    console.log(
-      `[memory] ${proposals.length} proposal(s) for ${userId} from ${source.trigger} on ${source.taskId}: ${proposals
-        .map((p) => `"${p.text}"`)
-        .join(", ")} (no decisions inbox yet; dropped)`,
-    );
+/** How many past proposals are consulted for duplicates and negatives. */
+export const PROPOSAL_HISTORY_LIMIT = 200;
+
+export const decisionsSink: MemoryProposalSink = async (repos, userId, proposals, source) => {
+  const history = await repos.decisions.listByKind(userId, "memory_proposal", {
+    limit: PROPOSAL_HISTORY_LIMIT,
+  });
+  const known = new Set(
+    history
+      .map((d) => d.payload)
+      .filter((p): p is MemoryProposalPayload => p.kind === "memory_proposal")
+      .map((p) => normalizeMemoryText(p.text)),
+  );
+  let filed = 0;
+  for (const proposal of proposals) {
+    const key = normalizeMemoryText(proposal.text);
+    if (known.has(key)) continue;
+    known.add(key);
+    const payload: MemoryProposalPayload = {
+      kind: "memory_proposal",
+      text: proposal.text,
+      memoryKind: proposal.kind,
+      rationale: proposal.evidence,
+    };
+    await repos.decisions.create(userId, {
+      kind: "memory_proposal",
+      taskId: source.taskId,
+      payload,
+      resumeToken: null,
+      expiresAt: null,
+    });
+    filed += 1;
   }
-  return { filed: 0 };
+  return { filed };
 };
 
-let _sink: MemoryProposalSink = logOnlySink;
+let _sink: MemoryProposalSink = decisionsSink;
 
 export function setMemorySinkForTesting(sink: MemoryProposalSink | null): void {
-  _sink = sink ?? logOnlySink;
+  _sink = sink ?? decisionsSink;
 }
 
 export function proposeMemories(
@@ -71,4 +94,13 @@ export function filterProposals(
     out.push({ ...p, text: p.text.trim() });
   }
   return out;
+}
+
+/**
+ * What confirming a proposal stores: pinned, so the next sift and the
+ * daily plan see it as a preference.
+ */
+export function memoryFromProposal(decision: Decision): Omit<Memory, "id" | "createdAt"> | null {
+  if (decision.payload.kind !== "memory_proposal") return null;
+  return { text: decision.payload.text, kind: decision.payload.memoryKind, pinned: true };
 }

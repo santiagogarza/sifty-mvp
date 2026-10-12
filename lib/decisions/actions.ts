@@ -1,3 +1,4 @@
+import { memoryFromProposal } from "@/lib/ai/memory/propose";
 import { type EnqueueResult, enqueueSift } from "@/lib/ai/sift/enqueue";
 import { withAnswer } from "@/lib/ai/sift/execute-stage";
 import type { Session } from "@/lib/auth/session";
@@ -26,6 +27,8 @@ export type AnswerMode =
   | "resumed"
   /** No run was waiting: the answer was folded in and a new sift started. */
   | "resifted"
+  /** A memory proposal was confirmed and written to `memories`. */
+  | "remembered"
   /** Recorded on the decision only (task gone, or a kind with no follow-up). */
   | "recorded";
 
@@ -60,6 +63,13 @@ export async function answerDecision(args: {
   const { decision } = resolved;
   const payload = decision.payload;
 
+  if (payload.kind === "memory_proposal") {
+    // Confirming is the write: the proposal becomes a pinned memory the
+    // next sift and the daily plan read as a preference.
+    const memory = memoryFromProposal(decision);
+    if (memory) await repos.memories.create(userId, memory);
+    return { ok: true, decision, task: null, mode: "remembered", sift: null };
+  }
   if (payload.kind !== "clarifying_question" || !decision.taskId) {
     // Nothing is waiting on a kind without follow-up work, but wake anyway
     // so a future kind's run is not left suspended.

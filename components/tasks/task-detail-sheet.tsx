@@ -735,7 +735,12 @@ function siftInProgress(task: Task): boolean {
  */
 function ClarifyingQuestion({ task }: { task: Task }) {
   const updateTask = useStore((s) => s.updateTask);
-  const decision = useDecisionsStore((s) => selectOpenForTask(s, task.id)[0] ?? null);
+  // Only the question's own row: a memory proposal attached to the same
+  // task is answered from the inbox, not from here.
+  const decision = useDecisionsStore(
+    (s) =>
+      selectOpenForTask(s, task.id).find((d) => d.payload.kind === "clarifying_question") ?? null,
+  );
   const answerDecision = useDecisionsStore((s) => s.answer);
   const dismissDecision = useDecisionsStore((s) => s.dismiss);
   const refresh = useDecisionsStore((s) => s.refresh);

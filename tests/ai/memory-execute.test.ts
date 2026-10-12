@@ -247,6 +247,7 @@ describe("PATCH /api/tasks/:id starts memoryFromEdit on a contradicting edit", (
   const client = {
     start: vi.fn<WorkflowClient["start"]>(),
     wait: vi.fn<WorkflowClient["wait"]>(),
+    resume: vi.fn<WorkflowClient["resume"]>(),
   };
 
   beforeEach(() => {
