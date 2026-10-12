@@ -73,9 +73,15 @@ export function AuthForm({ mode, next, googleEnabled }: AuthFormProps) {
   async function onGoogle() {
     setError(null);
     setPending("google");
-    const { error } = await authClient.signIn.social({ provider: "google", callbackURL });
-    if (error) {
-      setError(authErrorMessage(error));
+    try {
+      const { error } = await authClient.signIn.social({ provider: "google", callbackURL });
+      if (error) {
+        setError(authErrorMessage(error));
+        setPending(null);
+      }
+      // On success the browser is navigating to Google; keep the form disabled.
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error");
       setPending(null);
     }
   }
@@ -189,13 +195,19 @@ export function AuthForm({ mode, next, googleEnabled }: AuthFormProps) {
 
 function CheckInbox({ sent, onBack }: { sent: NonNullable<Sent>; onBack: () => void }) {
   const [resent, setResent] = React.useState(false);
+  const [resendError, setResendError] = React.useState<string | null>(null);
   async function resend() {
-    if (sent.kind === "verify") {
-      await authClient.sendVerificationEmail({ email: sent.email, callbackURL: "/today" });
-    } else {
-      await authClient.signIn.magicLink({ email: sent.email, callbackURL: "/today" });
+    setResendError(null);
+    try {
+      const { error } =
+        sent.kind === "verify"
+          ? await authClient.sendVerificationEmail({ email: sent.email, callbackURL: "/today" })
+          : await authClient.signIn.magicLink({ email: sent.email, callbackURL: "/today" });
+      if (error) return setResendError(authErrorMessage(error));
+      setResent(true);
+    } catch (err) {
+      setResendError(err instanceof Error ? err.message : "Network error");
     }
-    setResent(true);
   }
   return (
     <div data-testid="auth-check-inbox">
@@ -205,6 +217,11 @@ function CheckInbox({ sent, onBack }: { sent: NonNullable<Sent>; onBack: () => v
           ? `We sent a confirmation link to ${sent.email}. Open it to finish setting up your account.`
           : `We sent a sign-in link to ${sent.email}. It works once and expires in 5 minutes.`}
       </p>
+      {resendError ? (
+        <div role="alert" className="mt-2 text-[13px] text-[var(--warn)]">
+          {resendError}
+        </div>
+      ) : null}
       <div className="mt-4 flex items-center gap-2">
         <Button variant="secondary" size="sm" onClick={resend} disabled={resent}>
           {resent ? "Sent again" : "Resend"}
