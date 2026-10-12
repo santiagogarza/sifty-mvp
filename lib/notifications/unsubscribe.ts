@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { isVercelProduction } from "@/lib/env/production-guards";
 
 /**
  * One-click unsubscribe tokens for digest emails.
@@ -9,10 +10,16 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * off, so a leaked one cannot do anything a user would mind.
  */
 
+/** Keyless local dev (`SIFTY_DISABLE_AUTH=1`, no secret) still prints digests to the console. */
+const DEV_FALLBACK_SECRET = "sifty-dev-unsubscribe-not-for-production";
+
 function secret(): string {
   const s = process.env.BETTER_AUTH_SECRET;
-  if (!s) throw new Error("BETTER_AUTH_SECRET is required to sign unsubscribe links.");
-  return s;
+  if (s) return s;
+  if (isVercelProduction()) {
+    throw new Error("BETTER_AUTH_SECRET is required to sign unsubscribe links.");
+  }
+  return DEV_FALLBACK_SECRET;
 }
 
 function sign(userId: string): string {

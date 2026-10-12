@@ -187,7 +187,18 @@ describe("email templates", () => {
     );
     expect(review.subject).toBe("Your week in review — 1 done, 1 coming up");
     expect(review.text).toContain("Inbox 3 · Focus 2 · Waiting on 1");
+    expect(review.text).toContain("1 task finished, 1 slipped.");
     expect(review.text).toContain("Oct 15");
+
+    const idle = await renderEmail("digest-weekly-review", {
+      ...fixtures["digest-weekly-review"].props,
+      review: {
+        ...fixtures["digest-weekly-review"].props.review,
+        completed: [],
+        completedCount: 0,
+      },
+    });
+    expect(idle.text).toContain("Nothing finished, 1 slipped.");
   });
 
   it("refuses to render a notification without an unsubscribe link", async () => {

@@ -12,6 +12,11 @@ export interface DigestWeeklyReviewProps {
 export const digestWeeklyReviewSubject = ({ review }: DigestWeeklyReviewProps) =>
   `Your week in review — ${review.completedCount} done, ${review.upcoming.length} coming up`;
 
+function finishedLine(count: number): string {
+  if (count === 0) return "Nothing finished";
+  return `${count} ${count === 1 ? "task" : "tasks"} finished`;
+}
+
 export function DigestWeeklyReview({
   review,
   unsubscribeUrl,
@@ -26,8 +31,7 @@ export function DigestWeeklyReview({
     >
       <Heading style={styles.heading}>Your week, {review.name}</Heading>
       <Text style={styles.text}>
-        {review.rangeLabel}. {review.completedCount === 0 ? "Nothing" : review.completedCount}{" "}
-        {review.completedCount === 1 ? "task" : "tasks"} finished
+        {review.rangeLabel}. {finishedLine(review.completedCount)}
         {review.overdue.length ? `, ${review.overdue.length} slipped` : ""}.
       </Text>
 

@@ -53,6 +53,18 @@ describe("unsubscribe tokens", () => {
     const other = createUnsubscribeToken("user_other");
     expect(verifyUnsubscribeToken(`${token.split(".")[0]}.${other.split(".")[1]}`)).toBeNull();
   });
+
+  it("signs with a dev fallback when the auth secret is unset, except on Vercel production", () => {
+    const signed = createUnsubscribeToken("user_abc");
+    vi.stubEnv("BETTER_AUTH_SECRET", "");
+    const dev = createUnsubscribeToken("user_abc");
+    expect(dev).not.toBe(signed);
+    expect(verifyUnsubscribeToken(dev)).toBe("user_abc");
+    expect(verifyUnsubscribeToken(signed)).toBeNull();
+    vi.stubEnv("VERCEL_ENV", "production");
+    expect(() => createUnsubscribeToken("user_abc")).toThrow(/BETTER_AUTH_SECRET/);
+    vi.unstubAllEnvs();
+  });
 });
 
 describe("/api/notifications/preferences", () => {

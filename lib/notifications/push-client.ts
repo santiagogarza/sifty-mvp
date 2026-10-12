@@ -66,9 +66,33 @@ export async function subscribeToPush(vapidPublicKey: string): Promise<PushSubsc
   if (permission !== "granted") throw new PushPermissionDeniedError();
   const existing = await registration.pushManager.getSubscription();
   if (existing) return existing;
-  return registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+  // Chromium's subscribe() can hang indefinitely when the push service is
+  // unreachable; surface that as an error instead of a spinner.
+  return withTimeout(
+    registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+    }),
+    SUBSCRIBE_TIMEOUT_MS,
+    "Couldn't reach the browser's push service. Check the connection and try again.",
+  );
+}
+
+const SUBSCRIBE_TIMEOUT_MS = 20_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
   });
 }
 
