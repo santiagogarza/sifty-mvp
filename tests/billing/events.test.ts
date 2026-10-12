@@ -121,10 +121,13 @@ describe("applyStripeEvent", () => {
     expect(next.currentPeriodEnd).toBeNull();
   });
 
-  it("invoice.payment_failed with no prior subscription → inactive, past_due, grace opens", () => {
+  it("invoice.payment_failed before any subscription event → adopts the sub, past_due, grace opens", () => {
     const next = applyStripeEvent(
       lapsedTrial(),
-      { type: "invoice.payment_failed", data: { object: { customer: "cus_X" } } },
+      {
+        type: "invoice.payment_failed",
+        data: { object: { customer: "cus_X", subscription: "sub_first" } },
+      },
       NOW,
     );
     // Grace keeps Pro on for the window even when nothing was active before:
@@ -132,7 +135,74 @@ describe("applyStripeEvent", () => {
     expect(next.tier).toBe("pro");
     expect(next.subscriptionActive).toBe(false);
     expect(next.stripeStatus).toBe("past_due");
+    expect(next.stripeSubscriptionId).toBe("sub_first");
     expect(next.graceEndsAt).toBe(new Date(NOW.getTime() + GRACE_PERIOD_DAYS * DAY).toISOString());
+  });
+
+  it("invoice events without a subscription (one-off invoices) change nothing", () => {
+    const before = paying();
+    expect(
+      applyStripeEvent(before, {
+        type: "invoice.payment_failed",
+        data: { object: { customer: "cus_X", amount_due: 500 } },
+      }),
+    ).toBe(before);
+    const inGrace = applyStripeEvent(before, failed(), NOW);
+    expect(
+      applyStripeEvent(inGrace, { type: "invoice.paid", data: { object: { customer: "cus_X" } } }),
+    ).toBe(inGrace);
+  });
+
+  it("invoice events for another subscription are ignored (stale retries after re-subscribing)", () => {
+    // Old sub cancelled, new one active.
+    const cancelled = applyStripeEvent(
+      paying(),
+      subEvent("customer.subscription.deleted", "canceled"),
+    );
+    const resubscribed = applyStripeEvent(cancelled, {
+      type: "customer.subscription.created",
+      data: {
+        object: {
+          id: "sub_new",
+          status: "active",
+          current_period_end: Math.floor((NOW.getTime() + 30 * DAY) / 1000),
+          customer: "cus_X",
+        },
+      },
+    });
+    expect(resubscribed.stripeSubscriptionId).toBe("sub_new");
+    const staleRetry = applyStripeEvent(resubscribed, failed(NOW)); // invoice for sub_test
+    expect(staleRetry).toBe(resubscribed);
+    expect(staleRetry.tier).toBe("pro");
+    expect(staleRetry.stripeStatus).toBe("active");
+
+    // And a stale invoice.paid cannot fake a recovery of the tracked sub.
+    const dunningNew = applyStripeEvent(resubscribed, {
+      type: "invoice.payment_failed",
+      created: unix(NOW),
+      data: { object: { customer: "cus_X", subscription: "sub_new" } },
+    });
+    expect(dunningNew.graceEndsAt).not.toBeNull();
+    expect(applyStripeEvent(dunningNew, paid())).toBe(dunningNew);
+  });
+
+  it("reads the subscription from invoice.parent.subscription_details on current API versions", () => {
+    const next = applyStripeEvent(
+      paying(),
+      {
+        type: "invoice.payment_failed",
+        created: unix(NOW),
+        data: {
+          object: {
+            customer: "cus_X",
+            parent: { subscription_details: { subscription: "sub_test" } },
+          },
+        },
+      },
+      NOW,
+    );
+    expect(next.stripeStatus).toBe("past_due");
+    expect(next.graceEndsAt).not.toBeNull();
   });
 
   it("invoice.paid is a no-op for the entitlement (subscription event drives state)", () => {

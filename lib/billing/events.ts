@@ -46,10 +46,22 @@ export interface StripeSubscriptionLike {
 export interface StripeInvoiceLike {
   id?: string;
   customer?: string | { id: string };
+  /** Subscription link on webhook endpoints pinned to API versions before 2025-03-31. */
   subscription?: string | StripeSubscriptionLike | null;
+  /** Subscription link on current API versions (basil and later). */
+  parent?: {
+    subscription_details?: { subscription?: string | StripeSubscriptionLike | null } | null;
+  } | null;
   status?: string;
   amount_due?: number;
   currency?: string;
+}
+
+/** The subscription an invoice bills, whichever API-version shape delivered it. */
+export function invoiceSubscriptionId(invoice: StripeInvoiceLike): string | null {
+  const raw = invoice.parent?.subscription_details?.subscription ?? invoice.subscription ?? null;
+  if (!raw) return null;
+  return typeof raw === "string" ? raw : raw.id;
 }
 
 interface EventMeta {
@@ -105,6 +117,19 @@ export function applyStripeEvent(
   const at = event.created ? new Date(event.created * 1000) : now;
   const resolve = (facts: Partial<EntitlementSnapshot>): EntitlementSnapshot =>
     withResolvedTier({ ...current, ...facts }, false, at);
+  /**
+   * Invoice events only count for the subscription we track. A retry on an
+   * old subscription's invoice after the user re-subscribed, or an invoice
+   * that is not for a subscription at all, must not touch the entitlement.
+   * With no subscription recorded yet (events out of order) the invoice's
+   * subscription is adopted.
+   */
+  const invoiceSubscription = (invoice: StripeInvoiceLike): string | null => {
+    const subId = invoiceSubscriptionId(invoice);
+    if (!subId) return null;
+    if (current.stripeSubscriptionId && current.stripeSubscriptionId !== subId) return null;
+    return subId;
+  };
   // One grace window per dunning cycle. Keep an open one; once the cycle is
   // under way (status already past_due/unpaid, which outlives the window
   // after `expireGracePeriods()` clears it) later retries get no new window.
@@ -152,7 +177,14 @@ export function applyStripeEvent(
       if (!current.graceEndsAt && !DUNNING_STATUSES.has(current.stripeStatus ?? "")) {
         return current;
       }
-      return resolve({ subscriptionActive: true, stripeStatus: "active", graceEndsAt: null });
+      const subId = invoiceSubscription(event.data.object);
+      if (!subId) return current;
+      return resolve({
+        subscriptionActive: true,
+        stripeStatus: "active",
+        stripeSubscriptionId: subId,
+        graceEndsAt: null,
+      });
     }
     case "invoice.payment_failed": {
       // Stripe keeps retrying leftover invoices after a subscription is
@@ -161,9 +193,12 @@ export function applyStripeEvent(
       // sends no dunning mail either. Only a live (or not yet recorded)
       // subscription enters dunning here.
       if (NO_DUNNING_STATUSES.has(current.stripeStatus ?? "")) return current;
+      const subId = invoiceSubscription(event.data.object);
+      if (!subId) return current;
       return resolve({
         subscriptionActive: false,
         stripeStatus: "past_due",
+        stripeSubscriptionId: subId,
         graceEndsAt: keepOrOpenGrace(),
       });
     }

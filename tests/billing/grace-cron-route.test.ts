@@ -53,7 +53,7 @@ describe("GET /api/cron/expire-grace-periods", () => {
         {
           type: "invoice.payment_failed",
           created: Math.floor(longAgo.getTime() / 1000),
-          data: { object: { customer: "cus_cron" } },
+          data: { object: { customer: "cus_cron", subscription: "sub_cron" } },
         },
       ),
     );
