@@ -1,6 +1,7 @@
 import { resolveProvider } from "@/lib/ai/provider";
 import { __resetRateLimits } from "@/lib/ratelimit/limiter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mockResolvedProvider } from "../helpers/ai";
 import { createUserWithCookie } from "../helpers/auth";
 import { getTestRepos } from "../setup";
 
@@ -27,25 +28,11 @@ const happy = {
   clarifyingQuestion: null,
 };
 
-const mockOption = {
-  id: "claude-haiku",
-  gatewaySlug: "anthropic/claude-haiku-4-5",
-  provider: "anthropic" as const,
-  label: "Claude Haiku",
-  description: "Fast.",
-  inputUsdPerMillion: 1,
-  outputUsdPerMillion: 5,
-};
-
 beforeEach(() => {
   __resetRateLimits();
   vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
   vi.stubEnv("RATELIMIT_TRIAGE_PER_MIN", "3");
-  vi.mocked(resolveProvider).mockReturnValue({
-    model: { __mock: true } as unknown as ReturnType<typeof resolveProvider>["model"],
-    transport: "mock",
-    option: mockOption,
-  });
+  vi.mocked(resolveProvider).mockReturnValue(mockResolvedProvider("triage"));
 });
 
 afterEach(() => {

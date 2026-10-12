@@ -1,6 +1,7 @@
 import { listAiRuns } from "@/lib/ai/ai-runs";
 import { resolveProvider } from "@/lib/ai/provider";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mockResolvedProvider } from "../helpers/ai";
 import { createUserWithCookie } from "../helpers/auth";
 import { getTestRepos } from "../setup";
 
@@ -11,26 +12,12 @@ vi.mock("@/lib/ai/provider", async () => {
   return { ...actual, resolveProvider: vi.fn() };
 });
 
-const mockOption = {
-  id: "claude-haiku",
-  gatewaySlug: "anthropic/claude-haiku-4-5",
-  provider: "anthropic" as const,
-  label: "Claude Haiku",
-  description: "Fast.",
-  inputUsdPerMillion: 1,
-  outputUsdPerMillion: 5,
-};
-
 let cookie: string;
 let userId: string;
 
 beforeEach(async () => {
   vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
-  vi.mocked(resolveProvider).mockReturnValue({
-    model: { __mock: true } as unknown as ReturnType<typeof resolveProvider>["model"],
-    transport: "mock",
-    option: mockOption,
-  });
+  vi.mocked(resolveProvider).mockReturnValue(mockResolvedProvider("plan"));
   const created = await createUserWithCookie(getTestRepos(), { email: "brief@example.com" });
   cookie = created.cookie;
   userId = created.user.id;

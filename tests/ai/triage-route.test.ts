@@ -1,6 +1,7 @@
 import { listAiRuns } from "@/lib/ai/ai-runs";
-import { MissingAiKeyError, resolveProvider } from "@/lib/ai/provider";
+import { AiConfigError, MissingAiKeyError, resolveProvider } from "@/lib/ai/provider";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mockResolvedProvider } from "../helpers/ai";
 import { createUserWithCookie } from "../helpers/auth";
 import { getTestRepos } from "../setup";
 
@@ -31,16 +32,6 @@ const happyOutput = {
   clarifyingQuestion: null,
 };
 
-const mockOption = {
-  id: "claude-haiku",
-  gatewaySlug: "anthropic/claude-haiku-4-5",
-  provider: "anthropic" as const,
-  label: "Claude Haiku",
-  description: "Fast.",
-  inputUsdPerMillion: 1,
-  outputUsdPerMillion: 5,
-};
-
 async function importRoute() {
   const mod = await import("@/app/api/triage/route");
   return mod.POST;
@@ -53,11 +44,7 @@ beforeEach(async () => {
   vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
   vi.stubEnv("CREATOR_EMAIL", "creator@example.com");
 
-  vi.mocked(resolveProvider).mockReturnValue({
-    model: { __mock: true } as unknown as ReturnType<typeof resolveProvider>["model"],
-    transport: "mock",
-    option: mockOption,
-  });
+  vi.mocked(resolveProvider).mockReturnValue(mockResolvedProvider("triage"));
   const { generateObject } = await import("ai");
   vi.mocked(generateObject).mockReset();
 
@@ -111,14 +98,15 @@ describe("POST /api/triage", () => {
       buildReq({
         taskId: "task_1",
         sourceText: "Draft email to investor by tomorrow",
-        modelId: "claude-haiku",
+        modelPreference: "recommended",
       }),
     );
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.output.title).toBe("Draft email to investor");
     expect(body.meta.offline).toBe(false);
-    expect(body.meta.transport).toBe("mock");
+    expect(body.meta.transport).toBe("gateway");
+    expect(body.meta.stage).toBe("triage");
     expect(body.meta.inputTokens).toBe(200_000);
     expect(body.meta.outputTokens).toBe(80_000);
     expect(body.meta.costCents).toBeGreaterThan(0);
@@ -127,22 +115,53 @@ describe("POST /api/triage", () => {
     expect(runs).toHaveLength(1);
     expect(runs[0]!.status).toBe("succeeded");
     expect(runs[0]!.taskId).toBe("task_1");
-    expect(runs[0]!.model).toContain("claude-haiku");
+    expect(runs[0]!.model).toBe("anthropic/claude-haiku-4.5");
+    expect(runs[0]!.stage).toBe("triage");
+    // 200k in @ $1/M + 80k out @ $5/M = $0.60 = 60 cents.
+    expect(runs[0]!.costCents).toBeCloseTo(60, 6);
   });
 
-  it("returns 503 when no AI key is configured", async () => {
+  it("returns 503 no_ai_key when the transport's key is missing", async () => {
     vi.mocked(resolveProvider).mockImplementation(() => {
-      throw new MissingAiKeyError("Anthropic provider selected, but no key set.");
+      throw new MissingAiKeyError("AI_TRANSPORT=gateway requires AI_GATEWAY_API_KEY.");
     });
 
     const POST = await importRoute();
-    const res = await POST(buildReq({ sourceText: "Draft email", modelId: "claude-haiku" }));
+    const res = await POST(buildReq({ sourceText: "Draft email", modelPreference: "recommended" }));
     expect(res.status).toBe(503);
     const body = await res.json();
     expect(body.code).toBe("no_ai_key");
+    // The variable name stays in the server log, not in the client payload.
+    expect(body.error).not.toContain("AI_GATEWAY_API_KEY");
 
     const runs = await listAiRuns(userId);
     expect(runs).toHaveLength(0);
+  });
+
+  it("returns 503 ai_misconfigured for an invalid AI_TRANSPORT", async () => {
+    vi.mocked(resolveProvider).mockImplementation(() => {
+      throw new AiConfigError('AI_TRANSPORT must be one of "gateway", "direct" (got "bogus").');
+    });
+
+    const POST = await importRoute();
+    const res = await POST(buildReq({ sourceText: "Draft email" }));
+    expect(res.status).toBe(503);
+    expect((await res.json()).code).toBe("ai_misconfigured");
+  });
+
+  it("accepts the legacy modelId field as a preference", async () => {
+    const { generateObject } = await import("ai");
+    vi.mocked(generateObject).mockResolvedValue({
+      object: happyOutput,
+      usage: { inputTokens: 100, outputTokens: 50 },
+    } as unknown as Awaited<ReturnType<typeof generateObject>>);
+
+    const POST = await importRoute();
+    const res = await POST(buildReq({ sourceText: "Draft email", modelId: "claude-sonnet" }));
+    expect(res.status).toBe(200);
+    expect(vi.mocked(resolveProvider)).toHaveBeenCalledWith("triage", {
+      preference: "claude-sonnet",
+    });
   });
 
   it("surfaces model errors as a sanitized 500 and writes a failed aiRuns row", async () => {
@@ -150,7 +169,7 @@ describe("POST /api/triage", () => {
     vi.mocked(generateObject).mockRejectedValue(new Error("model unavailable"));
 
     const POST = await importRoute();
-    const res = await POST(buildReq({ sourceText: "Draft email", modelId: "claude-haiku" }));
+    const res = await POST(buildReq({ sourceText: "Draft email", modelPreference: "recommended" }));
     expect(res.status).toBe(500);
     const body = await res.json();
     // Provider detail never reaches the client; it lives in ai_runs.
@@ -175,6 +194,29 @@ describe("POST /api/triage", () => {
     expect(generateObject).not.toHaveBeenCalled();
   });
 
+  it("SIFTY_AI_OFFLINE=1 works with no transport configured and never resolves a provider", async () => {
+    vi.stubEnv("AI_GATEWAY_API_KEY", "");
+    vi.stubEnv("SIFTY_AI_OFFLINE", "1");
+    vi.mocked(resolveProvider).mockReset();
+    vi.mocked(resolveProvider).mockImplementation(() => {
+      throw new MissingAiKeyError("should not be called");
+    });
+
+    const POST = await importRoute();
+    const res = await POST(buildReq({ taskId: "task_off", sourceText: "Call the bank tomorrow" }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.meta.offline).toBe(true);
+    expect(body.meta.transport).toBe("offline");
+    expect(resolveProvider).not.toHaveBeenCalled();
+
+    const runs = await listAiRuns(userId);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]!.transport).toBe("offline");
+    expect(runs[0]!.stage).toBe("triage");
+    expect(runs[0]!.costCents).toBeNull();
+  });
+
   it("applies the result to the server task durably, linking suggested labels", async () => {
     const { generateObject } = await import("ai");
     vi.mocked(generateObject).mockResolvedValue({
@@ -193,7 +235,7 @@ describe("POST /api/triage", () => {
       buildReq({
         taskId: task.id,
         sourceText: task.sourceText,
-        modelId: "claude-haiku",
+        modelPreference: "recommended",
       }),
     );
     expect(res.status).toBe(200);

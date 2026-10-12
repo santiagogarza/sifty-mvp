@@ -1,5 +1,6 @@
 import { resolveProvider } from "@/lib/ai/provider";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mockResolvedProvider } from "../helpers/ai";
 import { createUserWithCookie } from "../helpers/auth";
 import { getTestRepos } from "../setup";
 
@@ -9,16 +10,6 @@ vi.mock("@/lib/ai/provider", async () => {
   const actual = await vi.importActual<typeof import("@/lib/ai/provider")>("@/lib/ai/provider");
   return { ...actual, resolveProvider: vi.fn() };
 });
-
-const mockOption = {
-  id: "claude-haiku",
-  gatewaySlug: "anthropic/claude-haiku-4-5",
-  provider: "anthropic" as const,
-  label: "Claude Haiku",
-  description: "Fast.",
-  inputUsdPerMillion: 1,
-  outputUsdPerMillion: 5,
-};
 
 const happy = {
   title: "T",
@@ -41,11 +32,7 @@ beforeEach(() => {
   // These tests seed many runs "just now"; raise the per-minute burst cap so
   // only the daily entitlement cap is under test.
   vi.stubEnv("RATELIMIT_TRIAGE_PER_MIN", "100000");
-  vi.mocked(resolveProvider).mockReturnValue({
-    model: { __mock: true } as unknown as ReturnType<typeof resolveProvider>["model"],
-    transport: "mock",
-    option: mockOption,
-  });
+  vi.mocked(resolveProvider).mockReturnValue(mockResolvedProvider("triage"));
 });
 
 afterEach(() => {
