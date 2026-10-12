@@ -89,8 +89,9 @@ const verifiedPrices = new Set<string>();
 /**
  * The pricing page renders from `PRO_PRICES`; Checkout charges whatever the
  * Stripe price says. This check keeps the two from drifting apart silently:
- * amount, currency, and interval must agree before the first session is
- * created. Verified once per price id per process.
+ * amount, currency, and interval must agree, and the price must carry a tax
+ * behavior for Stripe Tax, before the first session is created. Verified
+ * once per price id per process.
  */
 export async function verifyPriceMatchesPlan(cadence: Cadence, priceId: string): Promise<void> {
   if (verifiedPrices.has(priceId)) return;
@@ -110,6 +111,13 @@ export async function verifyPriceMatchesPlan(cadence: Cadence, priceId: string):
   if (price.recurring?.interval !== interval || (price.recurring?.interval_count ?? 1) !== 1) {
     problems.push(
       `interval is ${price.recurring ? `${price.recurring.interval_count} ${price.recurring.interval}` : "one-time"}, plan says 1 ${interval}`,
+    );
+  }
+  // Stripe Tax refuses to create a session for a price whose tax behavior is
+  // unspecified; catch it here with a readable message instead of a 500.
+  if (price.tax_behavior !== "exclusive" && price.tax_behavior !== "inclusive") {
+    problems.push(
+      `tax behavior is ${price.tax_behavior ?? "unspecified"}, Stripe Tax needs exclusive or inclusive`,
     );
   }
   if (problems.length) throw new StripePriceMismatchError(cadence, priceId, problems.join("; "));
