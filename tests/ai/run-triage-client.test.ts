@@ -158,10 +158,13 @@ describe("resiftTask", () => {
   it("a re-sift that lands while the watcher is adopting a settled, dirty snapshot is not wiped", async () => {
     vi.useFakeTimers();
     let dirty = true;
+    let waits = 0;
     const { useStore, registerSyncHooks } = await setup({
       dirty: () => dirty,
-      // The push "drains" slowly: the user re-sifts while the watcher waits.
-      waitForTask: () => new Promise((r) => setTimeout(r, 2_000)),
+      // The create has long landed (first wait resolves at once); the edit's
+      // push "drains" slowly, and the user re-sifts while the watcher waits.
+      waitForTask: () =>
+        ++waits === 1 ? Promise.resolve() : new Promise((r) => setTimeout(r, 2_000)),
     });
     const { resiftTask, watchSift } = await import("@/lib/ai/run-triage");
     const task = useStore.getState().createTask({ sourceText: "Call the bank" });
@@ -194,17 +197,26 @@ describe("resiftTask", () => {
       }),
     );
 
+    let sawFailure = false;
+    const unsubscribe = useStore.subscribe((s) => {
+      if (s.tasks.find((t) => t.id === task.id)?.aiStatus === "failed") sawFailure = true;
+    });
     const watch = watchSift(task.id);
     // First poll (old run, ready) is adopted while dirty → the watcher waits
-    // on the push; the re-sift lands during that wait.
-    await vi.advanceTimersByTimeAsync(2_500);
+    // on the push; the re-sift lands during that wait, after the first run
+    // has already used the whole watch budget.
+    await vi.advanceTimersByTimeAsync(500);
+    vi.setSystemTime(Date.now() + 130_000);
     const resift = resiftTask(task.id);
     await vi.advanceTimersByTimeAsync(3_000);
     dirty = false; // the edit has been pushed by now
     await vi.advanceTimersByTimeAsync(30_000);
     await Promise.all([watch, resift]);
+    unsubscribe();
 
     expect(posts).toBe(1);
+    // The spent budget of the first run never times the new one out.
+    expect(sawFailure).toBe(false);
     const updated = useStore.getState().tasks.find((t) => t.id === task.id);
     expect(updated?.aiAttempts).toBe(2);
     expect(updated?.aiStatus).toBe("ready");
