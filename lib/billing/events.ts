@@ -144,6 +144,18 @@ export function applyStripeEvent(
     case "customer.subscription.created":
     case "customer.subscription.updated": {
       const sub = event.data.object;
+      // `canceled` / `incomplete_expired` are terminal in Stripe. An update
+      // for that same subscription arriving afterwards is out-of-order
+      // delivery (Stripe does not guarantee ordering), not a resurrection:
+      // a late `past_due` must not reopen grace, a late `active` must not
+      // restore Pro. A different subscription id is a genuine new one.
+      if (
+        sub.id === current.stripeSubscriptionId &&
+        ENDED_STATUSES.has(current.stripeStatus ?? "") &&
+        !ENDED_STATUSES.has(sub.status)
+      ) {
+        return current;
+      }
       const periodEnd = new Date(sub.current_period_end * 1000).toISOString();
       const ids = {
         stripeSubscriptionId: sub.id,
