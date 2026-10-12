@@ -23,6 +23,7 @@ test("root sends a signed-in visitor straight into the app", async ({ page }) =>
 
 test("public pages render for anyone", async ({ page, request }) => {
   await page.goto("/pricing", { waitUntil: "networkidle" });
+  await expect(page).toHaveTitle("Pricing — Sifty");
   await expect(page.getByRole("heading", { name: "Free", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Pro", exact: true })).toBeVisible();
   await expect(page.getByText("$10")).toBeVisible();
