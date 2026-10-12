@@ -95,16 +95,25 @@ export function getModelSpec(slug: KnownModelSlug): ModelSpec {
 /**
  * Looks a model up by canonical slug or by provider-native id (what a direct
  * provider or the Gateway reports back in `response.modelId`). Dated
- * snapshot ids like `claude-haiku-4-5-20251001` match their base id.
+ * snapshot ids like `claude-haiku-4-5-20251001` match their base id. An
+ * exact id wins, then the longest prefix, so `gpt-5-mini-2025…` resolves to
+ * `gpt-5-mini` regardless of registry order.
  */
 export function findModelSpec(id: string | null | undefined): ModelSpec | null {
   if (!id) return null;
   if (isKnownModel(id)) return MODELS[id];
   const bare = id.includes("/") ? id.slice(id.indexOf("/") + 1) : id;
+  let best: ModelSpec | null = null;
   for (const spec of Object.values(MODELS)) {
-    if (spec.directId === bare || bare.startsWith(`${spec.directId}-`)) return spec;
+    if (spec.directId === bare) return spec;
+    if (
+      bare.startsWith(`${spec.directId}-`) &&
+      (!best || spec.directId.length > best.directId.length)
+    ) {
+      best = spec;
+    }
   }
-  return null;
+  return best;
 }
 
 // ---------------------------------------------------------------------------

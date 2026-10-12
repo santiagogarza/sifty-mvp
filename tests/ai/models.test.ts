@@ -117,9 +117,29 @@ describe("findModelSpec", () => {
     expect(findModelSpec("openai/gpt-5")?.slug).toBe("openai/gpt-5");
   });
 
-  it("does not confuse gpt-5 with gpt-5-mini", () => {
+  it("does not confuse gpt-5 with gpt-5-mini in either direction", () => {
     expect(findModelSpec("gpt-5-2025-08-07")?.slug).toBe("openai/gpt-5");
     expect(findModelSpec("gpt-5-mini")?.slug).toBe("openai/gpt-5-mini");
+    expect(findModelSpec("gpt-5-mini-2025-08-07")?.slug).toBe("openai/gpt-5-mini");
+    expect(findModelSpec("openai/gpt-5-mini-2025-08-07")?.slug).toBe("openai/gpt-5-mini");
+  });
+
+  it("prefers the longest native-id prefix, so registry order cannot change attribution", () => {
+    // Every pair of models where one directId is a prefix of the other must
+    // resolve a dated id of the longer one to the longer one.
+    for (const a of Object.values(MODELS)) {
+      for (const b of Object.values(MODELS)) {
+        if (a === b || !b.directId.startsWith(`${a.directId}-`)) continue;
+        expect(findModelSpec(`${b.directId}-20260101`)?.slug).toBe(b.slug);
+        expect(findModelSpec(`${a.directId}-20260101`)?.slug).toBe(a.slug);
+      }
+    }
+    // Guard the premise: the registry does contain such a pair.
+    expect(
+      Object.values(MODELS).some((a) =>
+        Object.values(MODELS).some((b) => a !== b && b.directId.startsWith(`${a.directId}-`)),
+      ),
+    ).toBe(true);
   });
 
   it("returns null for unknown ids", () => {
