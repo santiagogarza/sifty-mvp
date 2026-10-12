@@ -1,25 +1,26 @@
-import { gateAiRequest, gateAiRequestByIp, resolveOfflineMode } from "@/lib/ai/ai-gate";
-import { recordAiRun } from "@/lib/ai/ai-runs";
-import { applyTriageToTask } from "@/lib/ai/apply-triage";
-import { AiConfigError } from "@/lib/ai/provider";
-import { triageTask } from "@/lib/ai/triage-agent";
-import { TRIAGE_PROMPT_VERSION } from "@/lib/ai/triage-schema";
+import { gateAiRequestByIp, resolveOfflineMode } from "@/lib/ai/ai-gate";
+import { enqueueSift } from "@/lib/ai/sift/enqueue";
 import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
-import { AI_CONTEXT_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
-import { reportError } from "@/lib/observability/report-error";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
 
+/**
+ * "Re-sift now."
+ *
+ * Sifting runs server-side when a task is created (`POST /api/tasks`); this
+ * route re-runs the whole pipeline on an existing task — the retry button,
+ * or a deliberate re-sift after the user added context. It answers 202 with
+ * the task in `pending` state; progress is read from `GET /api/tasks/:id`.
+ *
+ * The new sift takes over `task.siftId`, so a run still in flight stops at
+ * its next step instead of racing this one. User-edited fields stay
+ * protected exactly as before (`editedFields`).
+ */
 const Body = z.object({
-  taskId: z.string().min(1).max(64).optional(),
-  sourceText: z.string().min(1).max(TASK_LIMITS.sourceText),
-  sourceContext: z.string().max(TASK_LIMITS.sourceContext).nullable().optional(),
-  recentLabels: z.array(z.string()).max(AI_CONTEXT_LIMITS.maxRecentLabels).optional(),
-  preferences: z.array(z.string()).max(AI_CONTEXT_LIMITS.maxPreferences).optional(),
+  taskId: z.string().min(1).max(64),
   /** Settings → AI model preference id. Unknown values fall back to the stage default. */
   modelPreference: z.string().min(1).max(64).optional(),
   /** Pre-registry clients sent a raw model id here; still accepted as a preference. */
@@ -39,100 +40,36 @@ export async function POST(req: Request) {
     );
   }
 
-  const offline = resolveOfflineMode(req);
-
   const session = await getSession(req);
   if (!session) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
-  const gate = await gateAiRequest({ req, session, bucket: "triage" });
-  if (!gate.ok) return gate.response;
+  const task = await getRepos().tasks.get(session.user.id, parsed.data.taskId);
+  if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const modelPreference = parsed.data.modelPreference ?? parsed.data.modelId ?? null;
+  const result = await enqueueSift({
+    req,
+    session,
+    task,
+    modelPreference: parsed.data.modelPreference ?? parsed.data.modelId ?? null,
+    offline: resolveOfflineMode(req),
+  });
 
-  try {
-    const result = await triageTask({
-      sourceText: parsed.data.sourceText,
-      sourceContext: parsed.data.sourceContext ?? null,
-      recentLabels: parsed.data.recentLabels,
-      preferences: parsed.data.preferences,
-      modelPreference,
-      offline,
-    });
-
-    // Persist the result to the task so it survives a client disconnect.
-    // Best-effort: when the task hasn't reached the server yet the client
-    // applies locally and the sync layer reconciles later.
-    let applied = null;
-    if (parsed.data.taskId) {
-      applied = await applyTriageToTask(
-        getRepos(),
-        session.user.id,
-        parsed.data.taskId,
-        result.output,
-      ).catch((err) => {
-        reportError(err, {
-          area: "triage.apply",
-          userId: session.user.id,
-          tags: { taskId: parsed.data.taskId ?? null },
-        });
-        return null;
-      });
-    }
-
-    await recordAiRun({
-      userId: session.user.id,
-      taskId: parsed.data.taskId ?? null,
-      meta: result.meta,
-      status: "succeeded",
-    });
-
-    return NextResponse.json({
-      ...result,
-      task: applied?.task ?? null,
-      labels: applied?.labels ?? [],
-    });
-  } catch (err) {
-    if (err instanceof AiConfigError) {
-      // Operator problem, not a user problem: log the exact variable that is
-      // missing and tell the client AI is unavailable.
-      reportError(err, { area: "triage.config", userId: session.user.id });
-      return NextResponse.json(
-        {
-          error: "AI is not configured on this server. Check the AI_TRANSPORT settings.",
-          code: err.code,
-        },
-        { status: 503 },
-      );
-    }
-
-    // Full detail goes to the error reporter and the ai_runs record; the
-    // client gets a stable, provider-free message (it renders in aiError).
-    const message = err instanceof Error ? err.message : "Triage failed";
-    reportError(err, {
-      area: "triage.route",
-      userId: session.user.id,
-      tags: { modelPreference, offline },
-    });
-    await recordAiRun({
-      userId: session.user.id,
-      taskId: parsed.data.taskId ?? null,
-      meta: {
-        promptVersion: TRIAGE_PROMPT_VERSION,
-        stage: "triage",
-        model: "unknown",
-        transport: "unknown",
-        durationMs: 0,
-        inputTokens: null,
-        outputTokens: null,
-        costCents: null,
-        offline,
-      },
-      status: "failed",
-      error: message,
-    });
-
-    return NextResponse.json({ error: "Triage failed — try again." }, { status: 500 });
+  if (result.ok) {
+    return NextResponse.json(
+      { task: result.task, siftId: result.siftId, runId: result.runId },
+      { status: 202 },
+    );
   }
+  if (result.reason === "denied") {
+    return NextResponse.json(
+      { ...result.admission.body, task: result.task },
+      { status: result.admission.status, headers: result.admission.headers },
+    );
+  }
+  return NextResponse.json(
+    { error: "Sifting could not start — try again.", task: result.task },
+    { status: 503 },
+  );
 }

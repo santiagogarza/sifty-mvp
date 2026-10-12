@@ -2,6 +2,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type ClientHandle, bootClient, settle } from "./client-harness";
 
+// The tasks route hands new captures to the Workflow runtime, whose package
+// hardens realm intrinsics on import and does not load under jsdom. The
+// sync contract does not depend on the sift running, so enqueueing is
+// stubbed at its seam: creates still come back `pending`.
+vi.mock("@/lib/ai/sift/enqueue", () => ({
+  enqueueSift: async ({ task }: { task: { id: string } }) => ({
+    ok: true,
+    task,
+    siftId: "sift_sync_test",
+    runId: "wrun_sync_test",
+  }),
+  wantsSift: (task: { aiStatus: string }) =>
+    task.aiStatus === "pending" || task.aiStatus === "running" || task.aiStatus === "failed",
+}));
+
 /**
  * Client sync behavior, end to end: store mutation → `lib/store/sync` →
  * real route handlers → in-memory repo, and back through pull/reconcile.
