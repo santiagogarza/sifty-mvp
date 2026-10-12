@@ -152,6 +152,20 @@ export const tasks = pgTable(
       blockers: string | null;
       promptVersion: string;
     }>(),
+    /**
+     * Repeat rule (`lib/domain/types.ts` `Recurrence`); null for a one-off.
+     * Completing the instance spawns the next one (`lib/recurrence/spawn.ts`).
+     */
+    recurrence: jsonb("recurrence").$type<{
+      freq: "daily" | "weekdays" | "weekly" | "monthly";
+      mode: "fixed" | "after_completion";
+      weekdays?: number[];
+      dayOfMonth?: number;
+      seriesValues?: Record<string, unknown>;
+      spawnedFrom?: string;
+    }>(),
+    /** First instance's id for every task in a recurring series; null for a one-off. */
+    seriesId: text("series_id"),
     /** The user dismissed the sift's clarifying question; cleared by the next sift. */
     siftedWithAssumptions: boolean("sifted_with_assumptions").notNull().default(false),
     /** Field names the user has manually edited; protected from re-triage. */
@@ -168,6 +182,8 @@ export const tasks = pgTable(
   (t) => [
     index("tasks_user_lifecycle_idx").on(t.userId, t.lifecycle),
     index("tasks_user_updated_idx").on(t.userId, t.updatedAt),
+    // Completing a recurring task looks up its series' open instance.
+    index("tasks_user_series_idx").on(t.userId, t.seriesId),
   ],
 );
 

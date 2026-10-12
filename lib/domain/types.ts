@@ -98,6 +98,57 @@ export interface Subtask {
   order: number;
 }
 
+/**
+ * Recurrence is a simple template (decision D11): the live instance carries
+ * the rule, and completing it spawns the next instance as a copy of it.
+ * There is never more than one open instance of a series, so "the series"
+ * is whatever the current instance says — editing it edits all future
+ * instances. `seriesValues` is the exception: edits scoped to "this
+ * instance only" park the series' values there, and the next instance is
+ * spawned from those instead.
+ */
+export const RECURRENCE_FREQ = ["daily", "weekdays", "weekly", "monthly"] as const;
+export type RecurrenceFreq = (typeof RECURRENCE_FREQ)[number];
+
+/**
+ * `fixed`: the next instance is due on the next scheduled day after the
+ * current due (or the completion day, whichever is later), so finishing
+ * early or late never shifts the calendar. `after_completion`: the next
+ * instance is due one period after the day it was completed.
+ */
+export const RECURRENCE_MODE = ["fixed", "after_completion"] as const;
+export type RecurrenceMode = (typeof RECURRENCE_MODE)[number];
+
+/** Instance content that "this instance only" edits can diverge on. */
+export const SERIES_FIELDS = [
+  "title",
+  "description",
+  "nextAction",
+  "urgency",
+  "importance",
+  "priorityBucket",
+  "effort",
+  "delegationCandidate",
+  "assigneeName",
+  "labelIds",
+  "subtasks",
+] as const;
+export type SeriesField = (typeof SERIES_FIELDS)[number];
+export type SeriesValues = Partial<Pick<Task, SeriesField>>;
+
+export interface Recurrence {
+  freq: RecurrenceFreq;
+  mode: RecurrenceMode;
+  /** `weekly` + `fixed`: days of week, 0 = Sunday … 6 = Saturday. */
+  weekdays?: number[];
+  /** `monthly` + `fixed`: 1–31, clamped to the month's length. */
+  dayOfMonth?: number;
+  /** Series values this instance deviates from; the next instance restores them. */
+  seriesValues?: SeriesValues;
+  /** Id of the instance whose completion spawned this one; absent on the origin. */
+  spawnedFrom?: ID;
+}
+
 export interface Label {
   id: ID;
   name: string;
@@ -166,6 +217,11 @@ export interface Task {
    * so the sift stands on Sifty's own assumptions. Cleared by the next sift.
    */
   siftedWithAssumptions: boolean;
+
+  /** Repeat rule; null for a one-off. */
+  recurrence: Recurrence | null;
+  /** Id of the first instance of the series this task belongs to; null for a one-off. */
+  seriesId: ID | null;
 
   labelIds: ID[];
   subtasks: Subtask[];

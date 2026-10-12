@@ -41,6 +41,8 @@ function task(overrides: Partial<Task> = {}): Task {
     siftId: "sift_1",
     siftStage: null,
     plan: null,
+    recurrence: null,
+    seriesId: null,
     siftedWithAssumptions: false,
     labelIds: [],
     subtasks: [],

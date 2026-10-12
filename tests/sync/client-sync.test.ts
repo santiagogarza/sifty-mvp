@@ -83,6 +83,87 @@ describe("create body", () => {
   });
 });
 
+describe("recurring completion", () => {
+  it("sends the completion day with a done patch and adopts the spawned successor", async () => {
+    const client = await bootAndPull();
+    const id = await captureSynced(client, "Water the plants");
+    client.store.getState().setRecurrence(id, { freq: "daily", mode: "fixed" });
+    await settle(client);
+
+    client.calls.length = 0;
+    client.store.getState().updateTask(id, { lifecycle: "done" });
+    await settle(client);
+
+    const patch = client.calls.find((c) => c.method === "PATCH" && c.path === `/api/tasks/${id}`);
+    const body = patch?.body as {
+      lifecycle: string;
+      completedOn: string;
+      completedFrom: string;
+      timeZone?: string;
+    };
+    expect(body.lifecycle).toBe("done");
+    expect(body.completedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // Where the task lived when it was completed, so the successor lands there.
+    expect(body.completedFrom).toBe("inbox");
+    // Narrow: the completion context rides along, nothing else does.
+    expect(Object.keys(body).sort()).toEqual(
+      ["completedFrom", "completedOn", "lifecycle", ...(body.timeZone ? ["timeZone"] : [])].sort(),
+    );
+
+    // The server spawned the next instance and the client shows it without a pull.
+    const tasks = client.store.getState().tasks;
+    const successor = tasks.find((t) => t.id !== id && t.seriesId === id);
+    expect(successor).toBeTruthy();
+    expect(successor?.lifecycle).not.toBe("done");
+    expect(successor?.recurrence).toEqual({ freq: "daily", mode: "fixed", spawnedFrom: id });
+    expect(successor?.title).toBe("Water the plants");
+    // Adopted, not pushed: no create for the successor left this client.
+    expect(
+      client.calls.some(
+        (c) => c.method === "POST" && (c.body as { id?: string } | null)?.id === successor!.id,
+      ),
+    ).toBe(false);
+    // Two rows in the series on the server (plus the starter examples).
+    const series = (await client.repos.tasks.list(client.userId)).filter(
+      (t) => t.id === id || t.seriesId === id,
+    );
+    expect(series).toHaveLength(2);
+  });
+
+  it("does not adopt a spawned successor this browser already deleted", async () => {
+    const client = await bootAndPull();
+    const id = await captureSynced(client, "Water the plants");
+    client.store.getState().setRecurrence(id, { freq: "daily", mode: "fixed" });
+    await settle(client);
+
+    // Hold the completion PATCH so the successor can be deleted here first
+    // (the id is derived from the completion, so it is knowable).
+    let release: (() => void) | null = null;
+    const held = new Promise<void>((r) => {
+      release = r;
+    });
+    const stop = client.intercept(async (method, path, proceed) => {
+      if (method !== "PATCH" || path !== `/api/tasks/${id}`) return null;
+      const res = await proceed();
+      await held;
+      return res;
+    });
+    client.store.getState().updateTask(id, { lifecycle: "done" });
+    await vi.advanceTimersByTimeAsync(500);
+    const { nextInstanceId } = await import("@/lib/recurrence/spawn");
+    const serverParent = await client.repos.tasks.get(client.userId, id);
+    const successorId = nextInstanceId(id, serverParent!.completedAt);
+    expect(await client.repos.tasks.get(client.userId, successorId)).toBeTruthy();
+    client.store.getState().deleteTask(successorId);
+    release!();
+    await settle(client);
+    stop();
+
+    expect(client.store.getState().tasks.some((t) => t.id === successorId)).toBe(false);
+    expect(await client.repos.tasks.get(client.userId, successorId)).toBeNull();
+  });
+});
+
 describe("narrow patches", () => {
   it("pushes only the keys that changed and never clobbers fields written server-side", async () => {
     const client = await bootAndPull();

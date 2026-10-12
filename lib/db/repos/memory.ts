@@ -38,6 +38,7 @@ import {
   type PushSubscriptionRecord,
   type PushSubscriptionRepo,
   type Repos,
+  SERIES_LIST_LIMIT,
   SIFT_ACCOUNTING_STAGE,
   type StripeEventRepo,
   type TaskCreateInput,
@@ -277,6 +278,18 @@ export function createMemoryRepos(): MemoryReposHandle {
       if (!t || t.userId !== userId) return null;
       return stripUserId(t);
     },
+    async listBySeries(userId, seriesId, opts = {}) {
+      return Array.from(state.tasks.values())
+        .filter(
+          (t) =>
+            t.userId === userId &&
+            t.seriesId === seriesId &&
+            (!opts.lifecycles || opts.lifecycles.includes(t.lifecycle)),
+        )
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+        .slice(0, opts.limit ?? SERIES_LIST_LIMIT)
+        .map(stripUserId);
+    },
     async create(userId, input: TaskCreateInput) {
       if (input.id) {
         const existing = state.tasks.get(input.id);
@@ -313,6 +326,8 @@ export function createMemoryRepos(): MemoryReposHandle {
         siftId: null,
         siftStage: null,
         plan: null,
+        recurrence: null,
+        seriesId: null,
         siftedWithAssumptions: false,
         labelIds: [],
         subtasks: [],

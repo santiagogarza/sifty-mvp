@@ -4,6 +4,8 @@ import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
 import { expireOpenDecisionsForTask } from "@/lib/decisions/service";
 import { TaskPatchSchema } from "@/lib/domain/task-patch-schema";
+import type { Task } from "@/lib/domain/types";
+import { completeRecurring } from "@/lib/recurrence/complete";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -28,6 +30,12 @@ export async function GET(req: Request, ctx: RouteContext) {
   return NextResponse.json({ task, labels });
 }
 
+/**
+ * Narrow update. Completing a recurring task also spawns its next instance
+ * (`spawnNextInstance`, idempotent) and returns it as `spawned` so the
+ * client can show it without waiting for the next pull; `spawned` is null
+ * otherwise.
+ */
 export async function PATCH(req: Request, ctx: RouteContext) {
   const { id } = await ctx.params;
   const session = await getSession(req);
@@ -38,16 +46,18 @@ export async function PATCH(req: Request, ctx: RouteContext) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
-  const { editedFields, ...patch } = parsed.data;
+  const { editedFields, completedOn, timeZone, completedFrom, ...patch } = parsed.data;
   const repos = getRepos();
-  // Only an edit to a priority/effort/date/delegation/label field can
-  // contradict the sift; everything else skips the extra read.
-  const before = editTouchesSignalField(editedFields)
-    ? await repos.tasks.get(session.user.id, id)
-    : null;
-  const task = await repos.tasks.update(session.user.id, id, patch, { editedFields });
+  const userId = session.user.id;
+  const completing = patch.lifecycle === "done";
+  // The pre-write row is needed to place a recurring successor, and when an
+  // edit to a priority/effort/date/delegation/label field may contradict the
+  // sift (memory extraction); everything else skips the extra read.
+  const before =
+    completing || editTouchesSignalField(editedFields) ? await repos.tasks.get(userId, id) : null;
+  let task = await repos.tasks.update(userId, id, patch, { editedFields });
   if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (before) {
+  if (before && editTouchesSignalField(editedFields)) {
     await maybeExtractFromEdit(repos, {
       req,
       session,
@@ -57,7 +67,30 @@ export async function PATCH(req: Request, ctx: RouteContext) {
       offline: resolveOfflineMode(req),
     });
   }
-  return NextResponse.json({ task });
+
+  let spawned: Task | null = null;
+  if (completing && task.recurrence) {
+    // Where the next instance lands: what the client saw before it
+    // completed the task, else the row as it was before this write. A
+    // retry after a crashed spawn sees the row already done; the Inbox is
+    // the review gate, so a misplaced instance gets looked at.
+    const previousLifecycle =
+      completedFrom ??
+      (before && before.lifecycle !== "done" && before.lifecycle !== "dropped"
+        ? before.lifecycle
+        : "inbox");
+    const completed = await completeRecurring(repos, {
+      req,
+      session,
+      task,
+      previousLifecycle,
+      completedOn,
+      timeZone,
+    });
+    task = completed.task;
+    spawned = completed.spawned;
+  }
+  return NextResponse.json({ task, spawned });
 }
 
 export async function DELETE(req: Request, ctx: RouteContext) {

@@ -1,8 +1,11 @@
 import { bucketFromScalars } from "@/lib/domain/priority";
 import type { Task, TaskEditableField } from "@/lib/domain/types";
-import type * as schema from "../schema";
+import { type SQL, sql } from "drizzle-orm";
+import * as schema from "../schema";
 
-type TaskColumns = Partial<typeof schema.tasks.$inferInsert>;
+type TaskInsert = typeof schema.tasks.$inferInsert;
+/** A column value, or a SQL expression evaluated by the database in the SET. */
+type TaskColumns = { [K in keyof TaskInsert]?: TaskInsert[K] | SQL };
 
 /**
  * Maps a domain patch onto the task row's columns, writing only what the
@@ -16,6 +19,9 @@ type TaskColumns = Partial<typeof schema.tasks.$inferInsert>;
  * - `priorityBucket` is recomputed when urgency/importance move and the
  *   caller neither set the bucket nor protected it with a manual edit.
  * - `completedAt` follows `lifecycle` transitions into and out of `done`.
+ *   Into `done` it is `coalesce(completed_at, now)` evaluated by the
+ *   database, so two devices completing the same task at once agree on one
+ *   completion time (the recurring successor's id derives from it).
  */
 export function taskPatchColumns(
   existing: Task,
@@ -52,6 +58,8 @@ export function taskPatchColumns(
   if ("siftId" in patch) columns.siftId = patch.siftId ?? null;
   if ("siftStage" in patch) columns.siftStage = patch.siftStage ?? null;
   if ("plan" in patch) columns.plan = patch.plan ?? null;
+  if ("recurrence" in patch) columns.recurrence = patch.recurrence ?? null;
+  if ("seriesId" in patch) columns.seriesId = patch.seriesId ?? null;
   if (patch.siftedWithAssumptions !== undefined) {
     columns.siftedWithAssumptions = patch.siftedWithAssumptions;
   }
@@ -69,7 +77,9 @@ export function taskPatchColumns(
   }
 
   if (patch.lifecycle === "done" && !existing.completedAt) {
-    columns.completedAt = opts.now;
+    // An ISO string with an explicit cast: a raw Date inside sql`` would skip
+    // the column's driver mapping.
+    columns.completedAt = sql`coalesce(${schema.tasks.completedAt}, ${opts.now.toISOString()}::timestamptz)`;
   } else if (patch.lifecycle && patch.lifecycle !== "done") {
     columns.completedAt = null;
   }

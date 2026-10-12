@@ -43,6 +43,8 @@ function task(id: string, title: string): Task {
     siftId: null,
     siftStage: null,
     plan: null,
+    recurrence: null,
+    seriesId: null,
     siftedWithAssumptions: false,
     labelIds: [],
     subtasks: [],
