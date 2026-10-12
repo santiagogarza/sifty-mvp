@@ -26,13 +26,17 @@ test("bulk move, keyboard snooze with undo, and duplicate", async ({ page }) => 
   // New captures land at the top of the Inbox (newest first).
   await expect(rows.nth(0)).toContainText(titles[2]!);
 
-  // Shift+click range: rows 0..2, then move them to Someday.
+  // Shift+click range: rows 0..2, then move them to Someday. (Opening a
+  // row is a URL change, so wait for the sheet before dismissing it.)
+  const dialog = page.getByRole("dialog");
   await rows.nth(0).click();
+  await expect(dialog).toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
   await rows.nth(2).click({ modifiers: ["Shift"] });
   await expect(page.getByTestId("bulk-bar")).toContainText("3 selected");
   await page.getByRole("button", { name: /Move to Someday/ }).click();
-  await expect(page.getByTestId("toast")).toContainText("Moved 3 to Someday");
+  await expect(page.getByTestId("toast").filter({ hasText: "Moved 3 to Someday" })).toBeVisible();
   for (const t of titles) await expect(list.getByText(t)).toHaveCount(0);
   await expect
     .poll(async () => {
@@ -50,19 +54,21 @@ test("bulk move, keyboard snooze with undo, and duplicate", async ({ page }) => 
   await capture(page, `Snooze me ${stamp}`);
   const target = list.getByRole("option", { name: new RegExp(`Snooze me ${stamp}`) });
   await target.click();
+  await expect(dialog).toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
   await expect(target).toBeFocused();
   await page.keyboard.press("s");
   await expect(page.getByTestId("snooze-hint")).toBeVisible();
   await page.keyboard.press("t");
-  await expect(page.getByTestId("toast")).toContainText("Snoozed until");
+  const snoozeToast = page.getByTestId("toast").filter({ hasText: "Snoozed until" });
+  await expect(snoozeToast).toBeVisible();
   await expect(target).toContainText("Tomorrow");
-  await page.getByRole("button", { name: "Undo" }).click();
+  await snoozeToast.getByRole("button", { name: "Undo" }).click();
   await expect(target).not.toContainText("Tomorrow");
 
   // Duplicate from the sheet: the copy opens, titled "(copy)".
   await target.click();
-  const dialog = page.getByRole("dialog");
   await expect(dialog).toBeFocused();
   await dialog.getByRole("button", { name: "Duplicate task" }).click();
   await expect(dialog.getByPlaceholder("Task title")).toHaveValue(`Snooze me ${stamp} (copy)`);
