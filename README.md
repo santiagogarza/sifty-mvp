@@ -26,6 +26,8 @@ pnpm lint         # biome check
 pnpm lint:fix     # biome check --write
 pnpm test         # vitest unit + integration suite
 pnpm test:e2e     # Playwright smoke (boots dev server)
+pnpm eval         # prompt evals over the golden capture set (SIFTY_AI_OFFLINE=1 for keyless)
+pnpm eval:update  # same, re-recording evals/baselines/ (after a prompt version bump)
 pnpm db:generate  # produce a new Drizzle migration from lib/db/schema.ts
 pnpm db:migrate   # apply migrations to DATABASE_URL
 pnpm invite:mint  # mint an invite code (see Billing → Invite codes)
@@ -387,6 +389,20 @@ keyless local dev, screenshots, and CI smoke runs.
 handoff brief — objective, context, steps, success criteria — stored on
 the task and shown in the detail sheet with copy/regenerate. Same gates,
 schema validation, and offline fallback as triage.
+
+### Prompt evals
+
+`pnpm eval` runs the golden capture set (`evals/golden/captures.json`, ~60
+realistic captures across work, personal, vague, multi-task, and
+adversarial inputs) through the five sift stages and checks, per stage,
+schema validity, rubric properties (urgency/importance ranges, actionable
+subtasks, clarifying question only below the confidence threshold, no
+instruction-following from task text), and cost against the registry
+prices. Offline (`SIFTY_AI_OFFLINE=1`) it is deterministic and runs on every
+`production` PR; the "Evals (real models)" workflow runs it nightly through
+the AI Gateway and weekly direct. Every prompt change bumps its
+`promptVersion` and re-records `evals/baselines/` (`pnpm eval:update`); the
+policy is in `lib/ai/prompts.ts`, the harness in `evals/README.md`.
 
 ## Billing
 

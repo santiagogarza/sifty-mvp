@@ -23,6 +23,9 @@
  * back undefined on Vercel.
  */
 
+// Relative on purpose: next.config.ts loads this file outside the `@/` alias.
+import { inspectPushEnv } from "../notifications/push-config";
+
 export const DEMO_FLAGS = [
   "SIFTY_DISABLE_AUTH",
   "SIFTY_DEMO_SEED",
@@ -46,6 +49,9 @@ export function snapshotEnv(): Env {
     SIFTY_USER_EMAIL: process.env.SIFTY_USER_EMAIL,
     DATABASE_URL: process.env.DATABASE_URL,
     BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
+    VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
+    VAPID_SUBJECT: process.env.VAPID_SUBJECT,
   };
 }
 
@@ -94,6 +100,9 @@ export function findProductionEnvProblems(env: Env = snapshotEnv()): ProductionE
       "DATABASE_URL is not set; the in-memory store is refused in production because it loses all data on every restart. Connect Neon (Vercel Marketplace) and redeploy.",
     );
   }
+
+  const push = inspectPushEnv(env);
+  if (push instanceof Error) blocking.push(push.message);
 
   return { blocking, warnings };
 }

@@ -1,0 +1,62 @@
+{
+  "prices": {
+    "anthropic/claude-haiku-4.5": {
+      "input": 1,
+      "output": 5
+    },
+    "anthropic/claude-sonnet-4.5": {
+      "input": 3,
+      "output": 15
+    },
+    "openai/gpt-5-mini": {
+      "input": 0.25,
+      "output": 2
+    },
+    "openai/gpt-5": {
+      "input": 1.25,
+      "output": 10
+    }
+  },
+  "estimated": {
+    "kind": "estimated",
+    "stages": {
+      "enrich": {
+        "model": "anthropic/claude-haiku-4.5",
+        "inputTokens": 198,
+        "outputTokens": 49,
+        "costCents": 0.044325,
+        "samples": 57
+      },
+      "prioritize": {
+        "model": "anthropic/claude-haiku-4.5",
+        "inputTokens": 261,
+        "outputTokens": 30,
+        "costCents": 0.041263,
+        "samples": 57
+      },
+      "triage": {
+        "model": "anthropic/claude-haiku-4.5",
+        "inputTokens": 275,
+        "outputTokens": 24,
+        "costCents": 0.039723,
+        "samples": 57
+      },
+      "subtasks": {
+        "model": "anthropic/claude-haiku-4.5",
+        "inputTokens": 198,
+        "outputTokens": 4,
+        "costCents": 0.021846,
+        "samples": 57
+      },
+      "plan": {
+        "model": "anthropic/claude-sonnet-4.5",
+        "inputTokens": 381,
+        "outputTokens": 37,
+        "costCents": 0.170221,
+        "samples": 57
+      }
+    },
+    "pipelineCostCents": 0.317378
+  },
+  "measured": null
+}

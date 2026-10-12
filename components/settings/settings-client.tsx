@@ -23,6 +23,7 @@ import { resetLocalWorkspace } from "@/lib/store/sync";
 import { cn } from "@/lib/utils/cn";
 import {
   Activity,
+  Bell,
   Check,
   Cpu,
   CreditCard,
@@ -96,6 +97,13 @@ export function SettingsClient({ account }: { account: SettingsAccount }) {
             >
               <CreditCard size={13} />
               Billing
+            </Link>
+            <Link
+              href="/settings/notifications"
+              className="inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] px-2 py-1.5 text-[12.5px] text-[var(--fg-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--fg)] transition-colors"
+            >
+              <Bell size={13} />
+              Notifications
             </Link>
             {account.entitlement.tier === "creator" ? (
               <Link

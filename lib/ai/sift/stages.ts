@@ -7,8 +7,9 @@ import { heuristicTriage } from "../triage-agent";
  * deterministic offline variant for each.
  *
  * Stages are independently retryable, evaluable, and billable, so each one
- * carries its own `promptVersion` (bump when its prompt *or* schema
- * changes) and its own Zod contract. The offline variants slice the
+ * carries its own `promptVersion` (bump when its prompt, schema, or
+ * temperature changes — policy in `lib/ai/prompts.ts`, enforced by
+ * `pnpm eval`) and its own Zod contract. The offline variants slice the
  * single-shot heuristic (`heuristicTriage`) so `SIFTY_AI_OFFLINE=1` yields
  * the same task the old synchronous triage did, stage by stage.
  *
