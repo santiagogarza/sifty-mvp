@@ -47,6 +47,7 @@ import {
 import Link from "next/link";
 import * as React from "react";
 import { AiThinking } from "./ai-status";
+import { ConfidencePill } from "./confidence-pill";
 import { PriorityGlyph } from "./priority-glyph";
 import { StatusIcon } from "./status-icon";
 
@@ -79,7 +80,18 @@ export function TaskDetailSheet({
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
-      <SheetContent aria-describedby={undefined}>
+      {/* Focus the panel itself on open, not its first control: the header's
+          confidence pill would otherwise take focus and pop its tooltip
+          every time a task opens (and swallow the first Escape). Tab still
+          reaches every control in order; no keyboard pops on mobile. */}
+      <SheetContent
+        aria-describedby={undefined}
+        tabIndex={-1}
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          (e.currentTarget as HTMLElement | null)?.focus({ preventScroll: true });
+        }}
+      >
         {task ? (
           <>
             <VisuallyHidden>
@@ -145,7 +157,9 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
                 <span className="ml-2">
                   <AiThinking />
                 </span>
-              ) : null}
+              ) : (
+                <ConfidencePill task={task} className="ml-1" />
+              )}
             </>
           )}
         </div>
