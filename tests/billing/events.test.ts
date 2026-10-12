@@ -100,12 +100,13 @@ describe("applyStripeEvent", () => {
   });
 
   it("subscription.updated (past_due) during our trial → grace keeps pro, trial stays underneath", () => {
-    const next = applyStripeEvent(trial(), subEvent("customer.subscription.updated", "past_due"));
+    const start = trial();
+    const next = applyStripeEvent(start, subEvent("customer.subscription.updated", "past_due"));
     expect(next.subscriptionActive).toBe(false);
     expect(next.tier).toBe("pro");
     expect(next.stripeStatus).toBe("past_due");
     expect(next.graceEndsAt).not.toBeNull();
-    expect(next.trialEndsAt).toBe(trial().trialEndsAt);
+    expect(next.trialEndsAt).toBe(start.trialEndsAt);
   });
 
   it("subscription.deleted after the trial lapsed → free, period cleared", () => {
