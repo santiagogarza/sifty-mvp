@@ -365,6 +365,32 @@ describe("enqueueNightlyPlans", () => {
     expect(plan?.planDate).toBe(planDateFor(NOW, "Pacific/Auckland", "cron"));
   });
 
+  it("stops at maxUsers, counts runs that could not start as failed, and the cron reports ok: false", async () => {
+    const repos = getTestRepos();
+    await proUser(repos, "a@example.com");
+    await proUser(repos, "b@example.com");
+    await proUser(repos, "c@example.com");
+
+    const capped = await enqueueNightlyPlans(repos, { now: NOW, offline: false, maxUsers: 2 });
+    expect(capped.users).toBe(2);
+    expect(capped.enqueued).toBe(2);
+    expect(capped.truncated).toBe(true);
+
+    // The third account's run cannot start: counted, not thrown, and the
+    // cron route surfaces it as not ok.
+    client.start.mockRejectedValueOnce(new Error("queue down"));
+    const { GET } = await import("@/app/api/cron/daily-plan/route");
+    const res = await GET(
+      new Request("http://localhost/api/cron/daily-plan", {
+        headers: { authorization: "Bearer cron-secret-test" },
+      }),
+    );
+    const body = await res.json();
+    expect(body.failed).toBe(1);
+    expect(body.skipped.alreadyRunning).toBe(2);
+    expect(body.ok).toBe(false);
+  });
+
   it("stops at the time budget and says so", async () => {
     const repos = getTestRepos();
     await proUser(repos, "a@example.com");
