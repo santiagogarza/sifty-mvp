@@ -80,7 +80,11 @@ export function TaskDetailSheet({
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
-      <SheetContent aria-describedby={undefined}>
+      {/* Focus the panel itself on open, not its first control: the header's
+          confidence pill would otherwise take focus and pop its tooltip
+          every time a task opens (and swallow the first Escape). Tab still
+          reaches every control in order; no keyboard pops on mobile. */}
+      <SheetContent aria-describedby={undefined} onOpenAutoFocus={(e) => e.preventDefault()}>
         {task ? (
           <>
             <VisuallyHidden>
