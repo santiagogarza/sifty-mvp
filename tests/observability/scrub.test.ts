@@ -1,4 +1,10 @@
-import { SCRUBBED, scrubUrlsDeep, stripQuery } from "@/lib/observability/scrub";
+import {
+  SCRUBBED,
+  redactAuthPath,
+  scrubUrl,
+  scrubUrlsDeep,
+  stripQuery,
+} from "@/lib/observability/scrub";
 import { describe, expect, it } from "vitest";
 
 describe("stripQuery", () => {
@@ -14,7 +20,49 @@ describe("stripQuery", () => {
   });
 });
 
+describe("redactAuthPath / scrubUrl", () => {
+  it("redacts bearer path segments under /api/auth and drops the query", () => {
+    expect(redactAuthPath("https://app/api/auth/reset-password/SECRET")).toBe(
+      "https://app/api/auth/reset-password/[redacted]",
+    );
+    expect(scrubUrl("https://app/api/auth/reset-password/SECRET?callbackURL=/reset-password")).toBe(
+      "https://app/api/auth/reset-password/[redacted]",
+    );
+    expect(scrubUrl("/api/auth/magic-link/verify/TOKEN")).toBe("/api/auth/magic-link/[redacted]");
+    expect(scrubUrl("/api/auth/sign-in/email")).toBe("/api/auth/sign-in/[redacted]");
+    expect(scrubUrl("/api/auth/session")).toBe("/api/auth/session");
+    expect(scrubUrl("/api/tasks/task_123")).toBe("/api/tasks/task_123");
+  });
+});
+
 describe("scrubUrlsDeep", () => {
+  it("scrubs transaction/span attributes that carry the raw request target", () => {
+    const transaction = {
+      type: "transaction",
+      transaction: "GET /api/auth/reset-password/SECRET",
+      contexts: {
+        trace: {
+          data: {
+            "http.target": "/api/auth/reset-password/SECRET?callbackURL=/reset-password",
+            "url.full": "https://app/sign-in?next=/redeem?code=sifty-secret",
+            "url.query": "next=/redeem?code=sifty-secret",
+            "next.span_name": "GET /redeem?code=sifty-secret",
+          },
+        },
+      },
+      spans: [
+        {
+          description: "GET /redeem?code=sifty-secret",
+          data: { "http.target": "/redeem?code=sifty-secret" },
+        },
+      ],
+    };
+    const json = JSON.stringify(scrubUrlsDeep(transaction));
+    expect(json).not.toContain("SECRET");
+    expect(json).not.toContain("sifty-secret");
+    expect(json).toContain("/api/auth/reset-password/[redacted]");
+  });
+
   it("scrubs every URL-shaped string in a Sentry-like event", () => {
     const event = {
       request: {
@@ -37,6 +85,11 @@ describe("scrubUrlsDeep", () => {
     expect(out.contexts.nextjs.request_path).toBe("/redeem");
     expect(out.breadcrumbs[0]?.data.to).toBe("/redeem");
     expect(out.message).toBe("plain text with code=notaurl stays");
+    expect(scrubUrlsDeep("GET /redeem?code=sifty-secret")).toBe("GET /redeem");
+    expect(
+      scrubUrlsDeep("fetch failed for https://app/api/auth/reset-password/SECRET?x=1 (503)"),
+    ).toBe("fetch failed for https://app/api/auth/reset-password/[redacted] (503)");
+    expect(scrubUrlsDeep("3/4 done, 1/2 left")).toBe("3/4 done, 1/2 left");
   });
 
   it("removes query-shaped fields that Sentry stores separately from the URL", () => {

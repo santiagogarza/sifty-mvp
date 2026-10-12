@@ -13,9 +13,13 @@ import { scrubUrlsDeep } from "./scrub";
  * SDK is started by `components/observability/sentry-client.tsx` from
  * `NEXT_PUBLIC_SENTRY_DSN`.
  *
- * Every event and breadcrumb passes through `scrubEvent()`: request URLs,
- * referers, `contexts.nextjs.request_path`, and navigation breadcrumbs lose
- * their query strings so reset tokens and invite codes never reach Sentry.
+ * Every error event, transaction, span, and breadcrumb passes through
+ * `scrubEvent()`: request URLs, referers, `contexts.nextjs.request_path`,
+ * `http.target`/`url.*` span attributes, and navigation breadcrumbs lose
+ * their query strings and Better Auth path tokens, so reset tokens and
+ * invite codes never reach Sentry. Tracing is off (`tracesSampleRate: 0`)
+ * until span export is verified end to end; the hooks are installed so
+ * turning it on later cannot reopen the leak.
  */
 
 export function isSentryEnabled(env: Record<string, string | undefined> = process.env): boolean {
@@ -30,13 +34,19 @@ export function scrubEvent<T>(event: T): T {
 /** Options common to both runtimes; exported so the browser init stays in sync. */
 export function sentryBaseOptions(): Pick<
   Sentry.NodeOptions,
-  "beforeSend" | "beforeBreadcrumb" | "tracesSampleRate"
+  | "beforeSend"
+  | "beforeSendTransaction"
+  | "beforeSendSpan"
+  | "beforeBreadcrumb"
+  | "tracesSampleRate"
 > {
   return {
     beforeSend: (event) => scrubEvent(event),
+    beforeSendTransaction: (event) => scrubEvent(event),
+    beforeSendSpan: (span) => scrubEvent(span),
     beforeBreadcrumb: (breadcrumb) => scrubEvent(breadcrumb),
-    // Keep tracing cheap; errors are the point of this sink.
-    tracesSampleRate: 0.1,
+    // Errors are the point of this sink; spans carry raw request targets.
+    tracesSampleRate: 0,
   };
 }
 

@@ -19,6 +19,8 @@ export function SentryClient(): null {
         environment: process.env.NEXT_PUBLIC_VERCEL_ENV ?? "development",
         tracesSampleRate: 0,
         beforeSend: (event) => scrubUrlsDeep(event),
+        beforeSendTransaction: (event) => scrubUrlsDeep(event),
+        beforeSendSpan: (span) => scrubUrlsDeep(span),
         beforeBreadcrumb: (breadcrumb) => scrubUrlsDeep(breadcrumb),
       });
     });

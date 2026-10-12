@@ -1,6 +1,6 @@
 "use client";
 
-import { stripQuery } from "@/lib/observability/scrub";
+import { scrubUrl } from "@/lib/observability/scrub";
 import { Analytics as VercelAnalytics } from "@vercel/analytics/next";
 
 /**
@@ -9,9 +9,5 @@ import { Analytics as VercelAnalytics } from "@vercel/analytics/next";
  * reach the analytics store. `beforeSend` must live in a client component.
  */
 export function Analytics() {
-  return (
-    <VercelAnalytics
-      beforeSend={(event) => ({ ...event, url: stripQuery(event.url) ?? event.url })}
-    />
-  );
+  return <VercelAnalytics beforeSend={(event) => ({ ...event, url: scrubUrl(event.url) })} />;
 }

@@ -65,8 +65,20 @@ describe("sentry adapter", () => {
     adapter.initSentryServer();
     const options = sentry.init.mock.calls[0]?.[0] as {
       beforeSend: (e: unknown) => unknown;
+      beforeSendTransaction: (e: unknown) => unknown;
+      beforeSendSpan: (s: unknown) => unknown;
       beforeBreadcrumb: (b: unknown) => unknown;
+      tracesSampleRate: number;
     };
+    expect(options.tracesSampleRate).toBe(0);
+    const span = options.beforeSendSpan({
+      data: { "http.target": "/api/auth/reset-password/SECRET?x=1" },
+    });
+    expect(JSON.stringify(span)).not.toContain("SECRET");
+    const tx = options.beforeSendTransaction({
+      contexts: { trace: { data: { "url.full": "https://app/redeem?code=sifty-secret" } } },
+    });
+    expect(JSON.stringify(tx)).not.toContain("sifty-secret");
     const sent = options.beforeSend({
       request: { url: "https://x/reset-password?token=secret" },
       contexts: { nextjs: { request_path: "/redeem?code=sifty-1" } },
