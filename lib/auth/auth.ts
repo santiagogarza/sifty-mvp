@@ -307,6 +307,27 @@ async function revokeUnprovenCredentials(userId: string): Promise<void> {
   await ctx.internalAdapter.deleteUserSessions(userId);
 }
 
+/**
+ * Remove a user's Better Auth identity: sessions, credential and OAuth
+ * accounts, and the user row itself. On Postgres the repos' `users.delete`
+ * already cascaded through these tables, so this is what keeps the
+ * in-memory adapter (tests, keyless dev) in step; both paths end with no
+ * session that can still resolve for the id.
+ */
+export async function deleteAuthIdentity(userId: string): Promise<void> {
+  const ctx = await getAuth().$context;
+  await ctx.internalAdapter.deleteUser(userId);
+  await ctx.internalAdapter.deleteUserSessions(userId);
+}
+
+/** The session cookies Better Auth sets, so a route can expire them on its own response. */
+export async function sessionCookieNames(): Promise<
+  Array<{ name: string; attributes: { path?: string; secure?: boolean; httpOnly?: boolean } }>
+> {
+  const { sessionToken, sessionData, dontRememberToken } = (await getAuth().$context).authCookies;
+  return [sessionToken, sessionData, dontRememberToken];
+}
+
 async function sendWelcome(user: { id: string; email: string; name: string }): Promise<void> {
   const appUrl = getAuthBaseUrl();
   try {

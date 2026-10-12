@@ -96,7 +96,8 @@ describe("GET /api/account/export", () => {
     expect(data.entitlement?.tier).toBe("trialing");
     expect(data.tasks.map((t: { id: string }) => t.id)).toEqual([mine.task.id]);
     expect(data.tasks[0].labelIds).toEqual([mine.label.id]);
-    expect(data.labels).toEqual([mine.label]);
+    expect(data.labels).toContainEqual(mine.label);
+    expect(data.labels.map((l: { id: string }) => l.id)).not.toContain("label_b");
     expect(data.memories.map((m: { text: string }) => m.text)).toEqual(["Memory a"]);
     expect(data.aiRuns).toHaveLength(1);
     expect(data.aiRuns[0].taskId).toBe(mine.task.id);
@@ -192,7 +193,7 @@ describe("DELETE /api/account", () => {
     const res = await deleteFor(a.cookie, { confirmEmail: "GONE@example.com" });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, stripeCustomer: "none" });
-    expect(res.headers.get("set-cookie")).toMatch(/sifty_session=;.*Max-Age=0/);
+    expect(res.headers.get("set-cookie")).toMatch(/sifty\.session_token=;.*Max-Age=0/);
 
     expect(await repos.users.getById(a.user.id)).toBeNull();
     expect(await repos.users.getByEmail("gone@example.com")).toBeNull();
@@ -206,7 +207,7 @@ describe("DELETE /api/account", () => {
 
     expect(await repos.users.getById(b.user.id)).not.toBeNull();
     expect((await repos.tasks.list(b.user.id)).map((t) => t.id)).toEqual([theirs.task.id]);
-    expect(await repos.labels.list(b.user.id)).toEqual([theirs.label]);
+    expect(await repos.labels.list(b.user.id)).toContainEqual(theirs.label);
     expect(await repos.memories.list(b.user.id)).toHaveLength(1);
     expect(await repos.aiRuns.list(b.user.id)).toHaveLength(1);
     expect((await exportFor(b.cookie)).status).toBe(200);

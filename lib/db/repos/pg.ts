@@ -529,25 +529,6 @@ export function createPostgresRepos(): Repos {
     },
   };
 
-    async create(userId, ttlMs) {
-      const db = getDb();
-      const id = nanoid(32);
-      const expiresAt = new Date(Date.now() + ttlMs);
-      return { id, expiresAt: expiresAt.toISOString() };
-    },
-    async get(id) {
-      const db = getDb();
-      if (!row) return null;
-      if (row.expiresAt.getTime() < Date.now()) {
-        return null;
-      }
-      return { userId: row.userId, expiresAt: row.expiresAt.toISOString() };
-    },
-    async delete(id) {
-      const db = getDb();
-    },
-  };
-
   const stripeEvents: StripeEventRepo = {
     async recordIfNew(eventId, type) {
       const db = getDb();
@@ -725,6 +706,7 @@ export function createPostgresRepos(): Repos {
     labels,
     memories,
     aiRuns,
+    taskEvents,
     stripeEvents,
     inviteCodes,
   };
@@ -752,8 +734,6 @@ function rowToRedemption(row: typeof schema.inviteRedemptions.$inferSelect): Inv
     userId: row.userId,
     compedUntil: row.compedUntil?.toISOString() ?? null,
     redeemedAt: row.redeemedAt.toISOString(),
-    taskEvents,
-    stripeEvents,
   };
 }
 

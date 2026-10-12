@@ -2,6 +2,7 @@ import { type StripeCustomerDeletion, deleteStripeCustomer } from "@/lib/billing
 import type { Repos } from "@/lib/db/repos";
 import type { AiRunRecord, EntitlementSnapshot, TaskEventRecord } from "@/lib/db/repos/types";
 import type { Label, Memory, Task, UserProfile } from "@/lib/domain/types";
+import { deleteAuthIdentity } from "./auth";
 
 /**
  * Account lifecycle: everything the user owns, out or gone.
@@ -125,6 +126,7 @@ export async function deleteAccount(repos: Repos, userId: string): Promise<Accou
   }
   try {
     await repos.users.delete(userId);
+    await deleteAuthIdentity(userId);
   } catch (err) {
     throw new AccountDeletionError("database", stripeCustomer, err);
   }

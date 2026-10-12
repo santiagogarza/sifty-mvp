@@ -1,5 +1,6 @@
 import { AccountDeletionError, CreatorAccountError, deleteAccount } from "@/lib/auth/account";
-import { SESSION_COOKIE_NAME, getSession } from "@/lib/auth/session";
+import { sessionCookieNames } from "@/lib/auth/auth";
+import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
 import { reportError } from "@/lib/observability/report-error";
 import { NextResponse } from "next/server";
@@ -67,12 +68,15 @@ export async function DELETE(req: Request) {
   if (!result) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const res = NextResponse.json({ ok: true, stripeCustomer: result.stripeCustomer });
-  res.cookies.set(SESSION_COOKIE_NAME, "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 0,
-  });
+  // The sessions are gone server-side; expire the browser's copies too.
+  for (const cookie of await sessionCookieNames()) {
+    res.cookies.set(cookie.name, "", {
+      httpOnly: cookie.attributes.httpOnly ?? true,
+      secure: cookie.attributes.secure ?? false,
+      sameSite: "lax",
+      path: cookie.attributes.path ?? "/",
+      maxAge: 0,
+    });
+  }
   return res;
 }
