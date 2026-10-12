@@ -1,4 +1,5 @@
 import { type Page, expect, test } from "@playwright/test";
+import { gotoApp } from "./helpers";
 
 /**
  * List actions end to end: Shift+click bulk move, `s t` snooze with undo,
@@ -16,7 +17,7 @@ async function capture(page: Page, text: string) {
 }
 
 test("bulk move, keyboard snooze with undo, and duplicate", async ({ page }) => {
-  await page.goto("/inbox", { waitUntil: "networkidle" });
+  await gotoApp(page, "/inbox");
   const stamp = Date.now();
   const titles = [`Bulk one ${stamp}`, `Bulk two ${stamp}`, `Bulk three ${stamp}`];
   for (const t of titles) await capture(page, t);

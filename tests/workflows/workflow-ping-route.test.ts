@@ -72,6 +72,49 @@ describe("POST /api/admin/workflow-ping", () => {
     expect(client.wait).toHaveBeenCalledWith("wrun_test", 20_000);
   });
 
+  it("reports pending and failed outcomes as 200 with the run id", async () => {
+    const { cookie } = await createUserWithCookie(getTestRepos(), {
+      email: "s.gonzalez.garza@gmail.com",
+      isCreator: true,
+    });
+    client.start.mockResolvedValue({ runId: "wrun_slow" });
+    client.wait.mockResolvedValueOnce({ status: "pending" });
+    const pending = await (await post(cookie)).json();
+    expect(pending).toMatchObject({ runId: "wrun_slow", status: "pending" });
+
+    client.wait.mockResolvedValueOnce({ status: "failed", error: "EROFS: read-only data dir" });
+    const failed = await (await post(cookie)).json();
+    expect(failed).toMatchObject({ status: "failed", error: "EROFS: read-only data dir" });
+  });
+
+  it("clamps ?hold= to 0…15000 ms and ignores garbage", async () => {
+    const { user, cookie } = await createUserWithCookie(getTestRepos(), {
+      email: "s.gonzalez.garza@gmail.com",
+      isCreator: true,
+    });
+    client.start.mockResolvedValue({ runId: "wrun_hold" });
+    client.wait.mockResolvedValue({ status: "pending" });
+    const { POST } = await import("@/app/api/admin/workflow-ping/route");
+    const fire = (query: string) =>
+      POST(
+        new Request(`http://localhost/api/admin/workflow-ping${query}`, {
+          method: "POST",
+          headers: { cookie },
+        }),
+      );
+    for (const [query, hold] of [
+      ["?hold=4000", 4000],
+      ["?hold=20000", 15_000],
+      ["?hold=-50", 0],
+      ["?hold=nope", 0],
+      ["", 0],
+    ] as const) {
+      client.start.mockClear();
+      await fire(query);
+      expect(client.start.mock.calls[0]![1]).toEqual([user.id, expect.any(String), hold]);
+    }
+  });
+
   it("answers 503 with the runtime's message when the run cannot start", async () => {
     const { cookie } = await createUserWithCookie(getTestRepos(), {
       email: "s.gonzalez.garza@gmail.com",
