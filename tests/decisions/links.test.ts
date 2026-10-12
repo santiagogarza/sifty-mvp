@@ -69,6 +69,19 @@ async function follow(token: string | null, headers: Record<string, string> = {}
   return GET(new Request(url, { headers }));
 }
 
+/** The confirmation page's form: POST the token back. */
+async function submit(token: string, headers: Record<string, string> = {}) {
+  const { POST } = await import("@/app/api/decisions/link/route");
+  const body = new URLSearchParams({ token });
+  return POST(
+    new Request("http://localhost/api/decisions/link", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", ...headers },
+      body,
+    }),
+  );
+}
+
 describe("decision link tokens", () => {
   it("round-trip every action and carry the user, decision, and a token id", async () => {
     const now = new Date("2026-10-12T12:00:00Z");
@@ -150,6 +163,38 @@ describe("GET /api/decisions/link", () => {
     expect((await repos.decisions.get(userId, decision.id))?.status).toBe("open");
   });
 
+  it("GET on an answer or dismiss link only shows a confirmation; scanners resolve nothing", async () => {
+    const { repos, decision } = await seedQuestion();
+    for (const link of [
+      { action: "dismiss" as const },
+      { action: "answer" as const, option: "2026" },
+    ]) {
+      const token = await createDecisionLinkToken({ userId, decisionId: decision.id, link });
+      const res = await follow(token);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("text/html");
+      expect(res.headers.get("cache-control")).toBe("no-store");
+      const html = await res.text();
+      expect(html).toContain('method="post"');
+      expect(html).toContain(`value="${token}"`);
+      expect(html).toContain(link.action === "dismiss" ? "Let Sifty decide" : "Answer “2026”");
+    }
+    expect((await repos.decisions.get(userId, decision.id))?.status).toBe("open");
+    expect(client.resume).not.toHaveBeenCalled();
+  });
+
+  it("the confirmation page escapes option text", async () => {
+    const { decision } = await seedQuestion();
+    const token = await createDecisionLinkToken({
+      userId,
+      decisionId: decision.id,
+      link: { action: "answer", option: '<img src=x onerror="1">' },
+    });
+    const html = await (await follow(token)).text();
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img src=x onerror=&quot;1&quot;&gt;");
+  });
+
   it("answers with the tapped option without a session, once", async () => {
     const { repos, task, decision } = await seedQuestion();
     const token = await createDecisionLinkToken({
@@ -157,7 +202,7 @@ describe("GET /api/decisions/link", () => {
       decisionId: decision.id,
       link: { action: "answer", option: "2026" },
     });
-    const res = await follow(token);
+    const res = await submit(token);
     expect(res.status).toBe(303);
     expect(res.headers.get("location")).toBe("https://sifty.test/decisions?link=answered");
     const stored = await repos.decisions.get(userId, decision.id);
@@ -167,7 +212,7 @@ describe("GET /api/decisions/link", () => {
     expect((await repos.tasks.get(userId, task.id))?.aiStatus).toBe("pending");
 
     // Second tap on the same link, or on the sibling option: already used.
-    expect((await follow(token)).headers.get("location")).toBe(
+    expect((await submit(token)).headers.get("location")).toBe(
       "https://sifty.test/decisions?link=used",
     );
     const sibling = await createDecisionLinkToken({
@@ -175,7 +220,7 @@ describe("GET /api/decisions/link", () => {
       decisionId: decision.id,
       link: { action: "answer", option: "2025" },
     });
-    expect((await follow(sibling)).headers.get("location")).toBe(
+    expect((await submit(sibling)).headers.get("location")).toBe(
       "https://sifty.test/decisions?link=used",
     );
     expect(client.resume).toHaveBeenCalledTimes(1);
@@ -188,7 +233,7 @@ describe("GET /api/decisions/link", () => {
       decisionId: decision.id,
       link: { action: "dismiss" },
     });
-    const res = await follow(token, { cookie });
+    const res = await submit(token, { cookie });
     expect(res.headers.get("location")).toBe("https://sifty.test/decisions?link=dismissed");
     expect((await repos.decisions.get(userId, decision.id))?.status).toBe("dismissed");
     expect((await repos.tasks.get(userId, task.id))?.siftedWithAssumptions).toBe(true);
@@ -201,10 +246,58 @@ describe("GET /api/decisions/link", () => {
       decisionId: decision.id,
       link: { action: "dismiss" },
     });
-    const res = await follow(token, { cookie: otherCookie });
+    const res = await submit(token, { cookie: otherCookie });
     expect(res.status).toBe(403);
+    expect((await follow(token, { cookie: otherCookie })).status).toBe(403);
     expect((await repos.decisions.get(userId, decision.id))?.status).toBe("open");
     expect(client.resume).not.toHaveBeenCalled();
+  });
+
+  it("a throttled answer tap lands on the inbox instead of raw JSON; dismiss is never throttled", async () => {
+    vi.stubEnv("RATELIMIT_TRIAGE_IP_PER_MIN", "1");
+    __resetRateLimits();
+    const { repos, decision } = await seedQuestion();
+    const other = await repos.decisions.create(userId, {
+      kind: "clarifying_question",
+      taskId: decision.taskId,
+      payload: { ...decision.payload },
+      resumeToken: null,
+      expiresAt: null,
+    });
+    const headers = { "x-forwarded-for": "7.7.7.7" };
+    const first = await createDecisionLinkToken({
+      userId,
+      decisionId: decision.id,
+      link: { action: "answer", option: "2026" },
+    });
+    expect((await submit(first, headers)).headers.get("location")).toBe(
+      "https://sifty.test/decisions?link=answered",
+    );
+    const second = await createDecisionLinkToken({
+      userId,
+      decisionId: other.id,
+      link: { action: "answer", option: "2026" },
+    });
+    const throttled = await submit(second, headers);
+    expect(throttled.status).toBe(303);
+    expect(throttled.headers.get("location")).toBe("https://sifty.test/decisions?link=busy");
+    expect((await repos.decisions.get(userId, other.id))?.status).toBe("open");
+    const dismiss = await createDecisionLinkToken({
+      userId,
+      decisionId: other.id,
+      link: { action: "dismiss" },
+    });
+    expect((await submit(dismiss, headers)).headers.get("location")).toBe(
+      "https://sifty.test/decisions?link=dismissed",
+    );
+  });
+
+  it("a POST without a usable token redirects like a bad GET", async () => {
+    const { POST } = await import("@/app/api/decisions/link/route");
+    const res = await POST(
+      new Request("http://localhost/api/decisions/link", { method: "POST", body: "nope" }),
+    );
+    expect(res.headers.get("location")).toBe("https://sifty.test/decisions?link=malformed");
   });
 
   it("a token for a decision that no longer exists lands on `gone`", async () => {
@@ -213,7 +306,7 @@ describe("GET /api/decisions/link", () => {
       decisionId: "dec_missing",
       link: { action: "dismiss" },
     });
-    expect((await follow(token)).headers.get("location")).toBe(
+    expect((await submit(token)).headers.get("location")).toBe(
       "https://sifty.test/decisions?link=gone",
     );
   });

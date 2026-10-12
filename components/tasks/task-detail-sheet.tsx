@@ -266,7 +266,12 @@ function DetailBody({
         </div>
 
         {task.aiStatus === "failed" ? <OrganizeFailed task={task} /> : null}
-        {task.clarifyingQuestion ? <ClarifyingQuestion task={task} /> : null}
+        {/* Triage writes the question mid-run, before the decision behind it
+            exists; the sheet offers it once the sift has settled so a reply
+            always resumes the run that asked. */}
+        {task.clarifyingQuestion && !siftInProgress(task) ? (
+          <ClarifyingQuestion task={task} />
+        ) : null}
         {!task.clarifyingQuestion && task.siftedWithAssumptions ? (
           <SiftedWithAssumptions task={task} />
         ) : null}
@@ -717,24 +722,45 @@ function AgentBriefSection({ task }: { task: Task }) {
   );
 }
 
+function siftInProgress(task: Task): boolean {
+  return task.aiStatus === "pending" || task.aiStatus === "running";
+}
+
 /**
  * The sift's question, answerable in place. When the question is an open
  * decision (every sift since 2.6) the answer resumes the run that asked,
- * inside the same sift; a task that still carries a question with no
- * decision behind it (pre-2.6 data) falls back to appending the answer to
- * the capture and re-sifting.
+ * inside the same sift. Only a task that carries a question with no open
+ * decision behind it *after a fresh fetch* (pre-2.6 data) falls back to
+ * appending the answer to the capture and re-sifting, which costs a sift.
  */
 function ClarifyingQuestion({ task }: { task: Task }) {
   const updateTask = useStore((s) => s.updateTask);
   const decision = useDecisionsStore((s) => selectOpenForTask(s, task.id)[0] ?? null);
   const answerDecision = useDecisionsStore((s) => s.answer);
   const dismissDecision = useDecisionsStore((s) => s.dismiss);
+  const refresh = useDecisionsStore((s) => s.refresh);
   const [answer, setAnswer] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  // Until a fetch made for this question comes back, a missing decision
+  // means "not loaded yet", never "legacy task".
+  const [checked, setChecked] = React.useState(false);
+  React.useEffect(() => {
+    if (decision) {
+      setChecked(true);
+      return;
+    }
+    let cancelled = false;
+    void refresh().then(() => {
+      if (!cancelled) setChecked(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [decision, refresh]);
   const options = decision?.payload.kind === "clarifying_question" ? decision.payload.options : [];
 
   const reply = async (input: { text?: string; option?: string }) => {
-    if (busy) return;
+    if (busy || !checked) return;
     const text = input.text?.trim() || null;
     if (!text && !input.option) return;
     if (decision) {
@@ -761,7 +787,7 @@ function ClarifyingQuestion({ task }: { task: Task }) {
   };
 
   const letSiftyDecide = async () => {
-    if (busy) return;
+    if (busy || !checked) return;
     if (decision) {
       setBusy(true);
       const result = await dismissDecision(decision.id);
@@ -788,7 +814,7 @@ function ClarifyingQuestion({ task }: { task: Task }) {
                 <button
                   key={option}
                   type="button"
-                  disabled={busy}
+                  disabled={busy || !checked}
                   onClick={() => void reply({ option })}
                   className="inline-flex h-7 items-center rounded-full border border-[var(--border-strong)] bg-[var(--bg)] px-2.5 text-[12.5px] text-[var(--fg)] hover:bg-[var(--surface-hover)] disabled:opacity-50"
                 >
@@ -810,14 +836,19 @@ function ClarifyingQuestion({ task }: { task: Task }) {
               onChange={(e) => setAnswer(e.target.value)}
               className="h-8 text-[13px] bg-[var(--bg)]"
             />
-            <Button size="sm" variant="primary" type="submit" disabled={busy || !answer.trim()}>
+            <Button
+              size="sm"
+              variant="primary"
+              type="submit"
+              disabled={busy || !checked || !answer.trim()}
+            >
               Reply
             </Button>
           </form>
           <button
             type="button"
             onClick={() => void letSiftyDecide()}
-            disabled={busy}
+            disabled={busy || !checked}
             className="mt-2 text-[12px] text-[var(--fg-muted)] hover:text-[var(--fg)] underline-offset-2 hover:underline"
           >
             Let Sifty decide

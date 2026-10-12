@@ -46,6 +46,14 @@ interface DecisionsState {
 }
 
 let inFlight: Promise<void> | null = null;
+/**
+ * Decisions resolved from this client and not yet confirmed gone by a
+ * fetch that started after the resolution. A `GET` that was already in
+ * flight when the user answered still carries the item; without this it
+ * would put the answered question back in the inbox for a moment.
+ */
+const resolvedLocally = new Set<string>();
+let mutationSeq = 0;
 
 export const useDecisionsStore = create<DecisionsState>()((set, get) => ({
   decisions: [],
@@ -58,6 +66,7 @@ export const useDecisionsStore = create<DecisionsState>()((set, get) => ({
     if (inFlight) return inFlight;
     inFlight = (async () => {
       try {
+        const seqAtStart = mutationSeq;
         const res = await fetch("/api/decisions", { credentials: "include" });
         if (res.status === 401) {
           set({ decisions: [], tasks: {}, count: 0, loaded: true, error: null });
@@ -65,10 +74,15 @@ export const useDecisionsStore = create<DecisionsState>()((set, get) => ({
         }
         if (!res.ok) throw new Error(`decisions ${res.status}`);
         const body = (await res.json()) as DecisionsResponse;
+        // A response that predates a local resolution may still list the
+        // resolved item; a fetch started after it is the first that can
+        // vouch the server agrees.
+        if (seqAtStart === mutationSeq) resolvedLocally.clear();
+        const decisions = body.decisions.filter((d) => !resolvedLocally.has(d.id));
         set({
-          decisions: body.decisions,
+          decisions,
           tasks: Object.fromEntries(body.tasks.map((t) => [t.id, t])),
-          count: body.count,
+          count: Math.max(0, body.count - (body.decisions.length - decisions.length)),
           loaded: true,
           error: null,
         });
@@ -131,6 +145,8 @@ function removeLocally(
   get: () => DecisionsState,
   id: string,
 ): void {
+  mutationSeq += 1;
+  resolvedLocally.add(id);
   const { decisions, count } = get();
   if (!decisions.some((d) => d.id === id)) return;
   set({ decisions: decisions.filter((d) => d.id !== id), count: Math.max(0, count - 1) });

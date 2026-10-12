@@ -33,6 +33,7 @@ const LINK_MESSAGES: Record<string, string> = {
   dismissed: "Dismissed — Sifty kept its own read.",
   used: "That question was already answered.",
   gone: "That question is no longer open.",
+  busy: "Too many taps in a minute — the question is still open below.",
   expired: "That link expired. Anything still open is listed here.",
   invalid: "That link is not valid. Anything still open is listed here.",
   malformed: "That link is not valid. Anything still open is listed here.",

@@ -265,7 +265,10 @@ and suspends with no compute for up to seven days.
   their runs; the 7-day deadline expires an ignored one.
 - One-tap links (`lib/decisions/links.ts`): HS256 JWTs under
   `BETTER_AUTH_SECRET`, 24 h, scoped to one decision and one action, used
-  by digests and pushes via `GET /api/decisions/link?token=`. Single use
+  by digests and pushes via `/api/decisions/link?token=`. `GET` never
+  changes state (mail scanners and unfurlers fetch every URL): `open`
+  redirects into the inbox, `answer` / `dismiss` show a one-button page
+  that `POST`s the token back, and only the `POST` resolves. Single use
   follows from the decision's own state machine. The notifications worker
   reads `listOpen(userId)` from `lib/decisions/service.ts`.
 
