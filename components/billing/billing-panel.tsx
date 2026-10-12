@@ -94,7 +94,7 @@ export function BillingPanel({
           <div>
             <div className="text-[15px] text-[var(--fg)]">{user.email}</div>
             <div className="text-[12px] text-[var(--fg-muted)] mt-0.5">
-              {tierSummary(entitlement)}
+              {isPro && paymentProblem ? "Sifty Pro — payment needed" : tierSummary(entitlement)}
             </div>
           </div>
           <Badge tone={paidTier ? "ember" : "mist"}>{tierLabel(tier)}</Badge>

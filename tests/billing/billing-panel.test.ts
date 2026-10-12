@@ -107,6 +107,7 @@ describe("BillingPanel", () => {
     });
     const card = screen.getByTestId("billing-payment-problem");
     expect(card).toHaveTextContent(/Pro stays on until October 19/);
+    expect(screen.getByText("Sifty Pro — payment needed")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Update payment method/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Upgrade/ })).toBeNull();
   });
