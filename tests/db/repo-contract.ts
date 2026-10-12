@@ -128,6 +128,16 @@ export function describeRepoContract(getRepos: () => Repos): void {
       });
       expect(active.subscriptionActive).toBe(true);
       expect((await repos.entitlements.get(u.id))?.stripeSubscriptionId).toBe("sub_1");
+
+      // A customer id written through update() is findable the same way as
+      // one written through upsert() or users.setStripeCustomerId().
+      const other = await createUser(repos, "ent-update@example.com");
+      await repos.entitlements.update(other.id, (current) => ({
+        ...(current ?? first),
+        stripeCustomerId: "cus_via_update",
+      }));
+      expect((await repos.users.findByStripeCustomerId("cus_via_update"))?.id).toBe(other.id);
+      expect((await repos.entitlements.get(other.id))?.stripeCustomerId).toBe("cus_via_update");
     });
 
     it("tasks: create with client id, patch, subtasks, delete", async () => {

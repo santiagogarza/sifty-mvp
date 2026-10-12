@@ -151,6 +151,7 @@ export function createMemoryRepos(): MemoryReposHandle {
       const current = state.entitlements.get(userId);
       const next = mutate(current ? { ...current } : null);
       state.entitlements.set(userId, { ...next });
+      if (next.stripeCustomerId) state.stripeCustomers.set(userId, next.stripeCustomerId);
       return { ...next };
     },
     async startTrialIfMissing(userId, days) {
