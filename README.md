@@ -263,6 +263,19 @@ and suspends with no compute for up to seven days.
   sheet with a re-sift link) and the run ends.
 - A re-sift or a delete expires the task's open questions and releases
   their runs; the 7-day deadline expires an ignored one.
+- **Approvals and draft reviews** (Phase 3, `approval` / `draft_review`
+  opened by executions): an `ask_first` gate reads "Sifty wants to …" with
+  **Approve** / **Reject**; a draft review shows the draft with **Approve**,
+  **Edit** (a line diff of the changes is shown before "Approve with
+  edits"), and **Reject**. Rejecting (or dismissing) cancels the execution;
+  approving moves it in the database first and then wakes the suspended
+  run (`lib/executions/service.ts`). With two or more approvable items a
+  bar offers a batch approve (`x` selects; the button asks for a second
+  click). The task sheet's "Let Sifty do it" panel shows the execution's
+  status, steps, and result, and links into the inbox while it waits.
+  `awaySummary(userId, { since })` in `lib/decisions/service.ts` is the
+  "while you were away" count set for the digest; `GET /api/decisions`
+  carries `byKind`.
 - One-tap links (`lib/decisions/links.ts`): HS256 JWTs under
   `BETTER_AUTH_SECRET`, 24 h, scoped to one decision and one action, used
   by digests and pushes via `/api/decisions/link?token=`. `GET` never
@@ -270,7 +283,9 @@ and suspends with no compute for up to seven days.
   redirects into the inbox, `answer` / `dismiss` show a one-button page
   that `POST`s the token back, and only the `POST` resolves. Single use
   follows from the decision's own state machine. The notifications worker
-  reads `listOpen(userId)` from `lib/decisions/service.ts`.
+  reads `listOpen(userId)` from `lib/decisions/service.ts`;
+  `executionDecisionLinks()` gives the open / approve / reject set for an
+  approval, and the confirm page words itself by decision kind.
 
 ### The `dailyPlan` workflow
 
@@ -640,9 +655,11 @@ Press `?` in the app for the same list.
 | `s` then `t` / `w` | Snooze the highlighted task until tomorrow / next week |
 | `Shift+click` | Select a range of tasks (bulk move to Someday) |
 | `Shift+D` | Duplicate the open task |
-| `Enter` (Decisions) | Type an answer to the highlighted question |
-| `1`–`4` (Decisions) | Pick a suggested answer |
-| `d` (Decisions) | Let Sifty decide (dismiss the question) |
+| `Enter` (Decisions) | Type an answer, or edit the highlighted draft |
+| `1`–`4` (Decisions) | Pick a suggested answer (`1` approves) |
+| `e` (Decisions) | Edit the highlighted draft |
+| `x` (Decisions) | Select for a batch approve |
+| `d` (Decisions) | Let Sifty decide, or reject |
 | `Esc` | Close any overlay, or clear a selection |
 | `?` | Show or hide the shortcuts sheet |
 

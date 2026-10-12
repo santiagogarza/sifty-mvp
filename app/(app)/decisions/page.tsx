@@ -7,7 +7,7 @@ import { DecisionsEmptyState } from "@/components/decisions/decisions-empty-stat
 import { DecisionsInbox } from "@/components/decisions/decisions-inbox";
 import { toast } from "@/components/ui/toast";
 import { useDecisionsStore } from "@/lib/decisions/client";
-import { describeWaiting } from "@/lib/decisions/copy";
+import { EMPTY_WAITING_LINE, countByKind, describeWaiting } from "@/lib/decisions/copy";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 
@@ -30,8 +30,10 @@ export default function DecisionsPage() {
 
 /** What `/api/decisions/link` says about the tap that brought the user here. */
 const LINK_MESSAGES: Record<string, string> = {
-  answered: "Answered — Sifty is re-sifting with your reply.",
-  dismissed: "Dismissed — Sifty kept its own read.",
+  answered: "Done — Sifty has your answer.",
+  approved: "Approved — Sifty is on it.",
+  rejected: "Rejected — Sifty stopped.",
+  dismissed: "Dismissed.",
   used: "That question was already answered.",
   gone: "That question is no longer open.",
   busy: "Too many taps in a minute — the question is still open below.",
@@ -70,19 +72,14 @@ function DecisionsView() {
 
   const focusId = search.get("focus");
   const count = decisions.length;
-  const proposals = decisions.filter((d) => d.kind === "memory_proposal").length;
-  const questions = count - proposals;
+  const byKind = countByKind(decisions);
 
   return (
     <>
       <PageHeader
         eyebrow="Waiting on you"
         title="Decisions"
-        description={
-          count === 0
-            ? "Questions Sifty could not answer on its own, and things it noticed, in one place."
-            : describeWaiting(questions, proposals)
-        }
+        description={count === 0 ? EMPTY_WAITING_LINE : describeWaiting(byKind)}
       />
       {error && loaded ? (
         <p role="status" className="mb-3 text-[13px] text-[var(--warn)]">

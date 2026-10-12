@@ -50,9 +50,15 @@ export const SHORTCUT_GROUPS: ReadonlyArray<ShortcutGroup> = [
   {
     title: "Decisions",
     shortcuts: [
-      { keys: [["↵"]], description: "Type an answer to the highlighted question" },
-      { keys: [["1"]], also: [["2"], ["3"], ["4"]], description: "Pick a suggested answer" },
-      { keys: [["d"]], description: "Let Sifty decide" },
+      { keys: [["↵"]], description: "Type an answer, or edit the highlighted draft" },
+      {
+        keys: [["1"]],
+        also: [["2"], ["3"], ["4"]],
+        description: "Pick a suggested answer (1 approves)",
+      },
+      { keys: [["e"]], description: "Edit the highlighted draft" },
+      { keys: [["x"]], description: "Select for a batch approve" },
+      { keys: [["d"]], description: "Let Sifty decide, or reject" },
     ],
   },
   {

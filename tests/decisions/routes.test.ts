@@ -115,7 +115,12 @@ describe("GET /api/decisions", () => {
     ]);
     // Another tenant sees an empty inbox.
     const theirs = await (await list({ cookie: otherCookie })).json();
-    expect(theirs).toEqual({ decisions: [], tasks: [], count: 0 });
+    expect(theirs).toEqual({
+      decisions: [],
+      tasks: [],
+      count: 0,
+      byKind: { clarifying_question: 0, memory_proposal: 0, approval: 0, draft_review: 0 },
+    });
   });
 });
 
