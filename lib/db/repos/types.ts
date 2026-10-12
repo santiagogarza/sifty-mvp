@@ -100,12 +100,22 @@ export interface LabelEnsureInput {
   tone: LabelTone;
 }
 
+/** `ai_runs.stage` for the accounting row that represents one accepted sift. */
+export const SIFT_ACCOUNTING_STAGE = "sift";
+
 export interface AiRunWriteInput {
   userId: string;
   taskId: string | null;
   promptVersion: string;
-  /** Pipeline stage (`lib/ai/models.ts` `Stage`); null for legacy rows and pre-resolution failures. */
+  /**
+   * Pipeline stage (`lib/ai/models.ts` `Stage`), `SIFT_ACCOUNTING_STAGE` for
+   * the row that represents one accepted sift, or null for legacy rows and
+   * pre-resolution failures.
+   */
   stage?: string | null;
+  /** Groups the accounting row and the per-stage rows of one sift. */
+  siftId?: string | null;
+  workflowRunId?: string | null;
   /** Canonical `provider/model` slug of the model that answered. */
   model: string;
   /** "gateway" | "direct" | "offline" | "unknown". */
@@ -203,6 +213,9 @@ export interface AiRunRecord {
   id: string;
   taskId: string | null;
   stage: string | null;
+  promptVersion: string;
+  siftId: string | null;
+  workflowRunId: string | null;
   model: string;
   transport: string;
   status: "succeeded" | "failed";
@@ -215,16 +228,50 @@ export interface AiRunRecord {
   createdAt: string;
 }
 
+export type AiRunRollupKey = "day" | "stage" | "model" | "user";
+
+/** One row of the admin cost view: every tenant's runs grouped by `key`. */
+export interface AiRunRollupRow {
+  /** ISO day, stage name, model slug, or user id depending on the grouping. */
+  key: string;
+  runs: number;
+  failed: number;
+  inputTokens: number;
+  outputTokens: number;
+  costCents: number;
+}
+
 export interface AiRunRepo {
   insert(input: AiRunWriteInput): Promise<{ id: string; createdAt: string }>;
+  /**
+   * Flip a run's status (the sift accounting row is written as `succeeded`
+   * when the sift is accepted and marked `failed` if the workflow dies).
+   */
+  setStatus(
+    userId: string,
+    id: string,
+    status: "succeeded" | "failed",
+    error?: string | null,
+  ): Promise<void>;
+  /**
+   * Sifts that count against today's cap: succeeded, online, and a billing
+   * unit (`siftId` null, or the `sift` accounting row). Per-stage detail rows
+   * of a workflow sift are excluded so a five-stage sift is one sift.
+   */
   countSucceededToday(userId: string, now?: Date): Promise<number>;
   /**
-   * All runs (any status/transport) recorded at or after `since`. Backs the
-   * cross-instance sliding-window rate limit on AI routes.
+   * Billing units (same rule as above, any status) recorded at or after
+   * `since`. Backs the cross-instance sliding-window rate limit on AI routes.
    */
   countSince(userId: string, since: Date): Promise<number>;
   /** Newest first. `limit` undefined returns every run (data export). */
   list(userId: string, limit?: number): Promise<AiRunRecord[]>;
+  /**
+   * Cross-tenant aggregate for the creator-only cost view. The only read in
+   * the repository layer without a `userId` predicate; callers must gate on
+   * `session.user.isCreator`.
+   */
+  rollup(input: { since: Date; by: AiRunRollupKey }): Promise<AiRunRollupRow[]>;
 }
 
 export interface TaskEventRecord {

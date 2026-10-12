@@ -120,10 +120,13 @@ describe("GET /api/account/export", () => {
       "model",
       "offline",
       "outputTokens",
+      "promptVersion",
+      "siftId",
       "stage",
       "status",
       "taskId",
       "transport",
+      "workflowRunId",
     ]);
     expect(data.taskEvents).toEqual([]);
     expect(data.truncated).toEqual([]);
@@ -157,6 +160,9 @@ describe("GET /api/account/export", () => {
         id: `run_${i}`,
         taskId: null,
         stage: null,
+        promptVersion: "triage.v1",
+        siftId: null,
+        workflowRunId: null,
         model: "m",
         transport: "gateway",
         status: "succeeded" as const,

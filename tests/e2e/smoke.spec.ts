@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { gotoApp } from "./helpers";
 
 /**
  * Sifty smoke suite.
@@ -64,7 +65,7 @@ test("offline triage round-trips through the API", async ({ request }) => {
 });
 
 test("captured task syncs to the server and survives cleared local state", async ({ page }) => {
-  await page.goto("/today", { waitUntil: "networkidle" });
+  await gotoApp(page, "/today");
 
   const marker = `Sync smoke ${Date.now()}`;
   await page.keyboard.press("c");
@@ -86,7 +87,7 @@ test("captured task syncs to the server and survives cleared local state", async
 
   // The reverse direction: a fresh client (no localStorage) pulls it back.
   await page.evaluate(() => window.localStorage.clear());
-  await page.goto("/inbox", { waitUntil: "networkidle" });
+  await gotoApp(page, "/inbox");
   await expect(page.getByText(marker.slice(0, 30)).first()).toBeVisible({ timeout: 10_000 });
 });
 
@@ -96,7 +97,7 @@ test.describe("mobile detail sheet", () => {
   // SIF-27: the bottom sheet's body must scroll so the footer (Delete) and
   // the disclosures above it are reachable on a phone.
   test("scrolls to the bottom actions", async ({ page }) => {
-    await page.goto("/inbox", { waitUntil: "networkidle" });
+    await gotoApp(page, "/inbox");
 
     await page.keyboard.press("c");
     await page.getByPlaceholder("What do you need to do?").fill(`Mobile sheet smoke ${Date.now()}`);
@@ -128,7 +129,7 @@ test.describe("short desktop detail sheet", () => {
   // Same contract as mobile for the side panel: the body scrolls, the
   // footer stays pinned, and opening the sheet focuses the panel itself.
   test("scrolls inside the side panel and focuses the panel on open", async ({ page }) => {
-    await page.goto("/inbox", { waitUntil: "networkidle" });
+    await gotoApp(page, "/inbox");
 
     await page.keyboard.press("c");
     await page

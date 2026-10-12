@@ -221,8 +221,20 @@ export const aiRuns = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     taskId: text("task_id"),
     promptVersion: text("prompt_version").notNull(),
-    /** Pipeline stage (`lib/ai/models.ts`). Null on rows written before 0003. */
+    /**
+     * Pipeline stage (`lib/ai/models.ts`), or `"sift"` for the accounting
+     * row written when a sift is accepted. Null on rows written before 0003.
+     */
     stage: text("stage"),
+    /**
+     * Groups the rows of one sift: the `sift` accounting row plus one row per
+     * stage step. Null for single-shot runs (legacy triage, agent briefs).
+     * Caps count rows where `sift_id IS NULL OR stage = 'sift'`, never the
+     * per-stage detail, so a five-stage sift is one sift.
+     */
+    siftId: text("sift_id"),
+    /** Workflow run id (`wrun_…`) for the dashboard; null outside Workflow. */
+    workflowRunId: text("workflow_run_id"),
     /** Canonical `provider/model` slug of the model that answered. */
     model: text("model").notNull(),
     /** "gateway" | "direct" | "offline" | "unknown". */
@@ -238,7 +250,12 @@ export const aiRuns = pgTable(
     error: text("error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("ai_runs_user_created_idx").on(t.userId, t.createdAt)],
+  (t) => [
+    index("ai_runs_user_created_idx").on(t.userId, t.createdAt),
+    index("ai_runs_sift_idx").on(t.siftId),
+    // The admin cost view groups every tenant's rows by day.
+    index("ai_runs_created_idx").on(t.createdAt),
+  ],
 );
 
 export const sessions = pgTable(
