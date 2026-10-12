@@ -130,6 +130,8 @@ export function applyStripeEvent(
     if (current.stripeSubscriptionId && current.stripeSubscriptionId !== subId) return null;
     return subId;
   };
+  const isOtherSubscription = (subId: string): boolean =>
+    !!current.stripeSubscriptionId && current.stripeSubscriptionId !== subId;
   // One grace window per dunning cycle. Keep an open one; once the cycle is
   // under way (status already past_due/unpaid, which outlives the window
   // after `expireGracePeriods()` clears it) later retries get no new window.
@@ -148,7 +150,12 @@ export function applyStripeEvent(
       // for that same subscription arriving afterwards is out-of-order
       // delivery (Stripe does not guarantee ordering), not a resurrection:
       // a late `past_due` must not reopen grace, a late `active` must not
-      // restore Pro. A different subscription id is a genuine new one.
+      // restore Pro. A different subscription id is a genuine new one only
+      // once the tracked one has ended: checkout refuses while one is open,
+      // so an event for another id meanwhile is a late one for an old sub.
+      if (isOtherSubscription(sub.id) && hasOpenStripeSubscription(current)) {
+        return current;
+      }
       if (
         sub.id === current.stripeSubscriptionId &&
         ENDED_STATUSES.has(current.stripeStatus ?? "") &&
@@ -174,6 +181,7 @@ export function applyStripeEvent(
     }
     case "customer.subscription.deleted": {
       const sub = event.data.object;
+      if (isOtherSubscription(sub.id)) return current;
       return resolve({
         subscriptionActive: false,
         stripeSubscriptionId: sub.id,

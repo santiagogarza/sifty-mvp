@@ -356,6 +356,15 @@ describe("applyStripeEvent — dunning grace period", () => {
     });
     expect(fresh.tier).toBe("pro");
     expect(fresh.stripeSubscriptionId).toBe("sub_new");
+
+    // Late events for the old subscription cannot replace the new one.
+    for (const late of [
+      subEvent("customer.subscription.deleted", "canceled"),
+      subEvent("customer.subscription.updated", "past_due"),
+      subEvent("customer.subscription.updated", "canceled"),
+    ]) {
+      expect(applyStripeEvent(fresh, late, NOW)).toBe(fresh);
+    }
   });
 
   it("payment_failed on an incomplete, paused, or expired subscription changes nothing", () => {
