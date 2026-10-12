@@ -35,6 +35,7 @@ export function taskFromCapture(capture: GoldenCapture, todayIso: string): Task 
     siftId: `sift_${capture.id}`,
     siftStage: "enrich",
     plan: null,
+    siftedWithAssumptions: false,
     labelIds: [],
     subtasks: [],
     editedFields: [],

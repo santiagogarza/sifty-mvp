@@ -52,6 +52,7 @@ const triage: StageOutputs["triage"] = {
   delegationCandidate: "self",
   confidence: 0.8,
   clarifyingQuestion: null,
+  clarifyingOptions: [],
 };
 const plan: StageOutputs["plan"] = {
   executor: "ai_agent",
