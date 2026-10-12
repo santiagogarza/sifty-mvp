@@ -11,7 +11,7 @@ extra=(${CURL_EXTRA:-})
 fail=0
 
 # probe PATH EXPECTED_CODE [MUST_CONTAIN] [soft]
-# soft: report but do not fail (pages that are not on production yet).
+# soft: report but do not fail (for pages that are not on production yet).
 probe() {
   local path="$1" expect="$2" must_contain="${3:-}" soft="${4:-}"
   local code body
@@ -33,7 +33,7 @@ probe() {
 }
 
 probe /            200 "Sifty"
-probe /pricing     200 "Sifty" soft   # lands with the site-pages PR; make hard afterwards
+probe /pricing     200 "Sifty"
 probe /sign-up     200 "Sifty"
 probe /sign-in     200 "Sifty"
 probe /api/health  200 '"ok":true'
