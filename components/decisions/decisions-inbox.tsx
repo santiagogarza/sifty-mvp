@@ -206,10 +206,13 @@ export function DecisionsInbox({
   );
 }
 
+/** How long "Confirm: approve N" stays armed before it falls back to "Approve N". */
+const BATCH_ARM_MS = 20_000;
+
 /**
  * Sticky bar for approving several items at once. "Approve N" asks for a
- * second click (within a few seconds) rather than a modal: enough friction
- * before a batch of side effects, no interruption for one.
+ * second click rather than a modal: enough friction before a batch of
+ * side effects, no interruption for one.
  */
 function BatchBar({
   approvable,
@@ -227,11 +230,17 @@ function BatchBar({
   const [busy, setBusy] = React.useState(false);
   const count = selected.size;
 
+  // Armed long enough for a careful (or assistive-tech) second click; a
+  // change in the selection disarms it, so the count can never be stale.
   React.useEffect(() => {
     if (!arming) return;
-    const t = setTimeout(() => setArming(false), 5000);
+    const t = setTimeout(() => setArming(false), BATCH_ARM_MS);
     return () => clearTimeout(t);
   }, [arming]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: disarm whenever the selection changes.
+  React.useEffect(() => {
+    setArming(false);
+  }, [count]);
 
   const run = async () => {
     if (!arming) {
