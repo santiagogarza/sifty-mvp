@@ -106,6 +106,12 @@ describe("triage rate limit", () => {
     const limited = await fire();
     expect(limited.status).toBe(429);
     expect(limited.headers.get("Retry-After")).toBeTruthy();
+    // Same body shape as the bucket 429 so every client reads one thing.
+    expect(await limited.json()).toEqual({
+      error: "Too many AI requests. Slow down a bit.",
+      message: "Too many AI requests. Slow down a bit.",
+      code: "rate_limited",
+    });
     void user;
   });
 });

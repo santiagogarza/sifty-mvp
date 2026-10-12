@@ -2,8 +2,8 @@ import { getSession } from "@/lib/auth/session";
 import { StripeNotConfiguredError, getPriceIds, getStripe } from "@/lib/billing/stripe";
 import { getRepos } from "@/lib/db/repos";
 import { emptySnapshot } from "@/lib/entitlements/entitlements";
-import { buildRateLimitKey, consumeToken, rateLimitResponseInit } from "@/lib/ratelimit/limiter";
-import { STRIPE_USER_POLICY, clientIdFromRequest } from "@/lib/ratelimit/policies";
+import { enforceRateLimit } from "@/lib/ratelimit/guard";
+import { STRIPE_IP_POLICY, STRIPE_USER_POLICY } from "@/lib/ratelimit/policies";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -14,19 +14,24 @@ const Body = z.object({
 });
 
 export async function POST(req: Request) {
+  // IP first, before the session lookup, so an unauthenticated flood spends
+  // its budget here instead of on free 401s.
+  const ipLimit = await enforceRateLimit(req, {
+    route: "stripe-user",
+    ip: STRIPE_IP_POLICY,
+    message: "Too many checkout requests. Try again in a moment.",
+  });
+  if (!ipLimit.ok) return ipLimit.response;
+
   const session = await getSession(req);
   if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
-  const limit = consumeToken(
-    buildRateLimitKey("stripe-user", session.user.id, clientIdFromRequest(req)),
-    STRIPE_USER_POLICY,
-  );
-  if (!limit.ok) {
-    return NextResponse.json(
-      { error: "Too many checkout requests. Try again in a moment." },
-      rateLimitResponseInit(limit),
-    );
-  }
+  const limit = await enforceRateLimit(req, {
+    route: "stripe-user",
+    subject: { id: session.user.id, policy: STRIPE_USER_POLICY },
+    message: "Too many checkout requests. Try again in a moment.",
+  });
+  if (!limit.ok) return limit.response;
 
   const json = await req.json().catch(() => ({}));
   const parsed = Body.safeParse(json);
