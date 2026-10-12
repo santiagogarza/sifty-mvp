@@ -18,13 +18,16 @@ import { recordsBaselines } from "./harness/mode";
  * Runs in every mode and needs no model.
  */
 
-const update = process.env.EVAL_UPDATE_BASELINES === "1";
+// Fingerprints do not depend on which captures ran, but a filtered run is
+// never a baseline-recording run (same rule as the rubric and cost files).
+const recording = recordsBaselines({
+  update: process.env.EVAL_UPDATE_BASELINES === "1",
+  only: process.env.EVAL_ONLY?.trim() || null,
+});
 const current = computeFingerprints();
 const recorded = readFingerprints();
 
-// Fingerprints do not depend on which captures ran, but a filtered run is
-// never a baseline-recording run (same rule as the rubric and cost files).
-if (recordsBaselines({ update, only: process.env.EVAL_ONLY?.trim() || null })) {
+if (recording) {
   // Keep historical versions: `ai_runs.prompt_version` rows still reference them.
   writeFingerprints({ ...recorded, ...current });
 }
@@ -40,7 +43,8 @@ describe("prompt versions", () => {
   });
 
   it.each(Object.keys(current))("%s matches its recorded fingerprint", (version) => {
-    if (update) return;
+    // Only a run that just rewrote the file may skip the comparison.
+    if (recording) return;
     const findings = compareFingerprints({ [version]: current[version]! }, recorded);
     expect(
       findings.map((f) => f.message),

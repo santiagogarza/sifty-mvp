@@ -106,11 +106,13 @@ models get no such help.
 
 `.github/workflows/evals-nightly.yml` runs the set through the Gateway every
 night and direct on Mondays. Its secrets (`AI_GATEWAY_API_KEY`,
-`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) are **environment** secrets on the
-`evals` GitHub Environment, whose deployment-branch policy allows only
-`production` and `master`; the jobs always check out `production` and take
-no ref input. That keeps a branch pushed by any repository writer from
-dispatching the workflow with live billing keys in its process environment.
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) must be **environment** secrets on an
+`evals` GitHub Environment whose deployment-branch policy allows only
+`production` and `master` (Santi creates it before attaching keys; see the
+setup checklist). The jobs check out `production` and take no ref input, but
+a dispatched branch runs its own copy of the workflow file, so the
+environment policy is the control that keeps a writer's branch from running
+with live billing keys.
 GitHub fires `schedule` only from the default branch, so the same file has
 to exist on `master` for the nightly to run on its own.
 

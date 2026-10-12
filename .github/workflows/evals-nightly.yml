@@ -12,12 +12,13 @@ name: Evals (real models)
 #
 # Either can be started by hand from the Actions tab (workflow_dispatch).
 #
-# Secrets live on the `evals` GitHub Environment, not as plain repository
-# secrets: the environment's deployment-branch policy is set to `production`
-# (and `master`, where the schedule fires), so a branch pushed by any writer
-# cannot dispatch this workflow with the live provider keys in its env. The
-# checkout is pinned to `production` for the same reason; there is no ref
-# input.
+# Secrets must live on the `evals` GitHub Environment, not as plain
+# repository secrets. Santi creates that environment and limits its
+# deployment branches to `production` and `master` (where the schedule
+# fires) BEFORE attaching any provider key: a dispatched branch runs that
+# branch's copy of this file, so only the environment policy — not the
+# `ref: production` pin below — keeps a writer's branch from running with
+# the live keys. There is no ref input.
 
 on:
   schedule:
