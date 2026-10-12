@@ -171,6 +171,7 @@ Required for production:
 | `STRIPE_PRICE_MONTHLY` / `STRIPE_PRICE_YEARLY` | Pro recurring price ids. |
 | `NEXT_PUBLIC_APP_URL` | Public URL for Stripe success/cancel redirects. |
 | `RESEND_API_KEY` / `EMAIL_FROM` | Transactional email via Resend. `EMAIL_FROM` must be on a domain verified in Resend; `onboarding@resend.dev` works for testing and reaches the account owner only. Unset both and every email is printed to the server log instead (links included). |
+| `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | Optional. Server and browser error sinks; everything is a no-op when unset. |
 
 Optional:
 
@@ -196,7 +197,11 @@ ignores them regardless. A missing `DATABASE_URL` is the one soft check:
 production boots on the in-memory store, logs the problem at build and boot,
 and `/api/health` answers 503 until Neon is connected. On Vercel the build
 command is `pnpm build:vercel`, which runs `pnpm db:migrate` (skips when no
-database is configured) before `next build`.
+database is configured, and always on preview deployments) before
+`next build`. `vercel.json` carries the security headers, the crons
+placeholder, and the Ignored Build Step (`scripts/vercel-ignore-build.sh`:
+only `production` and `cursor/prod-*` build). `GET /api/health` is the
+uptime probe (200/503, reports persistence, DB reachability, Sentry).
 
 ## AI configuration
 
