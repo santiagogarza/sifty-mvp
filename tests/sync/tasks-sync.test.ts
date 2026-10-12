@@ -62,10 +62,12 @@ describe("task sync contract", () => {
     expect(task.createdAt).toBe("2026-07-01T10:00:00.000Z");
     expect(task.editedFields).toEqual(["title"]);
 
+    // A new account also carries the three starter examples; find ours by id.
     const listed = await repos.tasks.list(user.id);
-    expect(listed).toHaveLength(1);
-    expect(listed[0]!.labelIds).toEqual([labelId]);
-    expect(listed[0]!.subtasks[0]!.title).toBe("Write the plan");
+    const stored = listed.find((t) => t.id === "task_client1")!;
+    expect(stored).toBeTruthy();
+    expect(stored.labelIds).toEqual([labelId]);
+    expect(stored.subtasks[0]!.title).toBe("Write the plan");
   });
 
   it("create is idempotent per id and 409s on a cross-tenant id claim", async () => {
