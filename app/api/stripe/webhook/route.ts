@@ -134,7 +134,9 @@ async function processEvent(
       user,
       invoice: reducible.data.object as StripeInvoiceLike,
       graceEndsAt: isGraceActive(next.graceEndsAt, at) ? next.graceEndsAt : null,
-      accessPaused: next.tier !== "pro",
+      // Only `free` has actually lost Pro; an open app trial still carries
+      // Pro caps after the grace window, so that mail keeps the softer copy.
+      accessPaused: next.tier === "free",
       eventId: event.id,
     });
   }

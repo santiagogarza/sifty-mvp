@@ -420,6 +420,30 @@ describe("POST /api/stripe/webhook", () => {
       void user;
     });
 
+    it("after grace lapsed but with the app trial still open, the mail does not claim Pro is paused", async () => {
+      const repos = getTestRepos();
+      const user = await payingUser("trialer@example.com", "cus_TR", "sub_TR");
+      const first = new Date("2026-10-12T12:00:00.000Z");
+      const ent = (await repos.entitlements.get(user.id))!;
+      await repos.entitlements.upsert(user.id, {
+        ...ent,
+        trialStartedAt: first.toISOString(),
+        trialEndsAt: new Date(first.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      });
+      await deliver(
+        makeEvent({ type: "invoice.payment_failed", customer: "cus_TR", created: first }).body,
+      );
+      const retryAt = new Date(first.getTime() + (GRACE_PERIOD_DAYS + 2) * 24 * 60 * 60 * 1000);
+      await deliver(
+        makeEvent({ type: "invoice.payment_failed", customer: "cus_TR", created: retryAt }).body,
+      );
+      expect((await repos.entitlements.get(user.id))?.tier).toBe("trialing");
+      const outbox = getTestOutbox().outbox;
+      expect(outbox).toHaveLength(2);
+      expect(outbox[1]!.subject).not.toMatch(/paused/);
+      expect(outbox[1]!.text).toContain("Update your payment method to keep Pro features on.");
+    });
+
     it("a leftover retry after cancellation sends nothing and does not revive Pro", async () => {
       const repos = getTestRepos();
       const user = await payingUser("left@example.com", "cus_LF", "sub_LF");
