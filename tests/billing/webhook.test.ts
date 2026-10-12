@@ -445,6 +445,29 @@ describe("POST /api/stripe/webhook", () => {
       expect(outbox[1]!.text).toContain("Update your payment method to keep Pro features on.");
     });
 
+    it("a failed invoice for a customer with no paying subscription on record sends nothing", async () => {
+      const repos = getTestRepos();
+      const user = await repos.users.create({
+        email: "declined@example.com",
+        displayName: "Declined",
+        isCreator: false,
+      });
+      await repos.entitlements.startTrialIfMissing(user.id, 30);
+      await repos.users.setStripeCustomerId(user.id, "cus_DC");
+      await repos.entitlements.update(user.id, (c) => ({ ...c!, stripeCustomerId: "cus_DC" }));
+
+      const res = await deliver(
+        makeEvent({ type: "invoice.payment_failed", customer: "cus_DC", subscriptionId: "sub_DC" })
+          .body,
+      );
+      expect(res.status).toBe(200);
+      const after = await repos.entitlements.get(user.id);
+      expect(after?.tier).toBe("trialing");
+      expect(after?.graceEndsAt).toBeNull();
+      expect(after?.stripeStatus).toBeNull();
+      expect(getTestOutbox().outbox).toHaveLength(0);
+    });
+
     it("a leftover retry after cancellation sends nothing and does not revive Pro", async () => {
       const repos = getTestRepos();
       const user = await payingUser("left@example.com", "cus_LF", "sub_LF");
