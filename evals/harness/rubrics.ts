@@ -80,8 +80,10 @@ export function producedStrings(stage: SiftStage, output: unknown): string[] {
     }
     case "prioritize":
       return [];
-    case "triage":
-      return [(output as StageOutputs["triage"]).clarifyingQuestion ?? ""];
+    case "triage": {
+      const o = output as StageOutputs["triage"];
+      return [o.clarifyingQuestion ?? "", ...o.clarifyingOptions];
+    }
     case "subtasks":
       return (output as StageOutputs["subtasks"]).subtasks;
     case "plan": {

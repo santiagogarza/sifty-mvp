@@ -29,6 +29,11 @@ export const MEMORY_LIMITS = {
   text: 2000,
 } as const;
 
+export const DECISION_LIMITS = {
+  answerText: 1000,
+  option: 60,
+} as const;
+
 /** Bounded context passed to AI routes (triage, brief). */
 export const AI_CONTEXT_LIMITS = {
   maxPreferences: 20,

@@ -1,6 +1,10 @@
 import { routeLifecycle, stagePatch } from "@/lib/ai/sift/apply";
 import { runStage } from "@/lib/ai/sift/run-stage";
-import { STAGE_DEFINITIONS, type SiftContext } from "@/lib/ai/sift/stages";
+import {
+  STAGE_DEFINITIONS,
+  type SiftContext,
+  offlineClarifyingOptions,
+} from "@/lib/ai/sift/stages";
 import { SIFT_STAGES, type Task } from "@/lib/domain/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockResolvedProvider } from "../helpers/ai";
@@ -37,6 +41,7 @@ function task(overrides: Partial<Task> = {}): Task {
     siftId: "sift_1",
     siftStage: null,
     plan: null,
+    siftedWithAssumptions: false,
     labelIds: [],
     subtasks: [],
     editedFields: [],
@@ -114,6 +119,50 @@ describe("offline stages", () => {
     expect(someday.output.routing).toBe("someday");
     const inbox = await runStage("triage", ctx(), { offline: true });
     expect(inbox.output.routing).toBe("inbox");
+  });
+
+  it("offers tappable options for each canned question, none when confident, none once answered", async () => {
+    const terse = await runStage("triage", ctx({ task: task({ sourceText: "Taxes" }) }), {
+      offline: true,
+    });
+    expect(terse.output.clarifyingQuestion).toBe("What outcome would mark this as done?");
+    expect(terse.output.clarifyingOptions).toEqual([
+      "A decision",
+      "Something sent",
+      "Something built",
+    ]);
+
+    const asked = await runStage(
+      "triage",
+      ctx({ task: task({ sourceText: "Should we move the offsite to March?" }) }),
+      { offline: true },
+    );
+    expect(asked.output.clarifyingQuestion).toMatch(/research note/);
+    expect(asked.output.clarifyingOptions).toEqual(["Yes, a note", "No, it's a task"]);
+
+    // The heuristic's third question (deadline) needs confidence < 0.55 with
+    // three or more words and no question mark, which its scoring never
+    // produces; its option list is pinned directly so the map stays complete.
+    expect(offlineClarifyingOptions("Is there a deadline I should know about?")).toEqual([
+      "This week",
+      "This month",
+      "No deadline",
+    ]);
+    expect(offlineClarifyingOptions("Something the model made up?")).toEqual([]);
+
+    const confident = await runStage("triage", ctx(), { offline: true });
+    expect(confident.output.clarifyingQuestion).toBeNull();
+    expect(confident.output.clarifyingOptions).toEqual([]);
+
+    // The second pass after an answer never re-asks.
+    const answered = await runStage(
+      "triage",
+      ctx({ task: task({ sourceText: "Taxes", sourceContext: "Answer: Something sent" }) }),
+      { offline: true },
+    );
+    expect(answered.output.clarifyingQuestion).toBeNull();
+    expect(answered.output.clarifyingOptions).toEqual([]);
+    expect(answered.output.confidence).toBeGreaterThanOrEqual(0.7);
   });
 });
 
@@ -244,6 +293,7 @@ describe("stagePatch", () => {
       delegationCandidate: "ai",
       confidence: 0.5,
       clarifyingQuestion: "Which board?",
+      clarifyingOptions: [],
     });
     expect(patch).toEqual({
       lifecycle: "waiting",

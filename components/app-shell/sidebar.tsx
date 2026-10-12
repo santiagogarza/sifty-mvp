@@ -1,5 +1,6 @@
 "use client";
 
+import { useOpenDecisionCount } from "@/components/decisions/decisions-sync";
 import { STATUS_ICONS } from "@/components/tasks/status-icon";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { STATUS_VIEWS } from "@/lib/domain/status";
@@ -7,7 +8,7 @@ import type { Lifecycle } from "@/lib/domain/types";
 import { type TaskCounts, useTaskCounts } from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
-import { Brain, Settings, Sun } from "lucide-react";
+import { Brain, MessageCircleQuestion, Settings, Sun } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as React from "react";
@@ -31,6 +32,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const counts = useTaskCounts();
   const hydrated = useStore((s) => s.hydrated);
+  const openDecisions = useOpenDecisionCount();
 
   // Today first (the smart lens / homepage), then the statuses in pipeline
   // order — the same order, words, and icons as the Status picker.
@@ -82,6 +84,29 @@ export function Sidebar() {
             );
           })}
         </nav>
+
+        {/* Decisions sits apart from the status views: it is not a place
+            tasks live but the one list of things only the user can settle.
+            The count is the accent color because it is actionable, where
+            the status counts are just sizes. */}
+        <div className="px-1">
+          <div className="text-eyebrow px-2 mb-1.5">Waiting on you</div>
+          <Link
+            href="/decisions"
+            data-testid="nav-decisions"
+            className={cn(
+              "group flex items-center gap-2.5 rounded-[var(--radius-sm)] px-2 py-1.5",
+              "text-[13.5px] text-[var(--fg-muted)]",
+              "transition-colors duration-150 ease-[var(--ease-product)]",
+              "hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]",
+              pathname?.startsWith("/decisions") && "bg-[var(--surface-muted)] text-[var(--fg)]",
+            )}
+          >
+            <MessageCircleQuestion size={14} className="opacity-80" />
+            <span className="flex-1">Decisions</span>
+            <DecisionCount value={openDecisions} />
+          </Link>
+        </div>
 
         <div className="px-1 mt-1">
           <div className="text-eyebrow px-2 mb-1.5">More</div>
@@ -158,6 +183,23 @@ function NavCount({ value, live }: { value: number; live: boolean }) {
       )}
     >
       {value}
+    </span>
+  );
+}
+
+/** Accent pill: an open decision is a to-do for the human, not a tally. */
+export function DecisionCount({ value, className }: { value: number; className?: string }) {
+  if (value <= 0) return null;
+  return (
+    <span
+      data-testid="decisions-count"
+      className={cn(
+        "inline-flex min-w-[18px] h-[18px] items-center justify-center rounded-full px-1.5",
+        "bg-[var(--accent)] text-[var(--accent-fg)] text-[10.5px] font-medium text-num tabular-nums",
+        className,
+      )}
+    >
+      {value > 99 ? "99+" : value}
     </span>
   );
 }

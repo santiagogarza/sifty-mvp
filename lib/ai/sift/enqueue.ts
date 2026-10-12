@@ -1,6 +1,7 @@
 import type { Session } from "@/lib/auth/session";
 import { type Repos, getRepos } from "@/lib/db/repos";
 import { SIFT_ACCOUNTING_STAGE } from "@/lib/db/repos/types";
+import { expireOpenDecisionsForTask } from "@/lib/decisions/service";
 import type { Task } from "@/lib/domain/types";
 import { reportError } from "@/lib/observability/report-error";
 import { id as makeId } from "@/lib/utils/ids";
@@ -100,6 +101,11 @@ export async function enqueueSift(args: {
     const current = (await repos.tasks.get(userId, task.id)) ?? task;
     return { ok: false, reason: "already_sifting", task: current };
   }
+
+  // The previous sift may be suspended on a clarifying question. This sift
+  // owns the task now, so that question is moot: close it and let its run
+  // end instead of leaving a stale item in the Decisions inbox.
+  if (task.siftId) await expireOpenDecisionsForTask(repos, userId, task.id);
 
   const accounting = await repos.aiRuns.insert({
     userId,

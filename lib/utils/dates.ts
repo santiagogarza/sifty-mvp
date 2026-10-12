@@ -133,6 +133,19 @@ export function dayKeyDelta(toKey: string, fromKey: string): number {
   return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / dayMs);
 }
 
+/** "just now", "12m ago", "3h ago", then day granularity via `formatRelativeDay`. */
+export function formatTimeAgo(value: string | Date, now = new Date()): string {
+  const date = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return "";
+  const seconds = Math.max(0, Math.round((now.getTime() - date.getTime()) / 1000));
+  if (seconds < 60) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24 && dayDelta(date, now) === 0) return `${hours}h ago`;
+  return formatRelativeDay(date, now) ?? "";
+}
+
 export function formatExactTime(value: string | Date): string {
   const date = typeof value === "string" ? new Date(value) : value;
   return date.toLocaleString(undefined, {

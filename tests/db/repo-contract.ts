@@ -5,6 +5,7 @@ import {
   NOTIFICATION_CLAIM_LEASE_MS,
   SIFT_ACCOUNTING_STAGE,
 } from "@/lib/db/repos/types";
+import type { ClarifyingQuestionPayload } from "@/lib/domain/types";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -467,6 +468,150 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect(await repos.memories.list(u.id)).toHaveLength(3);
     });
 
+    it("decisions: tenancy, newest-first listing, counts, and the open → resolved CAS", async () => {
+      const repos = getRepos();
+      const a = await createUser(repos, "dec-a@example.com");
+      const b = await createUser(repos, "dec-b@example.com");
+      const task = await repos.tasks.create(a.id, { sourceText: "Taxes", sourceContext: null });
+
+      const older = await repos.decisions.create(a.id, {
+        kind: "clarifying_question",
+        taskId: task.id,
+        payload: question("Which year?", ["2025", "2026"], "sift_1"),
+        resumeToken: null,
+        expiresAt: null,
+      });
+      await new Promise((r) => setTimeout(r, 5));
+      // A deadline a week out: relative, so this case never turns into a
+      // time bomb once the calendar passes a hardcoded date.
+      const deadline = new Date(Date.now() + 7 * 86_400_000).toISOString();
+      const newer = await repos.decisions.create(a.id, {
+        id: "dec_fixed",
+        kind: "clarifying_question",
+        taskId: task.id,
+        payload: question("Federal or state?", [], "sift_1"),
+        resumeToken: "decision:dec_fixed",
+        expiresAt: deadline,
+      });
+      expect(newer.id).toBe("dec_fixed");
+      expect(newer.status).toBe("open");
+      expect(newer.resumeToken).toBe("decision:dec_fixed");
+      expect(newer.expiresAt).toBe(deadline);
+
+      // Newest first; counts match.
+      expect((await repos.decisions.listOpen(a.id, { limit: 10 })).map((d) => d.id)).toEqual([
+        newer.id,
+        older.id,
+      ]);
+      expect((await repos.decisions.listOpen(a.id, { limit: 1 })).map((d) => d.id)).toEqual([
+        newer.id,
+      ]);
+      expect(await repos.decisions.countOpen(a.id)).toBe(2);
+      expect(
+        (await repos.decisions.listOpenForTask(a.id, task.id, { limit: 10 })).map((d) => d.id),
+      ).toEqual([newer.id, older.id]);
+      // The per-task read is bounded too: a tight limit drops the older row.
+      expect(
+        (await repos.decisions.listOpenForTask(a.id, task.id, { limit: 1 })).map((d) => d.id),
+      ).toEqual([newer.id]);
+
+      // B sees nothing and cannot resolve A's decision.
+      expect(await repos.decisions.listOpen(b.id, { limit: 10 })).toEqual([]);
+      expect(await repos.decisions.countOpen(b.id)).toBe(0);
+      expect(await repos.decisions.get(b.id, newer.id)).toBeNull();
+      expect(
+        await repos.decisions.resolve(b.id, newer.id, { status: "dismissed", answer: null }),
+      ).toBeNull();
+      expect((await repos.decisions.get(a.id, newer.id))?.status).toBe("open");
+
+      // A fixed id already taken by another tenant is a conflict, not a hijack.
+      await expect(
+        repos.decisions.create(b.id, {
+          id: "dec_fixed",
+          kind: "clarifying_question",
+          taskId: null,
+          payload: question("steal?", [], "sift_x"),
+          resumeToken: null,
+          expiresAt: null,
+        }),
+      ).rejects.toThrow(IdConflictError);
+      // …and a replay by the owner returns the existing row untouched.
+      const replayed = await repos.decisions.create(a.id, {
+        id: "dec_fixed",
+        kind: "clarifying_question",
+        taskId: task.id,
+        payload: question("changed", [], "sift_1"),
+        resumeToken: null,
+        expiresAt: null,
+      });
+      expect(replayed.payload).toEqual(newer.payload);
+
+      // Exactly one of two concurrent resolutions wins.
+      const answer = { text: "2026", option: null, via: "app" as const };
+      const [x, y] = await Promise.all([
+        repos.decisions.resolve(a.id, newer.id, { status: "answered", answer }),
+        repos.decisions.resolve(a.id, newer.id, { status: "dismissed", answer: null }),
+      ]);
+      expect([x, y].filter(Boolean)).toHaveLength(1);
+      const resolved = (await repos.decisions.get(a.id, newer.id))!;
+      expect(["answered", "dismissed"]).toContain(resolved.status);
+      expect(resolved.resolvedAt).not.toBeNull();
+      if (resolved.status === "answered") expect(resolved.answer).toEqual(answer);
+      expect(await repos.decisions.countOpen(a.id)).toBe(1);
+      expect((await repos.decisions.listOpen(a.id, { limit: 10 })).map((d) => d.id)).toEqual([
+        older.id,
+      ]);
+
+      // Deleting the task takes its decisions with it.
+      expect(await repos.tasks.delete(a.id, task.id)).toBe(true);
+      expect(await repos.decisions.get(a.id, older.id)).toBeNull();
+      expect(await repos.decisions.countOpen(a.id)).toBe(0);
+    });
+
+    it("decisions: a row past its deadline is neither listed nor counted, even while still `open`", async () => {
+      const repos = getRepos();
+      const u = await createUser(repos, "dec-ttl@example.com");
+      const task = await repos.tasks.create(u.id, { sourceText: "Stale", sourceContext: null });
+      const stale = await repos.decisions.create(u.id, {
+        kind: "clarifying_question",
+        taskId: task.id,
+        payload: question("Still here?", [], "sift_old"),
+        resumeToken: null,
+        expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      });
+      const live = await repos.decisions.create(u.id, {
+        kind: "clarifying_question",
+        taskId: task.id,
+        payload: question("Fresh?", [], "sift_new"),
+        resumeToken: null,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      });
+      expect((await repos.decisions.listOpen(u.id, { limit: 10 })).map((d) => d.id)).toEqual([
+        live.id,
+      ]);
+      expect(await repos.decisions.countOpen(u.id)).toBe(1);
+      // The per-task read still sees it, so a re-sift or a delete can close it.
+      expect(
+        (await repos.decisions.listOpenForTask(u.id, task.id, { limit: 10 }))
+          .map((d) => d.id)
+          .sort(),
+      ).toEqual([live.id, stale.id].sort());
+      // The row itself is untouched: the asking run (if alive) still closes it.
+      expect((await repos.decisions.get(u.id, stale.id))?.status).toBe("open");
+    });
+
+    it("tasks: siftedWithAssumptions round-trips and defaults to false", async () => {
+      const repos = getRepos();
+      const u = await createUser(repos, "assume@example.com");
+      const t = await repos.tasks.create(u.id, { sourceText: "Assume", sourceContext: null });
+      expect(t.siftedWithAssumptions).toBe(false);
+      const flagged = await repos.tasks.update(u.id, t.id, { siftedWithAssumptions: true });
+      expect(flagged?.siftedWithAssumptions).toBe(true);
+      expect((await repos.tasks.get(u.id, t.id))?.siftedWithAssumptions).toBe(true);
+      const cleared = await repos.tasks.update(u.id, t.id, { siftedWithAssumptions: false });
+      expect(cleared?.siftedWithAssumptions).toBe(false);
+    });
+
     it("stripeEvents: first sight wins, delete re-arms", async () => {
       const repos = getRepos();
       expect(await repos.stripeEvents.recordIfNew("evt_1", "invoice.paid")).toBe(true);
@@ -884,6 +1029,10 @@ async function createUser(repos: Repos, email: string) {
     displayName: email.split("@")[0] ?? email,
     isCreator: false,
   });
+}
+
+function question(text: string, options: string[], siftId: string): ClarifyingQuestionPayload {
+  return { kind: "clarifying_question", question: text, options, siftId, confidence: 0.4 };
 }
 
 function aiRun(userId: string, taskId: string | null) {

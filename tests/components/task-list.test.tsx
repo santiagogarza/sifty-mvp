@@ -39,6 +39,7 @@ function makeTask(id: string, title = id): Task {
     siftId: null,
     siftStage: null,
     plan: null,
+    siftedWithAssumptions: false,
     labelIds: [],
     subtasks: [],
     editedFields: [],
