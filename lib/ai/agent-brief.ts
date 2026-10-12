@@ -1,8 +1,7 @@
 import type { Task } from "@/lib/domain/types";
 import { generateObject } from "ai";
 import { z } from "zod";
-import { DEFAULT_MODEL_ID, estimateCostCents } from "./models";
-import { resolveProvider } from "./provider";
+import { resolveProvider, usageFromResult } from "./provider";
 import type { TriageMeta } from "./triage-agent";
 
 /**
@@ -12,7 +11,8 @@ import type { TriageMeta } from "./triage-agent";
  *
  * Mirrors the triage agent's contract: structured output validated by Zod,
  * an offline deterministic fallback for keyless dev, and a `TriageMeta`
- * record for `ai_runs`.
+ * record for `ai_runs`. Runs on the `plan` stage (Sonnet-class by default):
+ * a brief is the planning step of the pipeline, not a cheap enrichment.
  */
 
 export const BRIEF_PROMPT_VERSION = "brief.v1";
@@ -93,7 +93,7 @@ export interface AgentBriefInput {
   task: Task;
   labelNames: string[];
   preferences: string[];
-  modelId?: string | null;
+  modelPreference?: string | null;
   offline?: boolean;
 }
 
@@ -111,6 +111,7 @@ export async function generateAgentBrief(input: AgentBriefInput): Promise<AgentB
       markdown: briefToMarkdown(output),
       meta: {
         promptVersion: BRIEF_PROMPT_VERSION,
+        stage: "plan",
         model: OFFLINE_MODEL,
         transport: "offline",
         durationMs: Date.now() - start,
@@ -122,7 +123,7 @@ export async function generateAgentBrief(input: AgentBriefInput): Promise<AgentB
     };
   }
 
-  const resolved = resolveProvider(input.modelId ?? DEFAULT_MODEL_ID);
+  const resolved = resolveProvider("plan", { preference: input.modelPreference });
   const todayIso = new Date().toISOString().slice(0, 10);
   const result = await generateObject({
     model: resolved.model,
@@ -139,18 +140,18 @@ export async function generateAgentBrief(input: AgentBriefInput): Promise<AgentB
     temperature: 0.2,
   });
 
-  const inputTokens = result.usage?.inputTokens ?? null;
-  const outputTokens = result.usage?.outputTokens ?? null;
+  const usage = usageFromResult(resolved, result);
   return {
     markdown: briefToMarkdown(result.object),
     meta: {
       promptVersion: BRIEF_PROMPT_VERSION,
-      model: resolved.option.gatewaySlug,
+      stage: resolved.stage,
+      model: usage.model,
       transport: resolved.transport,
       durationMs: Date.now() - start,
-      inputTokens,
-      outputTokens,
-      costCents: estimateCostCents({ model: resolved.option, inputTokens, outputTokens }),
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      costCents: usage.costCents,
       offline: false,
     },
   };
