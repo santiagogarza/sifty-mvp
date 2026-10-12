@@ -1,4 +1,4 @@
-import { gateAiRequest, resolveOfflineMode } from "@/lib/ai/ai-gate";
+import { gateAiRequest, gateAiRequestByIp, resolveOfflineMode } from "@/lib/ai/ai-gate";
 import { recordAiRun } from "@/lib/ai/ai-runs";
 import { applyTriageToTask } from "@/lib/ai/apply-triage";
 import { AiConfigError } from "@/lib/ai/provider";
@@ -27,6 +27,9 @@ const Body = z.object({
 });
 
 export async function POST(req: Request) {
+  const ipGate = await gateAiRequestByIp(req, "triage");
+  if (!ipGate.ok) return ipGate.response;
+
   const json = await req.json().catch(() => null);
   const parsed = Body.safeParse(json);
   if (!parsed.success) {

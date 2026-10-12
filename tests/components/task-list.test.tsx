@@ -4,7 +4,7 @@ import { Toaster, useToastStore } from "@/components/ui/toast";
 import { resolveSnooze } from "@/lib/domain/snooze";
 import type { Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -279,6 +279,24 @@ describe("TaskList bulk select", () => {
     }
   });
 
+  it("Clear drops the selection without touching any task", async () => {
+    const user = userEvent.setup();
+    seedStore(five);
+    renderList(five);
+
+    await user.click(row("Task A"));
+    await user.keyboard("{Shift>}");
+    await user.click(row("Task C"));
+    await user.keyboard("{/Shift}");
+    await user.click(screen.getByRole("button", { name: "Clear" }));
+
+    expect(screen.queryByTestId("bulk-bar")).toBeNull();
+    expect(screen.queryAllByRole("option").some((el) => el.hasAttribute("data-selected"))).toBe(
+      false,
+    );
+    expect(useStore.getState().tasks.every((t) => t.lifecycle === "active")).toBe(true);
+  });
+
   it("the complete circle still completes one task without touching the selection", async () => {
     const user = userEvent.setup();
     seedStore(five);
@@ -378,6 +396,22 @@ describe("TaskList snooze keys", () => {
     expect(screen.queryByTestId("snooze-hint")).toBeNull();
     await user.keyboard("t");
     expect(useStore.getState().tasks.every((t) => t.due === null)).toBe(true);
+  });
+
+  it("a chord left hanging expires after two seconds", async () => {
+    const tasks = [makeTask("a", "Alpha")];
+    useStore.setState({ tasks, labels: [] });
+    render(<TaskList tasks={tasks} onOpen={vi.fn()} />);
+
+    fireEvent.keyDown(screen.getByRole("listbox", { name: "Tasks" }), { key: "ArrowDown" });
+    fireEvent.keyDown(row("Alpha"), { key: "s" });
+    expect(screen.getByTestId("snooze-hint")).toBeInTheDocument();
+
+    await waitFor(() => expect(screen.queryByTestId("snooze-hint")).toBeNull(), {
+      timeout: 3_000,
+    });
+    fireEvent.keyDown(row("Alpha"), { key: "t" });
+    expect(useStore.getState().tasks[0]!.due).toBeNull();
   });
 
   it("s then w lands on next Monday; Escape cancels a pending snooze", async () => {

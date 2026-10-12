@@ -16,6 +16,7 @@ import { memoryAdapter } from "better-auth/adapters/memory";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { magicLink } from "better-auth/plugins";
+import { authAbuseHooks } from "./abuse-hooks";
 import { verifyPasswordHash } from "./passwords";
 import { isCreatorEmail } from "./session-shared";
 import {
@@ -214,6 +215,7 @@ function createAuth(repos: Repos) {
       },
     },
     hooks: {
+      before: authAbuseHooks,
       // A correct password on a not-yet-verified account (e.g. a user
       // migrated from the pre-verification era) proves the password to this
       // browser too, so the re-sent verification link keeps it.
