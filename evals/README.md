@@ -102,6 +102,18 @@ subtasks, so put injected instructions after a sentence boundary or in
 `sourceContext`, and keep `sourceText` under 180 characters. The real
 models get no such help.
 
+## Nightly runs and secrets
+
+`.github/workflows/evals-nightly.yml` runs the set through the Gateway every
+night and direct on Mondays. Its secrets (`AI_GATEWAY_API_KEY`,
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) are **environment** secrets on the
+`evals` GitHub Environment, whose deployment-branch policy allows only
+`production` and `master`; the jobs always check out `production` and take
+no ref input. That keeps a branch pushed by any repository writer from
+dispatching the workflow with live billing keys in its process environment.
+GitHub fires `schedule` only from the default branch, so the same file has
+to exist on `master` for the nightly to run on its own.
+
 ## Why Vitest and not promptfoo or an AI SDK eval runner
 
 The AI SDK (v6) ships no eval runner. promptfoo would need a custom

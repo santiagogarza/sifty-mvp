@@ -11,6 +11,13 @@ name: Evals (real models)
 #   - direct:  Mondays only, to cap spend. Secrets: ANTHROPIC_API_KEY, OPENAI_API_KEY.
 #
 # Either can be started by hand from the Actions tab (workflow_dispatch).
+#
+# Secrets live on the `evals` GitHub Environment, not as plain repository
+# secrets: the environment's deployment-branch policy is set to `production`
+# (and `master`, where the schedule fires), so a branch pushed by any writer
+# cannot dispatch this workflow with the live provider keys in its env. The
+# checkout is pinned to `production` for the same reason; there is no ref
+# input.
 
 on:
   schedule:
@@ -23,9 +30,6 @@ on:
         type: choice
         options: [gateway, direct]
         default: gateway
-      ref:
-        description: Branch or SHA to evaluate
-        default: production
 
 permissions:
   contents: read
@@ -38,6 +42,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && inputs.transport == 'gateway')
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    environment: evals
     env:
       AI_TRANSPORT: gateway
       AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
@@ -47,12 +52,12 @@ jobs:
       - name: Require the Gateway secret
         run: |
           if [ -z "${AI_GATEWAY_API_KEY}" ]; then
-            echo "::error::AI_GATEWAY_API_KEY is not set as a repository secret (Settings → Secrets and variables → Actions)."
+            echo "::error::AI_GATEWAY_API_KEY is not set on the 'evals' environment (Settings → Environments → evals → Environment secrets)."
             exit 1
           fi
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.ref || 'production' }}
+          ref: production
       - uses: pnpm/action-setup@v5
       - uses: actions/setup-node@v4
         with:
@@ -78,6 +83,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && inputs.transport == 'direct')
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    environment: evals
     env:
       AI_TRANSPORT: direct
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -91,12 +97,12 @@ jobs:
           [ -z "${ANTHROPIC_API_KEY}" ] && missing="$missing ANTHROPIC_API_KEY"
           [ -z "${OPENAI_API_KEY}" ] && missing="$missing OPENAI_API_KEY"
           if [ -n "$missing" ]; then
-            echo "::error::Missing repository secret(s):$missing (every stage has an OpenAI fallback, so both are needed for AI_TRANSPORT=direct)."
+            echo "::error::Missing secret(s) on the 'evals' environment:$missing (every stage has an OpenAI fallback, so both are needed for AI_TRANSPORT=direct)."
             exit 1
           fi
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.ref || 'production' }}
+          ref: production
       - uses: pnpm/action-setup@v5
       - uses: actions/setup-node@v4
         with:
