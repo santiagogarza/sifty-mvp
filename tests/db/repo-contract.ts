@@ -408,6 +408,52 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect(await repos.labels.listByIds(a.id, [])).toEqual([]);
     });
 
+    it("tasks.update with ifSiftId is a compare-and-set on the sift owner", async () => {
+      const repos = getRepos();
+      const u = await createUser(repos, "cas@example.com");
+      const t = await repos.tasks.create(u.id, { sourceText: "Claim me", sourceContext: null });
+
+      // Two claims race from the same null read: exactly one wins.
+      const [a, b] = await Promise.all([
+        repos.tasks.update(u.id, t.id, { siftId: "sift_a" }, { ifSiftId: null }),
+        repos.tasks.update(u.id, t.id, { siftId: "sift_b" }, { ifSiftId: null }),
+      ]);
+      expect([a, b].filter(Boolean)).toHaveLength(1);
+      const winner = (await repos.tasks.get(u.id, t.id))!.siftId;
+      expect(["sift_a", "sift_b"]).toContain(winner);
+
+      // A stale owner cannot write; the current owner can.
+      const loser = winner === "sift_a" ? "sift_b" : "sift_a";
+      expect(
+        await repos.tasks.update(u.id, t.id, { title: "stale" }, { ifSiftId: loser }),
+      ).toBeNull();
+      expect((await repos.tasks.get(u.id, t.id))!.title).toBe("Claim me");
+      const ok = await repos.tasks.update(u.id, t.id, { title: "fresh" }, { ifSiftId: winner });
+      expect(ok?.title).toBe("fresh");
+      // Unconditional updates are unaffected.
+      expect((await repos.tasks.update(u.id, t.id, { title: "any" }))?.title).toBe("any");
+    });
+
+    it("labels.list limit, labels.findByNames (case-insensitive), memories.list filters", async () => {
+      const repos = getRepos();
+      const u = await createUser(repos, "bounded@example.com");
+      await repos.labels.ensure(u.id, { id: "label_b1", name: "Work", tone: "mist" });
+      await repos.labels.ensure(u.id, { id: "label_b2", name: "Home", tone: "sand" });
+      await repos.labels.ensure(u.id, { id: "label_b3", name: "Errand", tone: "sage" });
+      expect(await repos.labels.list(u.id, { limit: 2 })).toHaveLength(2);
+      const found = await repos.labels.findByNames(u.id, ["work", "ERRAND", "nope"]);
+      expect(found.map((l) => l.name).sort()).toEqual(["Errand", "Work"]);
+      expect(await repos.labels.findByNames(u.id, [])).toEqual([]);
+
+      await repos.memories.create(u.id, { text: "pinned one", pinned: true });
+      await repos.memories.create(u.id, { text: "pinned two", pinned: true });
+      await repos.memories.create(u.id, { text: "loose", pinned: false });
+      const pinned = await repos.memories.list(u.id, { pinned: true });
+      expect(pinned.map((m) => m.text).sort()).toEqual(["pinned one", "pinned two"]);
+      expect(await repos.memories.list(u.id, { pinned: true, limit: 1 })).toHaveLength(1);
+      expect(await repos.memories.list(u.id)).toHaveLength(3);
+    });
+
     it("stripeEvents: first sight wins, delete re-arms", async () => {
       const repos = getRepos();
       expect(await repos.stripeEvents.recordIfNew("evt_1", "invoice.paid")).toBe(true);

@@ -171,9 +171,12 @@ export class IdConflictError extends Error {
 }
 
 export interface LabelRepo {
-  list(userId: string): Promise<Label[]>;
+  /** Oldest first. `limit` undefined returns every label (label picker, export). */
+  list(userId: string, opts?: { limit?: number }): Promise<Label[]>;
   /** Only the labels in `ids` that belong to the user; bounded by `ids.length`. */
   listByIds(userId: string, ids: readonly string[]): Promise<Label[]>;
+  /** Case-insensitive name lookup; bounded by `names.length`. */
+  findByNames(userId: string, names: readonly string[]): Promise<Label[]>;
   /**
    * Idempotent ensure-by-name (case-insensitive). Returns the existing
    * label when the name is already taken, and mints a fresh id when the
@@ -194,11 +197,16 @@ export interface TaskRepo {
   list(userId: string, opts?: TaskListOptions): Promise<Task[]>;
   get(userId: string, taskId: string): Promise<Task | null>;
   create(userId: string, input: TaskCreateInput): Promise<Task>;
+  /**
+   * Narrow update. With `ifSiftId` the write is conditional on the row's
+   * current `siftId` (null included) and returns null when it differs, so a
+   * sift step or a sift claim cannot overwrite a run that superseded it.
+   */
   update(
     userId: string,
     taskId: string,
     patch: Partial<Task>,
-    opts?: { editedFields?: TaskEditableField[] },
+    opts?: { editedFields?: TaskEditableField[]; ifSiftId?: string | null },
   ): Promise<Task | null>;
   delete(userId: string, taskId: string): Promise<boolean>;
   addSubtask(userId: string, taskId: string, subtask: Subtask): Promise<Task | null>;
@@ -207,7 +215,8 @@ export interface TaskRepo {
 }
 
 export interface MemoryRepo {
-  list(userId: string): Promise<Memory[]>;
+  /** Newest first. `limit` undefined returns every memory. */
+  list(userId: string, opts?: { pinned?: boolean; limit?: number }): Promise<Memory[]>;
   create(userId: string, input: MemoryCreateInput): Promise<Memory>;
   update(userId: string, id: string, patch: Partial<Memory>): Promise<Memory | null>;
   delete(userId: string, id: string): Promise<boolean>;

@@ -98,7 +98,9 @@ export async function POST(req: Request) {
     }
 
     let sift: SiftSummary = { enqueued: false, reason: "not_wanted" };
-    if (!existing?.siftId && wantsSift(task)) {
+    // `task.siftId` is read after create/update; a concurrent duplicate that
+    // also sees null loses the atomic claim inside `enqueueSift`.
+    if (!task.siftId && wantsSift(task)) {
       const result = await enqueueSift({
         req,
         session,
@@ -114,8 +116,8 @@ export async function POST(req: Request) {
         ? { enqueued: true, siftId: result.siftId, runId: result.runId }
         : result.reason === "denied"
           ? { enqueued: false, reason: "denied", code: String(result.admission.body.code ?? "") }
-          : { enqueued: false, reason: "not_started" };
-    } else if (existing?.siftId) {
+          : { enqueued: false, reason: result.reason };
+    } else if (task.siftId) {
       sift = { enqueued: false, reason: "already_sifting" };
     }
 

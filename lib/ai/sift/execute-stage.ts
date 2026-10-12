@@ -41,12 +41,13 @@ export async function beginSift(input: SiftInput): Promise<StepOutcome> {
   const repos = getRepos();
   const task = await owned(repos, input);
   if (typeof task === "string") return task;
-  await repos.tasks.update(input.userId, input.taskId, {
-    aiStatus: "running",
-    aiError: null,
-    siftStage: "enrich",
-  });
-  return "applied";
+  const began = await repos.tasks.update(
+    input.userId,
+    input.taskId,
+    { aiStatus: "running", aiError: null, siftStage: "enrich" },
+    { ifSiftId: input.siftId },
+  );
+  return began ? "applied" : "superseded";
 }
 
 export async function executeSiftStage(
@@ -58,7 +59,13 @@ export async function executeSiftStage(
   const task = await owned(repos, input);
   if (typeof task === "string") return task;
 
-  await repos.tasks.update(input.userId, input.taskId, { aiStatus: "running", siftStage: stage });
+  const marked = await repos.tasks.update(
+    input.userId,
+    input.taskId,
+    { aiStatus: "running", siftStage: stage },
+    { ifSiftId: input.siftId },
+  );
+  if (!marked) return "superseded";
   const ctx = await buildSiftContext(repos, input.userId, task);
 
   try {
@@ -89,7 +96,11 @@ export async function executeSiftStage(
     }
 
     const patch = stagePatch(fresh, stage, output, { labelIds });
-    await repos.tasks.update(input.userId, input.taskId, patch);
+    // Conditional on `siftId`: a re-sift that landed between the read and
+    // this write wins, and this run stops at the next boundary.
+    const applied = await repos.tasks.update(input.userId, input.taskId, patch, {
+      ifSiftId: input.siftId,
+    });
     await recordAiRun({
       userId: input.userId,
       taskId: input.taskId,
@@ -98,6 +109,7 @@ export async function executeSiftStage(
       siftId: input.siftId,
       workflowRunId,
     });
+    if (!applied) return "superseded";
     console.log(`[workflow] sift ${input.siftId}: ${stage} applied (${meta.model})`);
     return "applied";
   } catch (err) {
@@ -127,12 +139,13 @@ export async function finishSift(input: SiftInput): Promise<StepOutcome> {
   const repos = getRepos();
   const task = await owned(repos, input);
   if (typeof task === "string") return task;
-  await repos.tasks.update(input.userId, input.taskId, {
-    aiStatus: "ready",
-    aiError: null,
-    siftStage: null,
-    aiAttempts: task.aiAttempts + 1,
-  });
+  const finished = await repos.tasks.update(
+    input.userId,
+    input.taskId,
+    { aiStatus: "ready", aiError: null, siftStage: null, aiAttempts: task.aiAttempts + 1 },
+    { ifSiftId: input.siftId },
+  );
+  if (!finished) return "superseded";
   console.log(`[workflow] sift ${input.siftId}: ready`);
   return "applied";
 }
@@ -143,12 +156,13 @@ export async function failSift(input: SiftInput, message: string): Promise<StepO
   await repos.aiRuns.setStatus(input.userId, input.accountingRunId, "failed", message);
   const task = await owned(repos, input);
   if (typeof task === "string") return task;
-  await repos.tasks.update(input.userId, input.taskId, {
-    aiStatus: "failed",
-    aiError: SIFT_FAILED_MESSAGE,
-    aiAttempts: task.aiAttempts + 1,
-  });
-  return "applied";
+  const failed = await repos.tasks.update(
+    input.userId,
+    input.taskId,
+    { aiStatus: "failed", aiError: SIFT_FAILED_MESSAGE, aiAttempts: task.aiAttempts + 1 },
+    { ifSiftId: input.siftId },
+  );
+  return failed ? "applied" : "superseded";
 }
 
 /** Provider detail stays in `ai_runs`; the task gets a stable, retryable message. */
@@ -167,8 +181,8 @@ export async function buildSiftContext(
   task: Task,
 ): Promise<SiftContext> {
   const [labels, memories, tasks] = await Promise.all([
-    repos.labels.list(userId),
-    repos.memories.list(userId),
+    repos.labels.list(userId, { limit: RECENT_LABELS_IN_CONTEXT }),
+    repos.memories.list(userId, { pinned: true, limit: AI_CONTEXT_LIMITS.maxPreferences }),
     // +1 so the task being sifted, when it is itself open, does not cost a slot.
     repos.tasks.list(userId, { lifecycles: OPEN_LIFECYCLES, limit: OPEN_TASKS_IN_CONTEXT + 1 }),
   ]);
@@ -186,11 +200,8 @@ export async function buildSiftContext(
   return {
     task,
     todayIso: new Date().toISOString().slice(0, 10),
-    recentLabels: labels.slice(0, RECENT_LABELS_IN_CONTEXT).map((l) => l.name),
-    preferences: memories
-      .filter((m) => m.pinned)
-      .slice(0, AI_CONTEXT_LIMITS.maxPreferences)
-      .map((m) => m.text),
+    recentLabels: labels.map((l) => l.name),
+    preferences: memories.map((m) => m.text),
     openTasks,
   };
 }

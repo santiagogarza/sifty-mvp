@@ -15,9 +15,12 @@ export async function ensureLabelsByName(
   userId: string,
   names: string[],
 ): Promise<Label[]> {
-  const existing = await repos.labels.list(userId);
+  if (!names.length) return [];
+  const existing = await repos.labels.findByNames(userId, names);
+  // Tone rotation keys off how many labels the user already has; a bounded
+  // count is enough for a palette index.
+  let labelCount = (await repos.labels.list(userId, { limit: LABEL_TONE_PALETTE.length })).length;
   const ensured: Label[] = [];
-  let labelCount = existing.length;
   for (const name of names) {
     const match = existing.find((l) => l.name.toLowerCase() === name.toLowerCase());
     if (match) {

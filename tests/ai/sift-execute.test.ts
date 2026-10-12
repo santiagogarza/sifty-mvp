@@ -160,6 +160,33 @@ describe("sift steps (offline)", () => {
     expect(await beginSift(input)).toBe("missing");
   });
 
+  it("a re-sift landing between a step's read and its write is never overwritten", async () => {
+    const { repos, user, task, input } = await seed();
+    await beginSift(input);
+    // Simulate the race: the model answers, then (before the write) a new
+    // sift claims the task. The conditional update must refuse.
+    const original = repos.tasks.get.bind(repos.tasks);
+    let reads = 0;
+    repos.tasks.get = async (uid, tid) => {
+      const t = await original(uid, tid);
+      reads += 1;
+      // Second read inside executeSiftStage is the post-model re-read; let
+      // it still see the old owner, then flip the owner underneath.
+      if (reads === 2 && t) {
+        await repos.tasks.update(uid, tid, { siftId: "sift_new", title: "New run" });
+        return { ...t, siftId: "sift_1" };
+      }
+      return t;
+    };
+    expect(await executeSiftStage(input, "enrich", "wrun_1")).toBe("superseded");
+    repos.tasks.get = original;
+    const after = await repos.tasks.get(user.id, task.id);
+    expect(after?.title).toBe("New run");
+    expect(after?.siftId).toBe("sift_new");
+    expect(await finishSift(input)).toBe("superseded");
+    expect((await repos.tasks.get(user.id, task.id))?.aiStatus).not.toBe("ready");
+  });
+
   it("failSift surfaces a stable message and stops counting the sift", async () => {
     const { repos, user, task, input } = await seed({ offline: false });
     expect(await repos.aiRuns.countSucceededToday(user.id)).toBe(1);

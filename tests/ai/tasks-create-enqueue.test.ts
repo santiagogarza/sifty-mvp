@@ -184,6 +184,19 @@ describe("POST /api/tasks enqueues siftTask", () => {
     expect((await getTestRepos().tasks.get(userId, "task_ip2"))?.sourceText).toBe("Burst");
   });
 
+  it("two overlapping creates of the same capture enqueue exactly one sift", async () => {
+    const body = { id: "task_race", sourceText: "Race me", aiStatus: "pending" };
+    const [a, b] = await Promise.all([create(body), create(body)]);
+    const results = [await a.json(), await b.json()];
+    expect(results.filter((r) => r.sift.enqueued)).toHaveLength(1);
+    expect(results.filter((r) => r.sift.reason === "already_sifting")).toHaveLength(1);
+    expect(client.start).toHaveBeenCalledTimes(1);
+    const repos = getTestRepos();
+    expect(await repos.aiRuns.countSucceededToday(userId)).toBe(1);
+    const task = await repos.tasks.get(userId, "task_race");
+    expect(task?.siftId).toBe(results.find((r) => r.sift.enqueued)!.sift.siftId);
+  });
+
   it("offline=1 is passed through to the workflow", async () => {
     const res = await create({ sourceText: "Offline capture", aiStatus: "pending" }, "?offline=1");
     expect(res.status).toBe(201);

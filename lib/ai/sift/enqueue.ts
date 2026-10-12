@@ -17,11 +17,12 @@ import { SIFT_PROMPT_VERSION } from "./stages";
  *
  * 1. The cap gate runs first (`admitAiRun`): rate limits, the `ai_runs`
  *    window, and the tier's `siftsPerDay`.
- * 2. The `sift` accounting row is written *before* `start()`, so the next
+ * 2. The task is claimed atomically (`ifSiftId` = what the caller read):
+ *    it takes the new `siftId`, superseding any run still in flight, and
+ *    goes `pending`. A concurrent duplicate loses the claim and stops.
+ * 3. The `sift` accounting row is written *before* `start()`, so the next
  *    request already sees this sift in today's count. Without it a burst of
  *    captures would all pass the gate before any stage row lands.
- * 3. The task takes the new `siftId` (superseding any sift still running)
- *    and goes `pending`.
  * 4. `start()`; if the runtime refuses, the accounting row flips to
  *    `failed` and the task shows a retryable error instead of hanging.
  */
@@ -29,7 +30,9 @@ import { SIFT_PROMPT_VERSION } from "./stages";
 export type EnqueueResult =
   | { ok: true; task: Task; siftId: string; runId: string }
   | { ok: false; reason: "denied"; admission: Extract<AiAdmission, { ok: false }>; task: Task }
-  | { ok: false; reason: "not_started"; task: Task };
+  | { ok: false; reason: "not_started"; task: Task }
+  /** Another request claimed the task between the caller's read and this one. */
+  | { ok: false; reason: "already_sifting"; task: Task };
 
 export const SIFT_NOT_STARTED_MESSAGE = "Sifting could not start — try again.";
 
@@ -74,7 +77,21 @@ export async function enqueueSift(args: {
     return { ok: false, reason: "denied", admission, task: denied };
   }
 
+  // Claim the task for this sift first, conditional on the siftId the
+  // caller read. Two overlapping creates (or re-sifts) race here and
+  // exactly one wins; the loser enqueues nothing and bills nothing.
   const siftId = makeId("sift");
+  const pending = await repos.tasks.update(
+    userId,
+    task.id,
+    { aiStatus: "pending", aiError: null, siftId, siftStage: null },
+    { ifSiftId: task.siftId },
+  );
+  if (!pending) {
+    const current = (await repos.tasks.get(userId, task.id)) ?? task;
+    return { ok: false, reason: "already_sifting", task: current };
+  }
+
   const accounting = await repos.aiRuns.insert({
     userId,
     taskId: task.id,
@@ -91,14 +108,6 @@ export async function enqueueSift(args: {
     offline: args.offline,
     error: null,
   });
-
-  const pending =
-    (await repos.tasks.update(userId, task.id, {
-      aiStatus: "pending",
-      aiError: null,
-      siftId,
-      siftStage: null,
-    })) ?? task;
 
   const input: SiftInput = {
     userId,

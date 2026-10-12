@@ -68,6 +68,13 @@ export async function POST(req: Request) {
       { status: result.admission.status, headers: result.admission.headers },
     );
   }
+  if (result.reason === "already_sifting") {
+    // A concurrent re-sift won the claim; its run is the one to watch.
+    return NextResponse.json(
+      { task: result.task, siftId: result.task.siftId, runId: null },
+      { status: 202 },
+    );
+  }
   return NextResponse.json(
     { error: "Sifting could not start — try again.", task: result.task },
     { status: 503 },
