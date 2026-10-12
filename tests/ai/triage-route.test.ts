@@ -228,6 +228,22 @@ describe("POST /api/triage", () => {
     expect(runs[0]!.costCents).toBeNull();
   });
 
+  it("offline switches are ignored on Vercel production", async () => {
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("SIFTY_AI_OFFLINE", "1");
+    const { generateObject } = await import("ai");
+    vi.mocked(generateObject).mockResolvedValue({
+      object: happyOutput,
+      usage: { inputTokens: 100, outputTokens: 50 },
+    } as unknown as Awaited<ReturnType<typeof generateObject>>);
+    const POST = await importRoute();
+    const res = await POST(buildReq({ sourceText: "Draft email to investor" }, { offline: true }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.meta.offline).toBe(false);
+    expect(generateObject).toHaveBeenCalledTimes(1);
+  });
+
   it("applies the result to the server task durably, linking suggested labels", async () => {
     const { generateObject } = await import("ai");
     vi.mocked(generateObject).mockResolvedValue({

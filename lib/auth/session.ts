@@ -7,6 +7,7 @@ import {
 } from "@/lib/demo/seed-demo";
 import type { UserProfile } from "@/lib/domain/types";
 import { TRIAL_DAYS, creatorSnapshot, withResolvedTier } from "@/lib/entitlements/entitlements";
+import { demoFlagEnabled } from "@/lib/env/production-guards";
 import { getSessionCookie } from "better-auth/cookies";
 import { headers } from "next/headers";
 import { AUTH_COOKIE_PREFIX, type Auth, getAuth } from "./auth";
@@ -68,7 +69,7 @@ export async function getSession(req?: Request): Promise<Session | null> {
 }
 
 function isAuthBypassMode(): boolean {
-  return process.env.SIFTY_DISABLE_AUTH === "1";
+  return demoFlagEnabled("SIFTY_DISABLE_AUTH");
 }
 
 type ResolvedAuthSession = Awaited<ReturnType<Auth["api"]["getSession"]>>;
