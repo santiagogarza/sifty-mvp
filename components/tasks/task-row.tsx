@@ -9,6 +9,7 @@ import { formatRelativeDay, isOverdue, isToday } from "@/lib/utils/dates";
 import { Check } from "lucide-react";
 import * as React from "react";
 import { AiStatusInline } from "./ai-status";
+import { ConfidencePill } from "./confidence-pill";
 import { PriorityGlyph } from "./priority-glyph";
 
 /**
@@ -116,6 +117,7 @@ export const TaskRow = React.forwardRef<
             {task.title}
           </span>
           <AiStatusInline status={task.aiStatus} />
+          <ConfidencePill task={task} compact />
         </div>
         {task.nextAction && !isDone ? (
           <div className="truncate text-[12px] text-[var(--fg-muted)] mt-0.5">

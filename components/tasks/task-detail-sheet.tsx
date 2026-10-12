@@ -47,6 +47,7 @@ import {
 import Link from "next/link";
 import * as React from "react";
 import { AiThinking } from "./ai-status";
+import { ConfidencePill } from "./confidence-pill";
 import { PriorityGlyph } from "./priority-glyph";
 import { StatusIcon } from "./status-icon";
 
@@ -145,7 +146,9 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
                 <span className="ml-2">
                   <AiThinking />
                 </span>
-              ) : null}
+              ) : (
+                <ConfidencePill task={task} className="ml-1" />
+              )}
             </>
           )}
         </div>

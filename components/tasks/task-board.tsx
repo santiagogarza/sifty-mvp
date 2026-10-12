@@ -24,6 +24,7 @@ import {
 } from "@dnd-kit/core";
 import * as React from "react";
 import { AiStatusInline } from "./ai-status";
+import { ConfidencePill, confidenceBand } from "./confidence-pill";
 import { PriorityGlyph } from "./priority-glyph";
 
 /**
@@ -258,7 +259,8 @@ function BoardCardContent({
   const isDone = task.lifecycle === "done";
   // Mirror AiStatusInline's render condition so in-flight triage shows too.
   const showAiStatus = task.aiStatus !== "ready" && task.aiStatus !== "idle";
-  const hasMeta = dueLabel || taskLabels.length > 0 || showAiStatus;
+  const lowConfidence = confidenceBand(task) === "low";
+  const hasMeta = dueLabel || taskLabels.length > 0 || showAiStatus || lowConfidence;
 
   return (
     <div
@@ -297,6 +299,7 @@ function BoardCardContent({
             <span className="text-[11px] text-[var(--fg-subtle)]">+{taskLabels.length - 2}</span>
           ) : null}
           <AiStatusInline status={task.aiStatus} />
+          <ConfidencePill task={task} compact />
         </div>
       ) : null}
     </div>

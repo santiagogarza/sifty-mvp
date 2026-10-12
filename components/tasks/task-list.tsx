@@ -16,6 +16,12 @@ import { TaskRow } from "./task-row";
  * rendered in place — checked, struck through — for a beat before it
  * collapses out, and unchecking it within that window restores the status
  * it had before completion.
+ *
+ * Focus recovery: when the focused row leaves the list (completed, filed
+ * elsewhere, deleted), focus would fall to <body> and the next j/k would be
+ * swallowed. Instead it lands on the row that took its place, else the new
+ * last row, else the list container (or the empty state) — but never when
+ * focus has already moved into an overlay such as the detail sheet.
  */
 export function TaskList({
   tasks,
@@ -38,12 +44,43 @@ export function TaskList({
   const listRef = React.useRef<HTMLDivElement>(null);
   const rowRefs = React.useRef<(HTMLDivElement | null)[]>([]);
   const didInitialFocus = React.useRef(false);
+  /** The row that last held focus (keyboard or click), for recovery. */
+  const focusedRowRef = React.useRef<{ id: string; index: number } | null>(null);
+  /** Set when the list emptied under focus; the empty state takes focus on mount. */
+  const emptyFocusPending = React.useRef(false);
 
   const { ghosts, dismissGhost } = useCompletionGhosts(tasks);
 
   React.useEffect(() => {
     if (activeIndex >= tasks.length) setActiveIndex(tasks.length - 1);
   }, [tasks.length, activeIndex]);
+
+  const focusRowAt = React.useCallback((index: number) => {
+    rowRefs.current[index]?.focus({ preventScroll: true });
+  }, []);
+
+  // Layout effect so recovery happens in the same frame the row unmounts —
+  // focus has already fallen to <body> by now, and nothing has painted yet.
+  React.useLayoutEffect(() => {
+    const focused = focusedRowRef.current;
+    if (!focused || tasks.some((t) => t.id === focused.id)) return;
+    focusedRowRef.current = null;
+
+    const current = document.activeElement;
+    const inList = !!current && (listRef.current?.contains(current) ?? false);
+    // Focus moved somewhere real (e.g. the detail sheet): leave it alone.
+    if (current && current !== document.body && !inList) return;
+
+    if (tasks.length === 0) {
+      setActiveIndex(-1);
+      emptyFocusPending.current = true;
+      listRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    const next = Math.min(focused.index, tasks.length - 1);
+    setActiveIndex(next);
+    focusRowAt(next);
+  }, [tasks, focusRowAt]);
 
   React.useEffect(() => {
     if (!autoFocus || tasks.length === 0 || didInitialFocus.current) return;
@@ -88,8 +125,24 @@ export function TaskList({
     return out;
   }, [tasks, ghosts]);
 
-  if (rows.length === 0 && emptyState) {
-    return <>{emptyState}</>;
+  const isEmpty = rows.length === 0;
+
+  // The listbox unmounts when the last ghost collapses; if the list emptied
+  // under keyboard focus, hand focus to the empty state so Tab reaches its
+  // capture CTA and nothing is lost to <body>.
+  React.useLayoutEffect(() => {
+    if (!isEmpty || !emptyFocusPending.current) return;
+    emptyFocusPending.current = false;
+    const current = document.activeElement;
+    if (!current || current === document.body) listRef.current?.focus({ preventScroll: true });
+  }, [isEmpty]);
+
+  if (isEmpty && emptyState) {
+    return (
+      <div ref={listRef} tabIndex={-1} className="focus:outline-none">
+        {emptyState}
+      </div>
+    );
   }
 
   return (
@@ -131,7 +184,18 @@ export function TaskList({
           );
         }
         return (
-          <div key={row.task.id} className="animate-fade-in">
+          <div
+            key={row.task.id}
+            className="animate-fade-in"
+            // Both events: Safari does not focus a clicked button, so a
+            // pointer press on the complete circle must count as well.
+            onFocus={() => {
+              focusedRowRef.current = { id: row.task.id, index: row.navIndex };
+            }}
+            onPointerDown={() => {
+              focusedRowRef.current = { id: row.task.id, index: row.navIndex };
+            }}
+          >
             <TaskRow
               ref={(el) => {
                 rowRefs.current[row.navIndex] = el;
