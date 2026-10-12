@@ -46,6 +46,7 @@ function fakeStripe(overrides: { prices?: Record<string, Partial<Stripe.Price>> 
       active: true,
       unit_amount: PRO_PRICES.monthly.amountCents,
       currency: "usd",
+      tax_behavior: "exclusive",
       recurring: { interval: "month", interval_count: 1 } as Stripe.Price.Recurring,
     },
     price_yearly_test: {
@@ -53,6 +54,7 @@ function fakeStripe(overrides: { prices?: Record<string, Partial<Stripe.Price>> 
       active: true,
       unit_amount: PRO_PRICES.yearly.amountCents,
       currency: "usd",
+      tax_behavior: "exclusive",
       recurring: { interval: "year", interval_count: 1 } as Stripe.Price.Recurring,
     },
   };

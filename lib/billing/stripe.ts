@@ -112,6 +112,12 @@ export async function verifyPriceMatchesPlan(cadence: Cadence, priceId: string):
       `interval is ${price.recurring ? `${price.recurring.interval_count} ${price.recurring.interval}` : "one-time"}, plan says 1 ${interval}`,
     );
   }
+  // Checkout runs with automatic_tax, which Stripe rejects for unspecified prices.
+  if (price.tax_behavior !== "inclusive" && price.tax_behavior !== "exclusive") {
+    problems.push(
+      `tax_behavior is ${price.tax_behavior ?? "null"}, Stripe Tax needs inclusive or exclusive`,
+    );
+  }
   if (problems.length) throw new StripePriceMismatchError(cadence, priceId, problems.join("; "));
   verifiedPrices.add(priceId);
 }
