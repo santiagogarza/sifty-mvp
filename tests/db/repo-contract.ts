@@ -209,9 +209,19 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect(task.id).toBe("task_client1");
       expect(task.lifecycle).not.toBe("done");
 
-      const done = await repos.tasks.update(u.id, task.id, { lifecycle: "done" });
-      expect(done?.lifecycle).toBe("done");
-      expect(done?.completedAt).toBeTruthy();
+      // Two devices completing at once (both read the row before either
+      // writes) must agree on one completion time: the recurring
+      // successor's id derives from it. Postgres gets this from
+      // coalesce(completed_at, now) in the SET; the memory repo is
+      // single-threaded.
+      const [doneA, doneB] = await Promise.all([
+        repos.tasks.update(u.id, task.id, { lifecycle: "done" }),
+        repos.tasks.update(u.id, task.id, { lifecycle: "done" }),
+      ]);
+      expect(doneA?.lifecycle).toBe("done");
+      expect(doneA?.completedAt).toBeTruthy();
+      expect(doneB?.completedAt).toBe(doneA?.completedAt);
+      const done = doneA;
       // A repeated completion keeps the first completion time.
       const again = await repos.tasks.update(u.id, task.id, { lifecycle: "done" });
       expect(again?.completedAt).toBe(done?.completedAt);
