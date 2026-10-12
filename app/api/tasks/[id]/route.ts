@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
 import { expireOpenDecisionsForTask } from "@/lib/decisions/service";
 import { TaskPatchSchema } from "@/lib/domain/task-patch-schema";
+import { cancelExecutionsForTask } from "@/lib/executions/service";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -66,9 +67,11 @@ export async function DELETE(req: Request, ctx: RouteContext) {
   if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
   const repos = getRepos();
-  // A sift suspended on a question about this task must be released
-  // before the cascade removes the decision it is waiting on.
+  // A sift suspended on a question about this task, or an execution
+  // waiting on an approval, must be released before the cascade removes
+  // the rows they are waiting on.
   await expireOpenDecisionsForTask(repos, session.user.id, id);
+  await cancelExecutionsForTask(repos, session.user.id, id);
   const ok = await repos.tasks.delete(session.user.id, id);
   if (!ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ ok: true });

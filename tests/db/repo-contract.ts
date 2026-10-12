@@ -1067,6 +1067,369 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect(await repos.notificationSends.listForUser(a.id)).toEqual([]);
     });
   });
+
+  describe("executions", () => {
+    const create = (taskId: string, key: string, policy: "auto" | "ask_first" = "auto") => ({
+      taskId,
+      executor: "research" as const,
+      policy,
+      connector: null,
+      idempotencyKey: key,
+    });
+
+    it("create is idempotent per (user, key); rows, steps, and policies are per tenant and cascade", async () => {
+      const repos = getRepos();
+      const a = await createUser(repos, "exec-a@example.com");
+      const b = await createUser(repos, "exec-b@example.com");
+      const task = await repos.tasks.create(a.id, { sourceText: "Lease", sourceContext: null });
+      const bTask = await repos.tasks.create(b.id, { sourceText: "Theirs", sourceContext: null });
+
+      const first = await repos.executions.create(a.id, create(task.id, "k1", "ask_first"));
+      expect(first.created).toBe(true);
+      expect(first.execution).toMatchObject({
+        status: "queued",
+        executor: "research",
+        policy: "ask_first",
+        idempotencyKey: "k1",
+        reservedCents: 0,
+        costCents: 0,
+        answers: [],
+        result: null,
+        cancelRequested: false,
+        startedAt: null,
+        finishedAt: null,
+      });
+      const replay = await repos.executions.create(a.id, create(task.id, "k1"));
+      expect(replay.created).toBe(false);
+      expect(replay.execution.id).toBe(first.execution.id);
+      expect(replay.execution.policy).toBe("ask_first");
+      // Same key, other tenant: their own row.
+      const theirs = await repos.executions.create(b.id, create(bTask.id, "k1"));
+      expect(theirs.created).toBe(true);
+      expect(theirs.execution.id).not.toBe(first.execution.id);
+      // A caller-fixed id that belongs to someone else is refused.
+      await expect(
+        repos.executions.create(b.id, { ...create(bTask.id, "k9"), id: first.execution.id }),
+      ).rejects.toBeInstanceOf(IdConflictError);
+
+      expect(await repos.executions.get(b.id, first.execution.id)).toBeNull();
+      expect(await repos.executions.listForTask(b.id, task.id, { limit: 10 })).toEqual([]);
+      expect(
+        await repos.executions.transition(b.id, first.execution.id, {
+          from: ["queued"],
+          to: "running",
+        }),
+      ).toBeNull();
+      expect(await repos.executions.update(b.id, first.execution.id, { error: "x" })).toBeNull();
+      expect(await repos.executions.settle(b.id, first.execution.id, { costCents: 1 })).toBeNull();
+      expect(
+        await repos.executions.reserve(b.id, first.execution.id, { cents: 1, capCents: 10 }),
+      ).toEqual({ ok: false, reason: "not_found" });
+
+      const step = await repos.executions.appendStep(a.id, {
+        id: `${first.execution.id}:0`,
+        executionId: first.execution.id,
+        seq: 0,
+        kind: "tool_call",
+        name: "lookup",
+        status: "ok",
+        input: { q: "lease" },
+        output: { hits: 2 },
+        durationMs: 12,
+        costCents: 0.5,
+      });
+      // Idempotent on id and on (execution, seq).
+      const again = await repos.executions.appendStep(a.id, {
+        id: `${first.execution.id}:0`,
+        executionId: first.execution.id,
+        seq: 0,
+        kind: "note",
+        name: "other",
+        status: "ok",
+        input: null,
+        output: null,
+        durationMs: null,
+        costCents: 9,
+      });
+      expect(again).toEqual(step);
+      const bySeq = await repos.executions.appendStep(a.id, {
+        executionId: first.execution.id,
+        seq: 0,
+        kind: "note",
+        name: "other",
+        status: "ok",
+        input: null,
+        output: null,
+        durationMs: null,
+        costCents: 9,
+      });
+      expect(bySeq.id).toBe(step.id);
+      await repos.executions.appendStep(a.id, {
+        executionId: first.execution.id,
+        seq: 1,
+        kind: "model_call",
+        name: "summarize",
+        status: "ok",
+        input: null,
+        output: null,
+        durationMs: 300,
+        costCents: 1.25,
+      });
+      expect(
+        (await repos.executions.listSteps(a.id, first.execution.id, { limit: 10 })).map(
+          (s) => s.seq,
+        ),
+      ).toEqual([0, 1]);
+      expect(await repos.executions.listSteps(a.id, first.execution.id, { limit: 1 })).toHaveLength(
+        1,
+      );
+      expect(await repos.executions.listSteps(b.id, first.execution.id, { limit: 10 })).toEqual([]);
+      await expect(
+        repos.executions.appendStep(b.id, {
+          id: `${first.execution.id}:0`,
+          executionId: first.execution.id,
+          seq: 0,
+          kind: "note",
+          name: "steal",
+          status: "ok",
+          input: null,
+          output: null,
+          durationMs: null,
+          costCents: 0,
+        }),
+      ).rejects.toBeInstanceOf(IdConflictError);
+
+      await repos.executionPolicies.set(a.id, "task", task.id, "ask_first");
+      await repos.executionPolicies.set(a.id, "connector", "gmail", "auto");
+      await repos.executionPolicies.set(a.id, "connector", "gmail", "ask_first");
+      expect((await repos.executionPolicies.get(a.id, "connector", "gmail"))?.policy).toBe(
+        "ask_first",
+      );
+      expect(await repos.executionPolicies.get(b.id, "connector", "gmail")).toBeNull();
+      expect(await repos.executionPolicies.list(a.id, "connector", { limit: 10 })).toHaveLength(1);
+      expect(await repos.executionPolicies.clear(b.id, "task", task.id)).toBe(false);
+      expect(await repos.executionPolicies.clear(a.id, "task", task.id)).toBe(true);
+      expect(await repos.executionPolicies.get(a.id, "task", task.id)).toBeNull();
+
+      // Deleting the task takes its executions and their steps.
+      expect(await repos.tasks.delete(a.id, task.id)).toBe(true);
+      expect(await repos.executions.get(a.id, first.execution.id)).toBeNull();
+      expect(await repos.executions.listSteps(a.id, first.execution.id, { limit: 10 })).toEqual([]);
+      // Deleting the user takes the rest.
+      expect(await repos.users.delete(b.id)).toBe(true);
+      expect(await repos.executions.get(b.id, theirs.execution.id)).toBeNull();
+    });
+
+    it("transition is a compare-and-set over the from list and patches bookkeeping", async () => {
+      const repos = getRepos();
+      const a = await createUser(repos, "exec-cas@example.com");
+      const task = await repos.tasks.create(a.id, { sourceText: "Lease", sourceContext: null });
+      const { execution } = await repos.executions.create(a.id, create(task.id, "cas"));
+
+      expect(
+        await repos.executions.transition(a.id, execution.id, { from: ["running"], to: "done" }),
+      ).toBeNull();
+      const running = await repos.executions.transition(a.id, execution.id, {
+        from: ["queued", "needs_approval"],
+        to: "running",
+        patch: { startedAt: "2026-10-12T10:00:00.000Z", workflowRunId: "wrun_1" },
+      });
+      expect(running).toMatchObject({
+        status: "running",
+        startedAt: "2026-10-12T10:00:00.000Z",
+        workflowRunId: "wrun_1",
+      });
+      // Two concurrent terminal writes: exactly one wins.
+      const [done, cancelled] = await Promise.all([
+        repos.executions.transition(a.id, execution.id, {
+          from: ["running"],
+          to: "done",
+          patch: { result: { summary: "ok", draft: null }, finishedAt: "2026-10-12T10:01:00.000Z" },
+        }),
+        repos.executions.transition(a.id, execution.id, {
+          from: ["running"],
+          to: "cancelled",
+          patch: { cancelReason: "user" },
+        }),
+      ]);
+      expect([done, cancelled].filter(Boolean)).toHaveLength(1);
+      const final = (await repos.executions.get(a.id, execution.id))!;
+      expect(["done", "cancelled"]).toContain(final.status);
+      expect(final.updatedAt >= running!.updatedAt).toBe(true);
+
+      const patched = await repos.executions.update(a.id, execution.id, {
+        answers: ["Warehouse"],
+        decisionId: "dec_1",
+        cancelRequested: true,
+      });
+      expect(patched).toMatchObject({
+        answers: ["Warehouse"],
+        decisionId: "dec_1",
+        cancelRequested: true,
+      });
+      expect(
+        (await repos.executions.update(a.id, execution.id, { decisionId: null }))!.decisionId,
+      ).toBeNull();
+    });
+
+    it("reserve enforces the monthly cap atomically, settle releases it, and usage is per calendar month", async () => {
+      const repos = getRepos();
+      const a = await createUser(repos, "exec-budget@example.com");
+      const b = await createUser(repos, "exec-budget-b@example.com");
+      const task = await repos.tasks.create(a.id, { sourceText: "Lease", sourceContext: null });
+      const bTask = await repos.tasks.create(b.id, { sourceText: "Theirs", sourceContext: null });
+      const now = new Date();
+
+      const one = await repos.executions.create(a.id, create(task.id, "b1"));
+      const two = await repos.executions.create(a.id, create(task.id, "b2"));
+      const three = await repos.executions.create(a.id, create(task.id, "b3"));
+      const theirs = await repos.executions.create(b.id, create(bTask.id, "b1"));
+
+      const r1 = await repos.executions.reserve(a.id, one.execution.id, {
+        cents: 6,
+        capCents: 10,
+        now,
+      });
+      expect(r1).toMatchObject({ ok: true, usage: { committedCents: 0, reservedCents: 6 } });
+      // Re-reserving the same row replaces, never adds.
+      const r1b = await repos.executions.reserve(a.id, one.execution.id, {
+        cents: 5,
+        capCents: 10,
+        now,
+      });
+      expect(r1b).toMatchObject({ ok: true, usage: { committedCents: 0, reservedCents: 5 } });
+      // Exactly at the cap passes; one over is refused and writes nothing.
+      const r2 = await repos.executions.reserve(a.id, two.execution.id, {
+        cents: 5,
+        capCents: 10,
+        now,
+      });
+      expect(r2).toMatchObject({ ok: true, usage: { committedCents: 0, reservedCents: 10 } });
+      const r3 = await repos.executions.reserve(a.id, three.execution.id, {
+        cents: 1,
+        capCents: 10,
+        now,
+      });
+      expect(r3).toEqual({
+        ok: false,
+        reason: "budget",
+        usage: { committedCents: 0, reservedCents: 10 },
+      });
+      expect((await repos.executions.get(a.id, three.execution.id))!.reservedCents).toBe(0);
+      // Another tenant's budget is their own; Infinity never refuses.
+      expect(
+        (
+          await repos.executions.reserve(b.id, theirs.execution.id, {
+            cents: 1000,
+            capCents: 1200,
+            now,
+          })
+        ).ok,
+      ).toBe(true);
+      expect(
+        (
+          await repos.executions.reserve(a.id, three.execution.id, {
+            cents: 1,
+            capCents: Number.POSITIVE_INFINITY,
+            now,
+          })
+        ).ok,
+      ).toBe(true);
+      await repos.executions.reserve(a.id, three.execution.id, { cents: 0, capCents: 10, now });
+
+      // Settling turns the hold into committed spend (possibly less than reserved).
+      await repos.executions.transition(a.id, one.execution.id, { from: ["queued"], to: "done" });
+      const settled = await repos.executions.settle(a.id, one.execution.id, { costCents: 2.5 });
+      expect(settled).toMatchObject({ reservedCents: 0, costCents: 2.5 });
+      expect(await repos.executions.monthlyUsage(a.id, now)).toEqual({
+        committedCents: 2.5,
+        reservedCents: 5,
+      });
+      // …and frees room: 2.5 + 5 + 2 = 9.5 fits, 2.5 + 5 + 3 does not.
+      expect(
+        (await repos.executions.reserve(a.id, three.execution.id, { cents: 2, capCents: 10, now }))
+          .ok,
+      ).toBe(true);
+      expect(
+        (await repos.executions.reserve(a.id, three.execution.id, { cents: 3, capCents: 10, now }))
+          .ok,
+      ).toBe(false);
+
+      // Spend from an earlier month is invisible this month.
+      const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 15));
+      expect(await repos.executions.monthlyUsage(a.id, nextMonth)).toEqual({
+        committedCents: 0,
+        reservedCents: 0,
+      });
+      expect(await repos.executions.monthlyUsage(b.id, now)).toEqual({
+        committedCents: 0,
+        reservedCents: 1000,
+      });
+
+      // Concurrent reservations never overshoot the cap together.
+      const c = await createUser(repos, "exec-race@example.com");
+      const cTask = await repos.tasks.create(c.id, { sourceText: "Race", sourceContext: null });
+      const rows = await Promise.all(
+        Array.from({ length: 6 }, (_, i) =>
+          repos.executions.create(c.id, create(cTask.id, `race-${i}`)),
+        ),
+      );
+      const results = await Promise.all(
+        rows.map((r) =>
+          repos.executions.reserve(c.id, r.execution.id, { cents: 4, capCents: 10, now }),
+        ),
+      );
+      expect(results.filter((r) => r.ok)).toHaveLength(2);
+      expect(await repos.executions.monthlyUsage(c.id, now)).toEqual({
+        committedCents: 0,
+        reservedCents: 8,
+      });
+    });
+
+    it("listActive and countByStatus back the inbox and the away digest", async () => {
+      const repos = getRepos();
+      const a = await createUser(repos, "exec-list@example.com");
+      const task = await repos.tasks.create(a.id, { sourceText: "Lease", sourceContext: null });
+      const other = await repos.tasks.create(a.id, { sourceText: "Other", sourceContext: null });
+      const before = new Date(Date.now() - 60_000);
+      const queued = await repos.executions.create(a.id, create(task.id, "l1"));
+      const parked = await repos.executions.create(a.id, create(other.id, "l2"));
+      const finished = await repos.executions.create(a.id, create(task.id, "l3"));
+      await repos.executions.transition(a.id, parked.execution.id, {
+        from: ["queued"],
+        to: "running",
+      });
+      await repos.executions.transition(a.id, parked.execution.id, {
+        from: ["running"],
+        to: "drafted",
+      });
+      await repos.executions.transition(a.id, finished.execution.id, {
+        from: ["queued"],
+        to: "running",
+      });
+      await repos.executions.transition(a.id, finished.execution.id, {
+        from: ["running"],
+        to: "done",
+      });
+
+      const active = await repos.executions.listActive(a.id, { limit: 10 });
+      expect(active.map((e) => e.id).sort()).toEqual(
+        [queued.execution.id, parked.execution.id].sort(),
+      );
+      expect(await repos.executions.listActive(a.id, { limit: 1 })).toHaveLength(1);
+      expect(
+        (await repos.executions.listForTask(a.id, task.id, { limit: 10 })).map((e) => e.id).sort(),
+      ).toEqual([queued.execution.id, finished.execution.id].sort());
+      expect(await repos.executions.listForTask(a.id, task.id, { limit: 1 })).toHaveLength(1);
+
+      const counts = await repos.executions.countByStatus(a.id, { since: before });
+      expect(counts).toMatchObject({ queued: 1, drafted: 1, done: 1, running: 0, cancelled: 0 });
+      const none = await repos.executions.countByStatus(a.id, {
+        since: new Date(Date.now() + 60_000),
+      });
+      expect(Object.values(none).every((n) => n === 0)).toBe(true);
+    });
+  });
 }
 
 async function createUser(repos: Repos, email: string) {

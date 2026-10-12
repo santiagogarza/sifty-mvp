@@ -3,7 +3,9 @@ import { type EnqueueResult, enqueueSift } from "@/lib/ai/sift/enqueue";
 import { withAnswer } from "@/lib/ai/sift/execute-stage";
 import type { Session } from "@/lib/auth/session";
 import { type Repos, getRepos } from "@/lib/db/repos";
-import type { Decision, DecisionAnswer, Memory, Task } from "@/lib/domain/types";
+import type { Decision, DecisionAnswer, Execution, Memory, Task } from "@/lib/domain/types";
+import { APPROVE_OPTION, REJECT_OPTION } from "@/lib/executions/copy";
+import { type ExecutionDecisionMode, resolveExecutionDecision } from "@/lib/executions/service";
 import { REMEMBER_OPTION } from "./copy";
 import { answerText, resolveDecision, wakeDecisionRun } from "./service";
 
@@ -30,8 +32,15 @@ export type AnswerMode =
   | "resifted"
   /** A memory proposal was confirmed and written to `memories`. */
   | "remembered"
+  /** An approval or draft review moved its execution; see `execution.mode`. */
+  | "execution"
   /** Recorded on the decision only (task gone, or a kind with no follow-up). */
   | "recorded";
+
+export interface ExecutionAnswerOutcome {
+  execution: Execution | null;
+  mode: ExecutionDecisionMode;
+}
 
 export type AnswerResult =
   | {
@@ -42,6 +51,8 @@ export type AnswerResult =
       sift: EnqueueResult | null;
       /** The pinned memory a confirmed proposal became; the client adopts it. */
       memory?: Memory | null;
+      /** What happened to the execution behind an approval / draft review. */
+      execution?: ExecutionAnswerOutcome | null;
     }
   | { ok: false; reason: "not_found" | "already_resolved"; decision: Decision | null }
   /** A memory proposal only takes `REMEMBER_OPTION`; anything else is a client bug. */
@@ -69,6 +80,9 @@ export async function answerDecision(args: {
       return { ok: false, reason: "invalid_answer", decision: before };
     }
   }
+  if (before?.status === "open" && !acceptsAnswer(before, args.answer)) {
+    return { ok: false, reason: "invalid_answer", decision: before };
+  }
   const memory =
     before?.status === "open" && before.payload.kind === "memory_proposal"
       ? memoryFromProposal(before)
@@ -94,6 +108,21 @@ export async function answerDecision(args: {
 
   if (payload.kind === "memory_proposal") {
     return { ok: true, decision, task: null, mode: "remembered", sift: null, memory: stored };
+  }
+  if (payload.kind === "approval" || payload.kind === "draft_review") {
+    const outcome = await resolveExecutionDecision(repos, userId, decision, {
+      offline: args.offline,
+      modelPreference: args.modelPreference,
+    });
+    const task = decision.taskId ? await repos.tasks.get(userId, decision.taskId) : null;
+    return {
+      ok: true,
+      decision,
+      task,
+      mode: "execution",
+      sift: null,
+      execution: { execution: outcome.execution, mode: outcome.mode },
+    };
   }
   if (payload.kind !== "clarifying_question" || !decision.taskId) {
     // Nothing is waiting on a kind without follow-up work, but wake anyway
@@ -155,25 +184,64 @@ export async function answerDecision(args: {
   return { ok: true, decision, task: sift.task, mode: "resifted", sift };
 }
 
+/**
+ * A plain approval and a draft review take `Approve` or `Reject` (an edit
+ * travels with `Approve`); an executor's question takes any of its
+ * options or free text, plus `Reject`.
+ */
+function acceptsAnswer(decision: Decision, answer: DecisionAnswer): boolean {
+  const payload = decision.payload;
+  if (payload.kind === "draft_review") {
+    return answer.option === APPROVE_OPTION || answer.option === REJECT_OPTION;
+  }
+  if (payload.kind === "approval") {
+    if (answer.option === REJECT_OPTION || answer.option === APPROVE_OPTION) return true;
+    if (payload.reason === "ask_first") return false;
+    return !!answer.text || (!!answer.option && payload.options.includes(answer.option));
+  }
+  return true;
+}
+
 export type DismissResult =
-  | { ok: true; decision: Decision; task: Task | null }
+  | { ok: true; decision: Decision; task: Task | null; execution?: ExecutionAnswerOutcome | null }
   | { ok: false; reason: "not_found" | "already_resolved"; decision: Decision | null };
 
+/**
+ * Dismiss a decision. For a clarifying question Sifty keeps its own read;
+ * for an approval or a draft review a dismissal is a rejection and the
+ * execution is cancelled.
+ */
 export async function dismissDecision(args: {
   userId: string;
   decisionId: string;
   repos?: Repos;
 }): Promise<DismissResult> {
   const repos = args.repos ?? getRepos();
+  const isExecution = (d: Decision | null) =>
+    d?.payload.kind === "approval" || d?.payload.kind === "draft_review";
+  const before = await repos.decisions.get(args.userId, args.decisionId);
   const resolved = await resolveDecision(
     args.userId,
     args.decisionId,
-    { status: "dismissed", answer: null },
+    // Execution decisions move their row before the run is woken.
+    { status: "dismissed", answer: null, wake: !isExecution(before) },
     repos,
   );
   if (!resolved.ok) return resolved;
   const { decision } = resolved;
   const payload = decision.payload;
+  if (payload.kind === "approval" || payload.kind === "draft_review") {
+    const outcome = await resolveExecutionDecision(repos, args.userId, decision, {
+      offline: false,
+      modelPreference: null,
+    });
+    return {
+      ok: true,
+      decision,
+      task: null,
+      execution: { execution: outcome.execution, mode: outcome.mode },
+    };
+  }
   if (payload.kind !== "clarifying_question" || !decision.taskId) {
     return { ok: true, decision, task: null };
   }
