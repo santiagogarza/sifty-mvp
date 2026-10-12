@@ -101,11 +101,16 @@ describe("rate limit stores", () => {
     const slow = new Promise<never>(() => {});
     redis.evalsha = () => slow;
     const store = createUpstashStore(redis.asRedis(), { timeoutMs: 50 });
-    const pending = Promise.all([1, 2, 3, 4].map(() => store.consume("k", POLICY)));
+    const pending = Promise.all(
+      [1, 2, 3, 4].map(() => store.consume("auth:subject:slow@example.com", POLICY)),
+    );
     await vi.advanceTimersByTimeAsync(60);
     const results = (await pending).map((r) => r.ok);
     expect(results).toEqual([true, true, true, false]);
     expect(reportError).toHaveBeenCalled();
+    const ctx = vi.mocked(reportError).mock.calls[0]![1];
+    expect(ctx).toMatchObject({ area: "ratelimit.upstash", tags: { scope: "auth:subject" } });
+    expect(JSON.stringify(ctx)).not.toContain("slow@example.com");
   });
 });
 
