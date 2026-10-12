@@ -4,6 +4,7 @@ import { withAnswer } from "@/lib/ai/sift/execute-stage";
 import type { Session } from "@/lib/auth/session";
 import { type Repos, getRepos } from "@/lib/db/repos";
 import type { Decision, DecisionAnswer, Memory, Task } from "@/lib/domain/types";
+import { REMEMBER_OPTION } from "./copy";
 import { answerText, resolveDecision, wakeDecisionRun } from "./service";
 
 /**
@@ -42,7 +43,9 @@ export type AnswerResult =
       /** The pinned memory a confirmed proposal became; the client adopts it. */
       memory?: Memory | null;
     }
-  | { ok: false; reason: "not_found" | "already_resolved"; decision: Decision | null };
+  | { ok: false; reason: "not_found" | "already_resolved"; decision: Decision | null }
+  /** A memory proposal only takes `REMEMBER_OPTION`; anything else is a client bug. */
+  | { ok: false; reason: "invalid_answer"; decision: Decision };
 
 export async function answerDecision(args: {
   req: Request;
@@ -61,6 +64,11 @@ export async function answerDecision(args: {
   // retry, and the id derived from the decision makes a second tab's
   // write a no-op rather than a duplicate.
   const before = await repos.decisions.get(userId, args.decisionId);
+  if (before?.status === "open" && before.payload.kind === "memory_proposal") {
+    if (args.answer.option !== REMEMBER_OPTION) {
+      return { ok: false, reason: "invalid_answer", decision: before };
+    }
+  }
   const memory =
     before?.status === "open" && before.payload.kind === "memory_proposal"
       ? memoryFromProposal(before)

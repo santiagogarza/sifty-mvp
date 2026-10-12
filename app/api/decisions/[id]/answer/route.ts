@@ -52,6 +52,12 @@ export async function POST(req: Request, ctx: RouteContext) {
     if (result.reason === "not_found") {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+    if (result.reason === "invalid_answer") {
+      return NextResponse.json(
+        { error: "A memory proposal is confirmed with Remember or dismissed." },
+        { status: 400 },
+      );
+    }
     return NextResponse.json(
       { error: "Already resolved", decision: result.decision },
       { status: 409 },

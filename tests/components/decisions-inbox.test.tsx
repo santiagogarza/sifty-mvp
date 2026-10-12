@@ -177,6 +177,8 @@ describe("DecisionsInbox", () => {
     expect(card).toHaveTextContent("From: “Ana, my accountant”");
     // No free-text answer box for a proposal.
     expect(screen.queryByLabelText("Your answer")).toBeNull();
+    // Attached to a task here, so the title opens it; detached proposals disable it.
+    expect(screen.getByRole("button", { name: /Taxes/ })).toBeEnabled();
 
     await userEvent.click(screen.getByTestId("memory-proposal-remember"));
     expect(answer).toHaveBeenCalledWith("dec_mem", { text: null, option: "Remember" });
@@ -189,6 +191,33 @@ describe("DecisionsInbox", () => {
     expect(useToastStore.getState().toasts.map((t) => t.message)).toContain(
       "Noted — Sifty won't suggest that again.",
     );
+  });
+
+  it("a proposal without a task has an inert, disabled title", () => {
+    const proposal: Decision = {
+      id: "dec_mem2",
+      kind: "memory_proposal",
+      status: "open",
+      taskId: null,
+      payload: {
+        kind: "memory_proposal",
+        text: "Jure = lawyer",
+        memoryKind: "fact",
+        rationale: null,
+      },
+      answer: null,
+      resumeToken: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      resolvedAt: null,
+      expiresAt: null,
+    };
+    useDecisionsStore.setState({ decisions: [proposal], tasks: {}, count: 1, answer, dismiss });
+    render(
+      <DecisionsInbox decisions={[proposal]} tasks={{}} emptyState={<DecisionsEmptyState />} />,
+    );
+    expect(screen.getByRole("button", { name: /Something Sifty noticed/ })).toBeDisabled();
+    expect(screen.queryByText(/From:/)).toBeNull();
   });
 
   it("shows the empty state that explains what lands here", () => {

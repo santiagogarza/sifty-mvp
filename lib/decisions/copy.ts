@@ -1,3 +1,6 @@
+/** The one answer a memory proposal takes; stored on the decision as its option. */
+export const REMEMBER_OPTION = "Remember";
+
 /** Header line for the inbox: questions, things Sifty noticed, or both. */
 export function describeWaiting(questions: number, proposals: number): string {
   const q = questions === 0 ? null : questions === 1 ? "One question" : `${questions} questions`;

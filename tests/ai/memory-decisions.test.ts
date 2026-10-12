@@ -174,6 +174,18 @@ describe("memory proposals in the Decisions inbox", () => {
     expect(await repos.decisions.countOpen(user.id)).toBe(0);
   });
 
+  it("only the Remember option confirms a proposal; anything else is a 400 and writes nothing", async () => {
+    const repos = getTestRepos();
+    const { user, cookie } = await createUserWithCookie(repos, { email: "nope@example.com" });
+    const task = await seedSifted(repos, user.id, "Call Ana, my accountant");
+    await extractMemories(input(user.id, task.id), null);
+    const [proposal] = await repos.decisions.listOpen(user.id, { limit: 10 });
+    const res = await answer(cookie, proposal!.id, "Nope");
+    expect(res.status).toBe(400);
+    expect((await repos.decisions.get(user.id, proposal!.id))!.status).toBe("open");
+    expect(await repos.memories.list(user.id)).toEqual([]);
+  });
+
   it("dismissing records a negative: the same proposal is not re-raised and no memory is written", async () => {
     const repos = getTestRepos();
     const { user, cookie } = await createUserWithCookie(repos, { email: "dismiss@example.com" });

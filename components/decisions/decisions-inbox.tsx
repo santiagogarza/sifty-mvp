@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import { toast } from "@/components/ui/toast";
 import { type DecisionTaskSummary, useDecisionsStore } from "@/lib/decisions/client";
+import { REMEMBER_OPTION } from "@/lib/decisions/copy";
 import { DECISION_LIMITS } from "@/lib/domain/limits";
 import type { Decision } from "@/lib/domain/types";
 import { cn } from "@/lib/utils/cn";
@@ -266,7 +267,8 @@ const DecisionCard = React.forwardRef<
         <button
           type="button"
           onClick={() => decision.taskId && openDetail(decision.taskId)}
-          className="group/title min-w-0 text-left text-[12.5px] text-[var(--fg-muted)] hover:text-[var(--fg)] inline-flex items-center gap-1"
+          disabled={!decision.taskId}
+          className="group/title min-w-0 text-left text-[12.5px] text-[var(--fg-muted)] hover:text-[var(--fg)] inline-flex items-center gap-1 disabled:hover:text-[var(--fg-muted)]"
         >
           <span className="truncate">{title}</span>
           <ArrowUpRight
@@ -401,9 +403,6 @@ const DecisionCard = React.forwardRef<
     </div>
   );
 });
-
-/** The one answer a memory proposal takes; stored on the decision as its option. */
-export const REMEMBER_OPTION = "Remember";
 
 function KeyboardHint() {
   return (
