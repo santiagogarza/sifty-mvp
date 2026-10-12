@@ -51,13 +51,16 @@ export async function getSession(req?: Request): Promise<Session | null> {
   }
 
   const repos = getRepos();
+  // The fallback profile (row not mirrored into the repos) takes the creator
+  // flag from Better Auth's user, which is only set once the address is
+  // verified. Deriving it from the email here would skip that proof.
   const user =
     (await repos.users.getById(resolved.user.id)) ??
     ({
       id: resolved.user.id,
       email: resolved.user.email,
       displayName: resolved.user.name,
-      isCreator: isCreatorEmail(resolved.user.email),
+      isCreator: resolved.user.isCreator === true,
       createdAt: new Date(resolved.user.createdAt).toISOString(),
     } satisfies UserProfile);
 

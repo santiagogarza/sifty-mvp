@@ -126,12 +126,17 @@ describe("sign-up and email verification", () => {
     expect(getTestOutbox().outbox.length).toBe(sentBefore);
   });
 
-  it("gives the creator email the creator tier", async () => {
+  it("gives the creator email the creator tier only once the address is verified", async () => {
+    // Full matrix in tests/auth/creator-grant.test.ts; this pins the rule.
     const auth = getAuth();
     const res = await auth.api.signUpEmail({
       body: { email: "s.gonzalez.garza@gmail.com", password: TEST_PASSWORD, name: "Santi" },
     });
     const repos = getTestRepos();
+    expect((await repos.users.getById(res.user.id))?.isCreator).toBe(false);
+    expect((await repos.entitlements.get(res.user.id))?.tier).toBe("trialing");
+
+    expect((await openLink(firstUrl(lastEmail().text))).status).toBe(302);
     expect((await repos.users.getById(res.user.id))?.isCreator).toBe(true);
     expect((await repos.entitlements.get(res.user.id))?.tier).toBe("creator");
   });

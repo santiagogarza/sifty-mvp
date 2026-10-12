@@ -1,5 +1,6 @@
 import { listAiRuns } from "@/lib/ai/ai-runs";
 import { AiConfigError, MissingAiKeyError, resolveProvider } from "@/lib/ai/provider";
+import { FREE_SIFTS_PER_DAY, TRIAL_DAYS, trialSnapshot } from "@/lib/entitlements/entitlements";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockResolvedProvider } from "../helpers/ai";
 import { createUserWithCookie } from "../helpers/auth";
@@ -36,6 +37,49 @@ function buildReq(body: unknown, opts?: { offline?: boolean }) {
 }
 
 describe("POST /api/agent-brief", () => {
+  it("returns 401 when not signed in", async () => {
+    const { POST } = await import("@/app/api/agent-brief/route");
+    const res = await POST(
+      new Request("http://localhost/api/agent-brief", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ taskId: "task_x" }),
+      }),
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("enforces the daily sift cap server-side (402 free_cap), same gate as triage", async () => {
+    const repos = getTestRepos();
+    const task = await repos.tasks.create(userId, { sourceText: "Capped", sourceContext: null });
+    const started = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000);
+    await repos.entitlements.upsert(userId, trialSnapshot(TRIAL_DAYS, started));
+    for (let i = 0; i < FREE_SIFTS_PER_DAY; i += 1) {
+      await repos.aiRuns.insert({
+        userId,
+        taskId: null,
+        promptVersion: "triage.v1",
+        model: "anthropic/claude-haiku-4-5",
+        transport: "gateway",
+        status: "succeeded",
+        durationMs: 1,
+        inputTokens: 1,
+        outputTokens: 1,
+        costCents: 0,
+        offline: false,
+        error: null,
+      });
+    }
+
+    const { POST } = await import("@/app/api/agent-brief/route");
+    const res = await POST(buildReq({ taskId: task.id }));
+    expect(res.status).toBe(402);
+    expect((await res.json()).code).toBe("free_cap");
+    const { generateObject } = await import("ai");
+    expect(generateObject).not.toHaveBeenCalled();
+    expect((await repos.tasks.get(userId, task.id))?.agentBrief).toBeNull();
+  });
+
   it("404s for a task that is not on the server", async () => {
     const { POST } = await import("@/app/api/agent-brief/route");
     const res = await POST(buildReq({ taskId: "task_missing" }));
