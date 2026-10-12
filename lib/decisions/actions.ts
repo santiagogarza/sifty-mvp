@@ -53,6 +53,17 @@ export async function answerDecision(args: {
 }): Promise<AnswerResult> {
   const repos = args.repos ?? getRepos();
   const userId = args.session.user.id;
+
+  // A memory proposal's confirmation *is* the write, so the memory goes in
+  // before the row is resolved: a failed write leaves the proposal open to
+  // retry, and the id derived from the decision makes a second tab's
+  // write a no-op rather than a duplicate.
+  const before = await repos.decisions.get(userId, args.decisionId);
+  if (before?.status === "open" && before.payload.kind === "memory_proposal") {
+    const memory = memoryFromProposal(before);
+    if (memory) await repos.memories.create(userId, memory);
+  }
+
   const resolved = await resolveDecision(
     userId,
     args.decisionId,
@@ -64,10 +75,6 @@ export async function answerDecision(args: {
   const payload = decision.payload;
 
   if (payload.kind === "memory_proposal") {
-    // Confirming is the write: the proposal becomes a pinned memory the
-    // next sift and the daily plan read as a preference.
-    const memory = memoryFromProposal(decision);
-    if (memory) await repos.memories.create(userId, memory);
     return { ok: true, decision, task: null, mode: "remembered", sift: null };
   }
   if (payload.kind !== "clarifying_question" || !decision.taskId) {

@@ -166,6 +166,63 @@ describe("memory proposals in the Decisions inbox", () => {
     });
   });
 
+  it("an expired proposal does not block the idea, and a re-sift's expiry spares proposals", async () => {
+    const repos = getTestRepos();
+    const user = await repos.users.create({
+      email: "exp@example.com",
+      displayName: "E",
+      isCreator: false,
+    });
+    const task = await seedSifted(repos, user.id, "Call Ana, my accountant");
+    await extractMemories(input(user.id, task.id), null);
+    const [proposal] = await repos.decisions.listOpen(user.id, { limit: 10 });
+
+    // A re-sift expires the task's open questions but leaves the proposal alone.
+    const { expireOpenDecisionsForTask } = await import("@/lib/decisions/service");
+    expect(await expireOpenDecisionsForTask(repos, user.id, task.id)).toBe(0);
+    expect((await repos.decisions.get(user.id, proposal!.id))!.status).toBe("open");
+
+    // Had it expired some other way, the next extraction raises it again.
+    await repos.decisions.resolve(user.id, proposal!.id, { status: "expired", answer: null });
+    const again = await seedSifted(
+      repos,
+      user.id,
+      "Email Ana, my accountant, the receipts",
+      "sift_2",
+    );
+    expect(await extractMemories({ ...input(user.id, again.id), siftId: "sift_2" }, null)).toEqual({
+      outcome: "proposed",
+      proposals: 1,
+      filed: 1,
+    });
+    expect(await repos.decisions.countOpen(user.id)).toBe(1);
+  });
+
+  it("Remember writes the memory before resolving, under a decision-derived id, so a retry or a second tab cannot duplicate it", async () => {
+    const repos = getTestRepos();
+    const { user, cookie } = await createUserWithCookie(repos, { email: "twice@example.com" });
+    const task = await seedSifted(repos, user.id, "Call Ana, my accountant");
+    await extractMemories(input(user.id, task.id), null);
+    const [proposal] = await repos.decisions.listOpen(user.id, { limit: 10 });
+
+    // The memory write fails once: the proposal stays open, nothing is stored.
+    const create = vi.spyOn(repos.memories, "create").mockRejectedValueOnce(new Error("db down"));
+    await expect(answer(cookie, proposal!.id, "Remember")).rejects.toThrow("db down");
+    create.mockRestore();
+    expect((await repos.decisions.get(user.id, proposal!.id))!.status).toBe("open");
+    expect(await repos.memories.list(user.id)).toEqual([]);
+
+    // Two confirmations (two tabs): one memory, second answer is 409.
+    const [first, second] = await Promise.all([
+      answer(cookie, proposal!.id, "Remember"),
+      answer(cookie, proposal!.id, "Remember"),
+    ]);
+    expect([first.status, second.status].sort()).toEqual([200, 409]);
+    const memories = await repos.memories.list(user.id);
+    expect(memories).toHaveLength(1);
+    expect(memories[0]!.id).toBe(`mem_${proposal!.id}`);
+  });
+
   it("the sink dedupes within a batch and across tenants independently", async () => {
     const repos = getTestRepos();
     const a = await repos.users.create({

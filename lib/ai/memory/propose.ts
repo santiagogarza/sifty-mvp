@@ -7,7 +7,9 @@ import { MIN_MEMORY_CONFIDENCE, type MemoryProposal, normalizeMemoryText } from 
  * Confirming one writes it to `memories` (`lib/decisions/actions.ts`);
  * dismissing one leaves the resolved row behind as a negative, so the
  * same idea — matched by normalized text — is never raised again. An open
- * or confirmed row blocks a duplicate the same way.
+ * or confirmed row blocks a duplicate the same way; an expired one does
+ * not. Confirmation writes the memory under an id derived from the
+ * decision, so a retry or a second tab cannot store it twice.
  *
  * The sink is a seam so tests can capture proposals without a store.
  */
@@ -32,8 +34,11 @@ export const decisionsSink: MemoryProposalSink = async (repos, userId, proposals
   const history = await repos.decisions.listByKind(userId, "memory_proposal", {
     limit: PROPOSAL_HISTORY_LIMIT,
   });
+  // Open, confirmed, or dismissed rows block the same idea. An `expired`
+  // row is one the user never saw through to a verdict, so it does not.
   const known = new Set(
     history
+      .filter((d) => d.status !== "expired")
       .map((d) => d.payload)
       .filter((p): p is MemoryProposalPayload => p.kind === "memory_proposal")
       .map((p) => normalizeMemoryText(p.text)),
@@ -100,7 +105,12 @@ export function filterProposals(
  * What confirming a proposal stores: pinned, so the next sift and the
  * daily plan see it as a preference.
  */
-export function memoryFromProposal(decision: Decision): Omit<Memory, "id" | "createdAt"> | null {
+export function memoryFromProposal(decision: Decision): Omit<Memory, "createdAt"> | null {
   if (decision.payload.kind !== "memory_proposal") return null;
-  return { text: decision.payload.text, kind: decision.payload.memoryKind, pinned: true };
+  return {
+    id: `mem_${decision.id}`,
+    text: decision.payload.text,
+    kind: decision.payload.memoryKind,
+    pinned: true,
+  };
 }
