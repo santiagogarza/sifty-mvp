@@ -81,14 +81,18 @@ describe("DecisionsInbox", () => {
   it("tapping an option answers with it", async () => {
     renderInbox();
     await userEvent.click(screen.getByRole("button", { name: /^2026/ }));
-    expect(answer).toHaveBeenCalledWith("dec_new", { text: null, option: "2026" });
+    expect(answer).toHaveBeenCalledWith("dec_new", { text: null, option: "2026", draft: null });
   });
 
   it("typing an answer and pressing Enter submits free text", async () => {
     renderInbox();
     const inputs = screen.getAllByLabelText("Your answer");
     await userEvent.type(inputs[1]!, "Next Friday{enter}");
-    expect(answer).toHaveBeenCalledWith("dec_old", { text: "Next Friday", option: null });
+    expect(answer).toHaveBeenCalledWith("dec_old", {
+      text: "Next Friday",
+      option: null,
+      draft: null,
+    });
   });
 
   it("j/k move the active card, Enter focuses its answer field, Esc returns to the card", async () => {
@@ -117,7 +121,7 @@ describe("DecisionsInbox", () => {
     const list = screen.getByRole("listbox", { name: "Decisions" });
     list.focus();
     fireEvent.keyDown(list, { key: "2" });
-    expect(answer).toHaveBeenCalledWith("dec_new", { text: null, option: "2026" });
+    expect(answer).toHaveBeenCalledWith("dec_new", { text: null, option: "2026", draft: null });
     // A number with no option behind it does nothing.
     fireEvent.keyDown(list, { key: "4" });
     expect(answer).toHaveBeenCalledTimes(1);
@@ -181,7 +185,7 @@ describe("DecisionsInbox", () => {
     expect(screen.getByRole("button", { name: /Taxes/ })).toBeEnabled();
 
     await userEvent.click(screen.getByTestId("memory-proposal-remember"));
-    expect(answer).toHaveBeenCalledWith("dec_mem", { text: null, option: "Remember" });
+    expect(answer).toHaveBeenCalledWith("dec_mem", { text: null, option: "Remember", draft: null });
     expect(useToastStore.getState().toasts.map((t) => t.message)).toContain(
       "Remembered — Sifty will use it from the next sift on.",
     );

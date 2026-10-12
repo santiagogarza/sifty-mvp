@@ -24,6 +24,10 @@ vi.mock("@/lib/workflows/dispatch", () => ({
   waitForRun: async () => ({ status: "pending" }),
   setWorkflowClientForTesting: () => {},
 }));
+// Deleting a task also stops its executions (the `executeTask` workflow).
+vi.mock("@/lib/executions/service", () => ({
+  cancelExecutionsForTask: async () => 0,
+}));
 // Same for the PATCH route's memory-extraction trigger (also a workflow start).
 vi.mock("@/lib/ai/memory/edit-trigger", () => ({
   editTouchesSignalField: () => false,

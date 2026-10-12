@@ -3,6 +3,9 @@ import type {
   Decision,
   DecisionAnswer,
   DecisionPayload,
+  Execution,
+  ExecutionStatus,
+  ExecutionStep,
   Memory,
   Subtask,
   Task,
@@ -40,6 +43,11 @@ import {
   type DecisionRepo,
   type EntitlementRepo,
   type EntitlementSnapshot,
+  type ExecutionBudgetUsage,
+  type ExecutionPolicyRecord,
+  type ExecutionPolicyRepo,
+  type ExecutionRepo,
+  type ExecutionTransitionPatch,
   IdConflictError,
   type InviteCode,
   type InviteCodeRepo,
@@ -1278,6 +1286,287 @@ export function createPostgresRepos(): Repos {
     },
   };
 
+  const terminal: readonly ExecutionStatus[] = ["done", "failed", "cancelled"];
+
+  const executions: ExecutionRepo = {
+    async create(userId, input) {
+      const db = getDb();
+      const id = input.id ?? makeId("exec");
+      const now = new Date();
+      // Both unique keys (`id`, `(user_id, idempotency_key)`) are covered by
+      // one `ON CONFLICT DO NOTHING`; a losing insert returns no row and the
+      // caller gets whichever existing row matched.
+      const inserted = await db
+        .insert(schema.executions)
+        .values({
+          id,
+          userId,
+          taskId: input.taskId,
+          status: "queued",
+          executor: input.executor,
+          policy: input.policy,
+          connector: input.connector,
+          idempotencyKey: input.idempotencyKey,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing()
+        .returning();
+      if (inserted.length) return { created: true, execution: rowToExecution(inserted[0]!) };
+      const [byKey] = await db
+        .select()
+        .from(schema.executions)
+        .where(
+          and(
+            eq(schema.executions.userId, userId),
+            eq(schema.executions.idempotencyKey, input.idempotencyKey),
+          ),
+        );
+      if (byKey) return { created: false, execution: rowToExecution(byKey) };
+      const existing = await executions.get(userId, id);
+      if (existing) return { created: false, execution: existing };
+      throw new IdConflictError(id);
+    },
+    async get(userId, id) {
+      const db = getDb();
+      const [row] = await db
+        .select()
+        .from(schema.executions)
+        .where(and(eq(schema.executions.id, id), eq(schema.executions.userId, userId)));
+      return row ? rowToExecution(row) : null;
+    },
+    async listForTask(userId, taskId, opts) {
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.executions)
+        .where(and(eq(schema.executions.userId, userId), eq(schema.executions.taskId, taskId)))
+        .orderBy(desc(schema.executions.createdAt), desc(schema.executions.id))
+        .limit(opts.limit);
+      return rows.map(rowToExecution);
+    },
+    async listActive(userId, opts) {
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.executions)
+        .where(
+          and(
+            eq(schema.executions.userId, userId),
+            sql`${schema.executions.status} not in ('done', 'failed', 'cancelled')`,
+          ),
+        )
+        .orderBy(desc(schema.executions.createdAt), desc(schema.executions.id))
+        .limit(opts.limit);
+      return rows.map(rowToExecution);
+    },
+    async transition(userId, id, input) {
+      const db = getDb();
+      const now = new Date();
+      // `status IN (from)` in the predicate makes the check and the write one
+      // statement; the loser of two concurrent transitions updates zero rows.
+      const [row] = await db
+        .update(schema.executions)
+        .set({ ...executionPatchColumns(input.patch ?? {}), status: input.to, updatedAt: now })
+        .where(
+          and(
+            eq(schema.executions.id, id),
+            eq(schema.executions.userId, userId),
+            inArray(schema.executions.status, [...input.from]),
+          ),
+        )
+        .returning();
+      return row ? rowToExecution(row) : null;
+    },
+    async update(userId, id, patch) {
+      const db = getDb();
+      const [row] = await db
+        .update(schema.executions)
+        .set({ ...executionPatchColumns(patch), updatedAt: new Date() })
+        .where(and(eq(schema.executions.id, id), eq(schema.executions.userId, userId)))
+        .returning();
+      return row ? rowToExecution(row) : null;
+    },
+    async reserve(userId, id, input) {
+      const db = getDb();
+      const now = input.now ?? new Date();
+      // Reservations are whole cents (the column is an integer); estimates round up.
+      const cents = Math.ceil(input.cents);
+      return db.transaction(async (tx) => {
+        // Serialize reservations per user so two enqueues cannot both pass
+        // the budget check on the same reading. Transaction-scoped lock.
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext(${`execution_budget:${userId}`}))`,
+        );
+        const [row] = await tx
+          .select()
+          .from(schema.executions)
+          .where(and(eq(schema.executions.id, id), eq(schema.executions.userId, userId)));
+        if (!row) return { ok: false, reason: "not_found" as const };
+        const usage = await monthlyUsageWith(tx, userId, now);
+        const projected = usage.committedCents + usage.reservedCents - row.reservedCents + cents;
+        if (projected > input.capCents) return { ok: false, reason: "budget" as const, usage };
+        const [updated] = await tx
+          .update(schema.executions)
+          .set({ reservedCents: cents, updatedAt: now })
+          .where(eq(schema.executions.id, id))
+          .returning();
+        return {
+          ok: true as const,
+          execution: rowToExecution(updated!),
+          usage: {
+            committedCents: usage.committedCents,
+            reservedCents: usage.reservedCents - row.reservedCents + cents,
+          },
+        };
+      });
+    },
+    async settle(userId, id, input) {
+      const db = getDb();
+      const [row] = await db
+        .update(schema.executions)
+        .set({ reservedCents: 0, costCents: input.costCents, updatedAt: new Date() })
+        .where(and(eq(schema.executions.id, id), eq(schema.executions.userId, userId)))
+        .returning();
+      return row ? rowToExecution(row) : null;
+    },
+    async monthlyUsage(userId, now = new Date()) {
+      return monthlyUsageWith(getDb(), userId, now);
+    },
+    async countByStatus(userId, input) {
+      const db = getDb();
+      const rows = await db
+        .select({ status: schema.executions.status, value: count() })
+        .from(schema.executions)
+        .where(
+          and(eq(schema.executions.userId, userId), gte(schema.executions.updatedAt, input.since)),
+        )
+        .groupBy(schema.executions.status);
+      const counts = Object.fromEntries(
+        ["queued", "running", "needs_decision", "needs_approval", "drafted", ...terminal].map(
+          (s) => [s, 0],
+        ),
+      ) as Record<ExecutionStatus, number>;
+      for (const row of rows) counts[row.status] = row.value;
+      return counts;
+    },
+    async appendStep(userId, input) {
+      const db = getDb();
+      const id = input.id ?? makeId("estep");
+      const inserted = await db
+        .insert(schema.executionSteps)
+        .values({
+          id,
+          userId,
+          executionId: input.executionId,
+          seq: input.seq,
+          kind: input.kind,
+          name: input.name,
+          status: input.status,
+          input: input.input,
+          output: input.output,
+          durationMs: input.durationMs,
+          costCents: input.costCents,
+        })
+        .onConflictDoNothing()
+        .returning();
+      if (inserted.length) return rowToExecutionStep(inserted[0]!);
+      const [existing] = await db
+        .select()
+        .from(schema.executionSteps)
+        .where(
+          or(
+            eq(schema.executionSteps.id, id),
+            and(
+              eq(schema.executionSteps.executionId, input.executionId),
+              eq(schema.executionSteps.seq, input.seq),
+            ),
+          ),
+        )
+        .limit(1);
+      if (existing && existing.userId === userId) return rowToExecutionStep(existing);
+      throw new IdConflictError(id);
+    },
+    async listSteps(userId, executionId, opts) {
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.executionSteps)
+        .where(
+          and(
+            eq(schema.executionSteps.userId, userId),
+            eq(schema.executionSteps.executionId, executionId),
+          ),
+        )
+        .orderBy(asc(schema.executionSteps.seq))
+        .limit(opts.limit);
+      return rows.map(rowToExecutionStep);
+    },
+  };
+
+  const executionPolicies: ExecutionPolicyRepo = {
+    async get(userId, scope, key) {
+      const db = getDb();
+      const [row] = await db
+        .select()
+        .from(schema.executionPolicies)
+        .where(
+          and(
+            eq(schema.executionPolicies.userId, userId),
+            eq(schema.executionPolicies.scope, scope),
+            eq(schema.executionPolicies.key, key),
+          ),
+        );
+      return row ? rowToExecutionPolicy(row) : null;
+    },
+    async list(userId, scope, opts) {
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.executionPolicies)
+        .where(
+          and(
+            eq(schema.executionPolicies.userId, userId),
+            eq(schema.executionPolicies.scope, scope),
+          ),
+        )
+        .orderBy(asc(schema.executionPolicies.key))
+        .limit(opts.limit);
+      return rows.map(rowToExecutionPolicy);
+    },
+    async set(userId, scope, key, policy) {
+      const db = getDb();
+      const now = new Date();
+      const [row] = await db
+        .insert(schema.executionPolicies)
+        .values({ userId, scope, key, policy, updatedAt: now })
+        .onConflictDoUpdate({
+          target: [
+            schema.executionPolicies.userId,
+            schema.executionPolicies.scope,
+            schema.executionPolicies.key,
+          ],
+          set: { policy, updatedAt: now },
+        })
+        .returning();
+      return rowToExecutionPolicy(row!);
+    },
+    async clear(userId, scope, key) {
+      const db = getDb();
+      const deleted = await db
+        .delete(schema.executionPolicies)
+        .where(
+          and(
+            eq(schema.executionPolicies.userId, userId),
+            eq(schema.executionPolicies.scope, scope),
+            eq(schema.executionPolicies.key, key),
+          ),
+        )
+        .returning({ key: schema.executionPolicies.key });
+      return deleted.length > 0;
+    },
+  };
+
   return {
     users,
     entitlements,
@@ -1293,6 +1582,95 @@ export function createPostgresRepos(): Repos {
     pushSubscriptions,
     notificationSends,
     dailyPlans,
+    executions,
+    executionPolicies,
+  };
+}
+
+type DbOrTx = Pick<ReturnType<typeof getDb>, "select">;
+
+async function monthlyUsageWith(
+  db: DbOrTx,
+  userId: string,
+  now: Date,
+): Promise<ExecutionBudgetUsage> {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const [row] = await db
+    .select({
+      committed: sql<number>`coalesce(sum(${schema.executions.costCents}), 0)`,
+      reserved: sql<number>`coalesce(sum(${schema.executions.reservedCents}), 0)`,
+    })
+    .from(schema.executions)
+    .where(and(eq(schema.executions.userId, userId), gte(schema.executions.createdAt, start)));
+  return {
+    committedCents: Number(row?.committed ?? 0),
+    reservedCents: Number(row?.reserved ?? 0),
+  };
+}
+
+function executionPatchColumns(patch: ExecutionTransitionPatch) {
+  const cols: Partial<typeof schema.executions.$inferInsert> = {};
+  if (patch.workflowRunId !== undefined) cols.workflowRunId = patch.workflowRunId;
+  if (patch.decisionId !== undefined) cols.decisionId = patch.decisionId;
+  if (patch.result !== undefined) cols.result = patch.result;
+  if (patch.answers !== undefined) cols.answers = patch.answers;
+  if (patch.error !== undefined) cols.error = patch.error;
+  if (patch.cancelReason !== undefined) cols.cancelReason = patch.cancelReason;
+  if (patch.cancelRequested !== undefined) cols.cancelRequested = patch.cancelRequested;
+  if (patch.startedAt !== undefined) cols.startedAt = toDate(patch.startedAt);
+  if (patch.finishedAt !== undefined) cols.finishedAt = toDate(patch.finishedAt);
+  return cols;
+}
+
+function rowToExecution(row: typeof schema.executions.$inferSelect): Execution {
+  return {
+    id: row.id,
+    taskId: row.taskId,
+    status: row.status,
+    executor: row.executor,
+    policy: row.policy,
+    connector: row.connector,
+    idempotencyKey: row.idempotencyKey,
+    workflowRunId: row.workflowRunId,
+    decisionId: row.decisionId,
+    reservedCents: row.reservedCents,
+    costCents: row.costCents,
+    result: row.result ?? null,
+    answers: row.answers ?? [],
+    error: row.error,
+    cancelReason: row.cancelReason,
+    cancelRequested: row.cancelRequested,
+    createdAt: row.createdAt.toISOString(),
+    startedAt: row.startedAt?.toISOString() ?? null,
+    finishedAt: row.finishedAt?.toISOString() ?? null,
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function rowToExecutionStep(row: typeof schema.executionSteps.$inferSelect): ExecutionStep {
+  return {
+    id: row.id,
+    executionId: row.executionId,
+    seq: row.seq,
+    kind: row.kind,
+    name: row.name,
+    status: row.status,
+    input: row.input ?? null,
+    output: row.output ?? null,
+    durationMs: row.durationMs,
+    costCents: row.costCents,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function rowToExecutionPolicy(
+  row: typeof schema.executionPolicies.$inferSelect,
+): ExecutionPolicyRecord {
+  return {
+    scope: row.scope,
+    key: row.key,
+    policy: row.policy,
+    updatedAt: row.updatedAt.toISOString(),
   };
 }
 

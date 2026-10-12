@@ -569,6 +569,120 @@ export const dailyPlans = pgTable(
   ],
 );
 
+/**
+ * Autonomous executions (`lib/executions/`). One row per attempt to get a
+ * task done by an executor. `status` follows the state machine in
+ * `lib/domain/types.ts`; `reserved_cents` holds the monthly-budget
+ * reservation while the run is in flight and `cost_cents` the settled
+ * spend once it is terminal. `(user_id, idempotency_key)` is unique so a
+ * replayed enqueue returns the existing row instead of starting twice.
+ */
+export const executions = pgTable(
+  "executions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    taskId: text("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    status: text("status", {
+      enum: [
+        "queued",
+        "running",
+        "needs_decision",
+        "needs_approval",
+        "drafted",
+        "done",
+        "failed",
+        "cancelled",
+      ],
+    })
+      .notNull()
+      .default("queued"),
+    executor: text("executor", { enum: ["research", "ai_agent", "cursor_agent"] }).notNull(),
+    policy: text("policy", { enum: ["ask_first", "draft_then_approve", "auto"] }).notNull(),
+    connector: text("connector"),
+    idempotencyKey: text("idempotency_key").notNull(),
+    workflowRunId: text("workflow_run_id"),
+    /** The open `approval` / `draft_review` decision while suspended. */
+    decisionId: text("decision_id"),
+    reservedCents: integer("reserved_cents").notNull().default(0),
+    costCents: doublePrecision("cost_cents").notNull().default(0),
+    result: jsonb("result").$type<{
+      summary: string;
+      draft: { title: string | null; body: string; format: "markdown" | "text" } | null;
+    }>(),
+    answers: jsonb("answers").$type<string[]>().notNull().default([]),
+    error: text("error"),
+    cancelReason: text("cancel_reason", { enum: ["user", "rejected", "expired"] }),
+    cancelRequested: boolean("cancel_requested").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("executions_user_idempotency_idx").on(t.userId, t.idempotencyKey),
+    index("executions_user_status_created_idx").on(t.userId, t.status, t.createdAt),
+    index("executions_task_idx").on(t.taskId),
+    // Monthly budget: every row of the user created this month.
+    index("executions_user_created_idx").on(t.userId, t.createdAt),
+  ],
+);
+
+/**
+ * Ordered log of what an execution did: tool calls, model calls, notes,
+ * and the decisions it waited on. Inputs and outputs pass through
+ * `redactSecrets` before they are written. `(execution_id, seq)` is unique
+ * so a retried workflow step appends each entry once.
+ */
+export const executionSteps = pgTable(
+  "execution_steps",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    executionId: text("execution_id")
+      .notNull()
+      .references(() => executions.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    kind: text("kind", { enum: ["tool_call", "model_call", "note", "decision"] }).notNull(),
+    name: text("name").notNull(),
+    status: text("status", { enum: ["ok", "error"] })
+      .notNull()
+      .default("ok"),
+    input: jsonb("input").$type<Record<string, unknown>>(),
+    output: jsonb("output").$type<Record<string, unknown>>(),
+    durationMs: integer("duration_ms"),
+    costCents: doublePrecision("cost_cents").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("execution_steps_execution_seq_idx").on(t.executionId, t.seq)],
+);
+
+/**
+ * The user's execution policy for one task (`scope = 'task'`, `key` = task
+ * id) or for every task that needs a connector (`scope = 'connector'`,
+ * `key` = connector slug). Missing row = the D9 default. Resolution order
+ * lives in `lib/executions/policy.ts`.
+ */
+export const executionPolicies = pgTable(
+  "execution_policies",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    scope: text("scope", { enum: ["task", "connector"] }).notNull(),
+    key: text("key").notNull(),
+    policy: text("policy", { enum: ["ask_first", "draft_then_approve", "auto"] }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.scope, t.key] })],
+);
+
 export type DbUser = typeof users.$inferSelect;
 export type DbEntitlement = typeof entitlements.$inferSelect;
 export type DbTask = typeof tasks.$inferSelect;

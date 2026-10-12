@@ -126,7 +126,7 @@ describe("useDecisionsStore", () => {
     );
     useDecisionsStore.setState({ decisions: [decision("m")], count: 1 });
     const result = await store.answer("m", { text: null, option: "Remember" });
-    expect(result).toEqual({ ok: true, mode: "remembered" });
+    expect(result).toEqual({ ok: true, mode: "remembered", execution: null });
     expect(useStore.getState().memories).toEqual([memory]);
     // Idempotent: a second adoption of the same id does not duplicate it.
     fetchMock.mockImplementationOnce(

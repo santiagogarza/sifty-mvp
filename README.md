@@ -263,6 +263,19 @@ and suspends with no compute for up to seven days.
   sheet with a re-sift link) and the run ends.
 - A re-sift or a delete expires the task's open questions and releases
   their runs; the 7-day deadline expires an ignored one.
+- **Approvals and draft reviews** (Phase 3, `approval` / `draft_review`
+  opened by executions): an `ask_first` gate reads "Sifty wants to …" with
+  **Approve** / **Reject**; a draft review shows the draft with **Approve**,
+  **Edit** (a line diff of the changes is shown before "Approve with
+  edits"), and **Reject**. Rejecting (or dismissing) cancels the execution;
+  approving moves it in the database first and then wakes the suspended
+  run (`lib/executions/service.ts`). With two or more approvable items a
+  bar offers a batch approve (`x` selects; the button asks for a second
+  click). The task sheet's "Let Sifty do it" panel shows the execution's
+  status, steps, and result, and links into the inbox while it waits.
+  `awaySummary(userId, { since })` in `lib/decisions/service.ts` is the
+  "while you were away" count set for the digest; `GET /api/decisions`
+  carries `byKind`.
 - One-tap links (`lib/decisions/links.ts`): HS256 JWTs under
   `BETTER_AUTH_SECRET`, 24 h, scoped to one decision and one action, used
   by digests and pushes via `/api/decisions/link?token=`. `GET` never
@@ -270,7 +283,9 @@ and suspends with no compute for up to seven days.
   redirects into the inbox, `answer` / `dismiss` show a one-button page
   that `POST`s the token back, and only the `POST` resolves. Single use
   follows from the decision's own state machine. The notifications worker
-  reads `listOpen(userId)` from `lib/decisions/service.ts`.
+  reads `listOpen(userId)` from `lib/decisions/service.ts`;
+  `executionDecisionLinks()` gives the open / approve / reject set for an
+  approval, and the confirm page words itself by decision kind.
 
 ### The `dailyPlan` workflow
 
@@ -345,6 +360,54 @@ them. Backed by the Decisions inbox (`memory_proposal` decisions):
   and **Not this** (resolves the row as `dismissed`; nothing is written).
 - Offline, a regex variant (`offlineMemoryExtraction`) covers "Name, my
   role", first-person habits, and a lowered urgency on a recurring category.
+
+### Autonomous execution (`executeTask`)
+
+`lib/executions/` is the execution model Phase 3 builds on; the real
+workers (model + MCP agent, Cursor Cloud Agents) plug into its seams and
+inherit the state machine, the human gate, the budget, the audit log, and
+cancellation. The modules, in the order a run touches them:
+
+| Module | Owns |
+| --- | --- |
+| `state.ts` | The state machine as data: `queued → running → done \| failed \| cancelled`, with `needs_approval` (policy `ask_first`), `needs_decision` (the executor asked), and `drafted` (policy `draft_then_approve`) as the waiting states. Every status write is a CAS `transition` with a `from` list taken from here. |
+| `policy.ts` | D9. Resolution: request → task (`execution_policies`, scope `task`) → connector (scope `connector`) → default `draft_then_approve`. `auto` is honoured only for `readOnly` executors; otherwise it is downgraded and the caller is told. |
+| `executors.ts` | The `ExecutorDefinition` seam: `readOnly`, `estimateCents`, `describeAction`, `connectorFor`, `run(ctx)`. An executor logs through `ctx.log()` (redacted), calls `ctx.checkCancelled()` between long operations, and returns `done`, `draft`, `needs_decision`, or `failed` — it never touches the status or opens decisions itself. `research` is the v0 no-op that exists so everything around it can be exercised. Real executors call `registerExecutor()`. |
+| `service.ts` | `enqueueExecution` (tier gate → idempotent `create` → budget `reserve` → `startWorkflow`), `cancelExecution`, `applyExecutionDecision` / `resolveExecutionDecision` (what the Decisions actions call for `approval` and `draft_review`), settlement, and the decision openers. |
+| `run.ts` | The bodies of the workflow steps, unit-tested without the runtime. |
+| `redact.ts` | `redactSecrets`: secret-looking keys and values (bearer headers, JWTs, `sk-…`, GitHub / Slack / AWS key shapes, PEM blocks) are replaced before any step input or output is stored; payloads are bounded. |
+| `events.ts` | One `task_events` row per status change (`execution.*`), ids derived from the execution so retries append once. |
+
+`lib/workflows/execute-task.ts` is status-driven rather than a fixed
+sequence: every round reads the row and acts on it, so a user action that
+landed between steps (cancel, approve from another tab) wins. Waiting on a
+human costs nothing: the run registers a hook under `decision:<id>` before
+the decision row exists, releases its per-user slot (one execution at a
+time per account), and suspends for up to seven days. The Decisions
+service moves the execution **before** it wakes the run — approve → `running`,
+accept a draft → `done`, reject → `cancelled` — and if no run is waiting
+(deploy, deadline, crash) and work remains, it starts a new one. The run's
+`reconcile` step covers a wake whose write did not land.
+
+Budget: `caps.executionBudgetCentsMonth` per tier (free 0, Pro $10,
+creator unlimited). The executor's estimate is reserved against the UTC
+calendar month before `start()` (`executions.reserve`, atomic per user via
+an advisory lock), refused with a `failed` row and an
+`execution.budget_refused` event when it would pass the cap, and settled
+to the sum of the step log's `costCents` once the run is terminal.
+
+Routes: `POST /api/tasks/:id/execute` (202; 402 `execution_pro` /
+`execution_budget`; 409 while another execution of the task is live; 200
+`created: false` on an idempotent replay), `GET /api/tasks/:id/executions`,
+`GET /api/executions/:id` (execution + steps), `POST /api/executions/:id/cancel`,
+`GET/PUT/DELETE /api/execution-policies`.
+
+Secrets Sifty must hold itself (a connector credential, a user's Cursor
+API key) go through `lib/crypto/aes-gcm.ts` (shared with the connector
+framework): AES-256-GCM under `DATA_ENCRYPTION_KEY`, a versioned
+`v1.<iv>.<ciphertext>.<tag>` envelope, and required associated data that
+binds a value to its row. Production refuses to start without the key;
+elsewhere a fixed development key keeps the keyless setup working.
 
 ## Configuration
 
@@ -592,9 +655,11 @@ Press `?` in the app for the same list.
 | `s` then `t` / `w` | Snooze the highlighted task until tomorrow / next week |
 | `Shift+click` | Select a range of tasks (bulk move to Someday) |
 | `Shift+D` | Duplicate the open task |
-| `Enter` (Decisions) | Type an answer to the highlighted question |
-| `1`–`4` (Decisions) | Pick a suggested answer |
-| `d` (Decisions) | Let Sifty decide (dismiss the question) |
+| `Enter` (Decisions) | Type an answer, or edit the highlighted draft |
+| `1`–`4` (Decisions) | Pick a suggested answer (`1` approves) |
+| `e` (Decisions) | Edit the highlighted draft |
+| `x` (Decisions) | Select for a batch approve |
+| `d` (Decisions) | Let Sifty decide, or reject |
 | `Esc` | Close any overlay, or clear a selection |
 | `?` | Show or hide the shortcuts sheet |
 
