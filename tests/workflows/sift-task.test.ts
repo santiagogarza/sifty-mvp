@@ -135,9 +135,13 @@ describe("siftTask with a clarifying question (offline stages)", () => {
       "the decision",
     ).then((list) => list[0]!);
 
-    // The task is usable while the question is open.
-    const ready = await repos.tasks.get(user.id, task.id);
-    expect(ready?.aiStatus).toBe("ready");
+    // The decision exists before the task reads `ready`, and the task is
+    // usable while the question is open.
+    const ready = await until(
+      () => repos.tasks.get(user.id, task.id),
+      (t) => t?.aiStatus === "ready",
+      "the task to be ready",
+    );
     expect(ready?.aiAttempts).toBe(1);
     expect(ready?.clarifyingQuestion).toBe("What outcome would mark this as done?");
     expect(decision).toMatchObject({

@@ -34,9 +34,11 @@ import { acquireUserSlot } from "./user-lock";
  * the next step boundary.
  *
  * Clarifying questions: when triage is unsure it asks one question. The
- * pipeline still finishes (the task is usable, `ready`, with Sifty's best
- * guess), then the run opens a `clarifying_question` decision and suspends
- * on its hook with no compute for up to `DECISION_TTL_MS`. An answer wakes
+ * pipeline still runs to the end, opens a `clarifying_question` decision,
+ * marks the task `ready` (usable, with Sifty's best guess), then suspends
+ * on the decision's hook with no compute for up to `DECISION_TTL_MS`. The
+ * decision exists before the task reads `ready`, so a client that refreshes
+ * its inbox when the sift settles always finds the question. An answer wakes
  * the run, which folds it into the capture and runs every stage again
  * inside the same sift (one cap unit, no second question). A dismissal or
  * the deadline ends the run; the Decisions service already marked the
@@ -66,16 +68,24 @@ export async function siftTask(input: SiftInput): Promise<SiftOutcome> {
 
     const first = await runPass(input, workflowRunId, { askQuestions: true });
     if (first.outcome !== "applied") return first;
-    if (!first.question) return { outcome: "completed" };
+    if (!first.question) {
+      const finished = await finishStep(input);
+      if (finished !== "applied") return { outcome: finished, at: "finish" };
+      return { outcome: "completed" };
+    }
 
     // Register the hook before the decision exists, so an answer that
-    // lands the instant the inbox shows it already has a run to resume.
+    // lands the instant the inbox shows it already has a run to resume;
+    // and open the decision before the task reads `ready`, so a client
+    // that refreshes its inbox when the sift settles finds the question.
     const hook = createHook<DecisionResolutionPayload>({
       token: decisionHookToken(first.question.decisionId),
     });
     await hook.getConflict();
     const opened = await openDecisionStep(input, first.question);
     if (opened !== "applied") return { outcome: opened, at: "decision" };
+    const finished = await finishStep(input);
+    if (finished !== "applied") return { outcome: finished, at: "finish" };
 
     slot.release();
     const resolution = await Promise.race([hook, deadline(DECISION_TTL_MS)]);
@@ -91,6 +101,8 @@ export async function siftTask(input: SiftInput): Promise<SiftOutcome> {
     if (folded !== "applied") return { outcome: folded, at: "fold" };
     const second = await runPass(input, workflowRunId, { askQuestions: false });
     if (second.outcome !== "applied") return second;
+    const done = await finishStep(input);
+    if (done !== "applied") return { outcome: done, at: "finish" };
     return { outcome: "completed", decision: "answered" };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -105,7 +117,7 @@ type PassResult =
   | { outcome: "superseded"; at: string }
   | { outcome: "missing"; at: string };
 
-/** One run through every stage, ending with the task `ready`. */
+/** One run through the five stages; the caller finishes the sift. */
 async function runPass(
   input: SiftInput,
   workflowRunId: string,
@@ -121,8 +133,6 @@ async function runPass(
   if (split !== "applied") return { outcome: split, at: "subtasks" };
   const planned = await planStep(input, workflowRunId);
   if (planned !== "applied") return { outcome: planned, at: "plan" };
-  const finished = await finishStep(input);
-  if (finished !== "applied") return { outcome: finished, at: "finish" };
   return { outcome: "applied", question: triaged.question };
 }
 
