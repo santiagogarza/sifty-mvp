@@ -1,3 +1,4 @@
+import { parseDay } from "@/lib/utils/dates";
 import type { PriorityBucket } from "./types";
 
 /**
@@ -72,7 +73,7 @@ export function focusScore(args: {
   };
   let score = bucketWeight[args.bucket] * 1000;
   if (args.due) {
-    const due = new Date(args.due).getTime();
+    const due = parseDay(args.due).getTime();
     const days = (due - now.getTime()) / (24 * 60 * 60 * 1000);
     if (days < 0)
       score -= 500; // overdue rises

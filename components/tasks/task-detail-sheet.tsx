@@ -1,5 +1,6 @@
 "use client";
 
+import { useFrame } from "@/components/app-shell/app-frame";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
@@ -15,6 +16,7 @@ import {
 } from "@/lib/domain/assignee";
 import { LABEL_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
 import { bucketLabel } from "@/lib/domain/priority";
+import { SNOOZE_LABELS, resolveSnooze, toLocalIsoDate } from "@/lib/domain/snooze";
 import { STATUSES_IN_ORDER, STATUS_META, statusLabel } from "@/lib/domain/status";
 import {
   type DelegationCandidate,
@@ -76,7 +78,20 @@ export function TaskDetailSheet({
   onClose: () => void;
 }) {
   const task = useStore((s) => s.tasks.find((t) => t.id === taskId));
+  const duplicateTask = useStore((s) => s.duplicateTask);
+  const { openDetail } = useFrame();
   const open = !!taskId && !!task;
+
+  const duplicate = () => {
+    if (!task) return;
+    const copy = duplicateTask(task.id);
+    if (copy) openDetail(copy.id);
+  };
+
+  // The sheet has no DialogTrigger (it opens from the URL), so Radix would
+  // hand focus to nobody on close. Remember who had it and give it back —
+  // usually the task row, so Enter → Escape → j/k is one continuous flow.
+  const openerRef = React.useRef<HTMLElement | null>(null);
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
@@ -89,7 +104,25 @@ export function TaskDetailSheet({
         tabIndex={-1}
         onOpenAutoFocus={(e) => {
           e.preventDefault();
+          const active = document.activeElement;
+          openerRef.current = active instanceof HTMLElement ? active : null;
           (e.currentTarget as HTMLElement | null)?.focus({ preventScroll: true });
+        }}
+        onCloseAutoFocus={(e) => {
+          e.preventDefault();
+          const opener = openerRef.current;
+          openerRef.current = null;
+          if (opener?.isConnected) opener.focus({ preventScroll: true });
+        }}
+        onKeyDown={(e) => {
+          // Shift+D duplicates — only when not typing, so a capital D in a
+          // field is still just a letter. Lives on the panel so it works
+          // from the panel's own focus right after opening.
+          if (e.key === "D" && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            if (isEditableTarget(e.target)) return;
+            e.preventDefault();
+            duplicate();
+          }
         }}
       >
         {task ? (
@@ -99,7 +132,7 @@ export function TaskDetailSheet({
             </VisuallyHidden>
             {/* Keyed so switching tasks resets local UI state (disclosures,
                 fill animation tracking) instead of leaking across tasks. */}
-            <DetailBody key={task.id} task={task} onClose={onClose} />
+            <DetailBody key={task.id} task={task} onClose={onClose} onDuplicate={duplicate} />
           </>
         ) : null}
       </SheetContent>
@@ -107,7 +140,15 @@ export function TaskDetailSheet({
   );
 }
 
-function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
+function DetailBody({
+  task,
+  onClose,
+  onDuplicate,
+}: {
+  task: Task;
+  onClose: () => void;
+  onDuplicate: () => void;
+}) {
   const updateTask = useStore((s) => s.updateTask);
   const deleteTask = useStore((s) => s.deleteTask);
   const labels = useStore((s) => s.labels);
@@ -389,6 +430,16 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
           <Button
             variant="ghost"
             size="sm"
+            onClick={onDuplicate}
+            aria-label="Duplicate task"
+            title="Duplicate task (Shift+D)"
+          >
+            <Copy size={13} />
+            <span className="hidden sm:inline">Duplicate</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => {
               if (confirm("Delete this task?")) {
                 deleteTask(task.id);
@@ -403,6 +454,18 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  return (
+    tag === "INPUT" ||
+    tag === "TEXTAREA" ||
+    tag === "SELECT" ||
+    target.isContentEditable ||
+    target.getAttribute("role") === "textbox"
   );
 }
 
@@ -762,16 +825,26 @@ function MetaCell({
 function DueEditor({ task }: { task: Task }) {
   const updateTask = useStore((s) => s.updateTask);
   const today = new Date();
-  const presets = [
-    { label: "Today", days: 0 },
-    { label: "Tomorrow", days: 1 },
-    { label: "In 3 days", days: 3 },
-    { label: "Next week", days: 7 },
-  ];
-  const toIso = (offset: number) => {
+  const inDays = (offset: number) => {
     const d = new Date(today);
     d.setDate(d.getDate() + offset);
-    return d.toISOString().slice(0, 10);
+    return toLocalIsoDate(d);
+  };
+  // Same resolution as the list's snooze keys, so "Next week" means the
+  // coming Monday everywhere, and all days are local calendar days.
+  const presets: Array<{ label: string; due: string }> = [
+    { label: "Today", due: inDays(0) },
+    { label: SNOOZE_LABELS.tomorrow, due: resolveSnooze("tomorrow", today) },
+    { label: "In 3 days", due: inDays(3) },
+    { label: SNOOZE_LABELS.next_week, due: resolveSnooze("next_week", today) },
+  ];
+  const showDay = (iso: string) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    return new Date(y!, m! - 1, d!).toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
   };
   return (
     <div className="flex flex-col gap-1 min-w-[220px]">
@@ -779,16 +852,11 @@ function DueEditor({ task }: { task: Task }) {
         <button
           key={p.label}
           type="button"
-          onClick={() => updateTask(task.id, { due: toIso(p.days) }, { editedFields: ["due"] })}
+          onClick={() => updateTask(task.id, { due: p.due }, { editedFields: ["due"] })}
           className="flex items-center justify-between rounded-[var(--radius-sm)] px-2.5 py-1.5 text-[13px] hover:bg-[var(--surface-hover)] text-left"
         >
           <span>{p.label}</span>
-          <span className="text-[11.5px] text-[var(--fg-subtle)]">
-            {new Date(toIso(p.days)).toLocaleDateString(undefined, {
-              month: "short",
-              day: "numeric",
-            })}
-          </span>
+          <span className="text-[11.5px] text-[var(--fg-subtle)]">{showDay(p.due)}</span>
         </button>
       ))}
       <div className="my-1 h-px bg-[var(--border)]" />
