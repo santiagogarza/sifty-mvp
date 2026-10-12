@@ -46,6 +46,8 @@ export default defineConfig({
         timeout: 120_000,
         env: {
           ...process.env,
+          SIFTY_DISABLE_AUTH: process.env.SIFTY_DISABLE_AUTH ?? "1",
+          SIFTY_AI_OFFLINE: process.env.SIFTY_AI_OFFLINE ?? "1",
           // Every smoke test shares one bypass user, and triage requests
           // count against a persistent per-user window. Keep the cap high
           // enough that the burst test can't starve the functional tests

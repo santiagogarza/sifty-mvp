@@ -2,6 +2,7 @@
 
 import { CaptureDialog } from "@/components/tasks/capture-dialog";
 import { TaskDetailSheet } from "@/components/tasks/task-detail-sheet";
+import type { Lifecycle } from "@/lib/domain/types";
 import { useServerSync } from "@/lib/store/sync";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
@@ -35,6 +36,7 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const search = useSearchParams();
   const [captureOpen, setCaptureOpen] = React.useState(false);
+  const [captureLifecycle, setCaptureLifecycle] = React.useState<Lifecycle>("inbox");
   const [commandOpen, setCommandOpen] = React.useState(false);
 
   // Pulls the server snapshot into the store on mount and reconciles; a
@@ -43,8 +45,20 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
 
   const detailTaskId = search.get("task");
 
-  const openCapture = React.useCallback(() => setCaptureOpen(true), []);
+  const openCapture = React.useCallback((opts?: { lifecycle?: Lifecycle }) => {
+    // Callers also pass this straight to onClick. A click event is an object
+    // with no lifecycle, and must stay a normal inbox capture.
+    const requested =
+      opts && typeof opts === "object" && "lifecycle" in opts ? opts.lifecycle : undefined;
+    setCaptureLifecycle(requested ?? "inbox");
+    setCaptureOpen(true);
+  }, []);
   const openCommand = React.useCallback(() => setCommandOpen(true), []);
+
+  const onCaptureOpenChange = React.useCallback((open: boolean) => {
+    setCaptureOpen(open);
+    if (!open) setCaptureLifecycle("inbox");
+  }, []);
 
   const openDetail = React.useCallback(
     (id: string) => {
@@ -62,21 +76,28 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [router, pathname, search]);
 
+  const syncError = Boolean(sync.hydrated && sync.error);
   const value = React.useMemo(
-    () => ({ openDetail, openCapture, openCommand }),
-    [openDetail, openCapture, openCommand],
+    () => ({ openDetail, openCapture, openCommand, syncError }),
+    [openDetail, openCapture, openCommand, syncError],
   );
 
   return (
     <FrameContext.Provider value={value}>
       <div className="relative flex min-h-dvh">
         <Sidebar />
-        <main className="relative z-0 flex-1 flex flex-col min-w-0 pb-[80px] md:pb-0">
+        {/* @container lets the board size itself against the main pane
+            (100cqw) instead of the viewport, which the sidebar offsets. */}
+        <main className="relative z-0 flex-1 flex flex-col min-w-0 pb-[80px] md:pb-0 @container">
           {children}
         </main>
       </div>
       <BottomNav onCapture={openCapture} />
-      <CaptureDialog open={captureOpen} onOpenChange={setCaptureOpen} />
+      <CaptureDialog
+        open={captureOpen}
+        onOpenChange={onCaptureOpenChange}
+        lifecycle={captureLifecycle}
+      />
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} onCapture={openCapture} />
       <TaskDetailSheet taskId={detailTaskId} onClose={closeDetail} />
       <GlobalKeyboard onCapture={openCapture} onCommand={openCommand} />
@@ -94,8 +115,10 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
 
 interface FrameApi {
   openDetail: (id: string) => void;
-  openCapture: () => void;
+  openCapture: (opts?: { lifecycle?: Lifecycle }) => void;
   openCommand: () => void;
+  /** True while the offline notice is on screen, so the undo pill can sit above it. */
+  syncError: boolean;
 }
 
 const FrameContext = React.createContext<FrameApi | null>(null);
