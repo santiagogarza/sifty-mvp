@@ -100,6 +100,20 @@ describe("GET /api/account/export", () => {
     expect(data.memories.map((m: { text: string }) => m.text)).toEqual(["Memory a"]);
     expect(data.aiRuns).toHaveLength(1);
     expect(data.aiRuns[0].taskId).toBe(mine.task.id);
+    expect(Object.keys(data.aiRuns[0]).sort()).toEqual([
+      "costCents",
+      "createdAt",
+      "durationMs",
+      "error",
+      "id",
+      "inputTokens",
+      "model",
+      "offline",
+      "outputTokens",
+      "status",
+      "taskId",
+      "transport",
+    ]);
     expect(data.taskEvents).toEqual([]);
     expect(JSON.stringify(data)).not.toContain("Task b");
     expect(JSON.stringify(data)).not.toContain("b-export@example.com");

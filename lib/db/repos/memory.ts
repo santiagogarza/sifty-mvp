@@ -420,7 +420,11 @@ export function createMemoryRepos(): MemoryReposHandle {
     },
     async list(userId, limit) {
       const mine = state.aiRuns.filter((r) => r.userId === userId);
-      return (limit === undefined ? mine : mine.slice(-limit)).reverse();
+      // Same projection as the Postgres mapper: no tenant id, no prompt
+      // version — this shape is what the data export ships.
+      return (limit === undefined ? mine : mine.slice(-limit))
+        .reverse()
+        .map(({ userId: _u, promptVersion: _p, ...record }) => record);
     },
   };
 
