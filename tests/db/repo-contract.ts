@@ -1,5 +1,5 @@
 import type { Repos } from "@/lib/db/repos";
-import { IdConflictError } from "@/lib/db/repos/types";
+import { IdConflictError, SIFT_ACCOUNTING_STAGE } from "@/lib/db/repos/types";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -239,6 +239,131 @@ export function describeRepoContract(getRepos: () => Repos): void {
       const listed = await repos.aiRuns.list(u.id, 10);
       expect(listed).toHaveLength(2);
       expect(listed.map((r) => r.status).sort()).toEqual(["failed", "succeeded"]);
+      expect(listed[0]!.promptVersion).toBe("triage.v1");
+      expect(listed[0]!.siftId).toBeNull();
+      expect(listed[0]!.workflowRunId).toBeNull();
+    });
+
+    it("aiRuns: a workflow sift counts once, however many stage rows it writes", async () => {
+      const repos = getRepos();
+      const u = await createUser(repos, "sifts@example.com");
+      const siftId = "sift_abc";
+      // The accounting row is written when the sift is accepted…
+      await repos.aiRuns.insert({
+        ...aiRun(u.id, "task_1"),
+        stage: SIFT_ACCOUNTING_STAGE,
+        siftId,
+        model: "sifty.workflow",
+        transport: "workflow",
+        promptVersion: "sift.v1",
+      });
+      // …then one row per stage step carries the cost detail.
+      for (const stage of ["enrich", "prioritize", "triage", "subtasks", "plan"]) {
+        await repos.aiRuns.insert({
+          ...aiRun(u.id, "task_1"),
+          stage,
+          siftId,
+          workflowRunId: "wrun_1",
+          costCents: 0.5,
+        });
+      }
+      // A legacy single-shot run (agent brief) still counts as one.
+      await repos.aiRuns.insert({ ...aiRun(u.id, null), stage: null });
+
+      expect(await repos.aiRuns.countSucceededToday(u.id)).toBe(2);
+      expect(await repos.aiRuns.countSince(u.id, new Date(Date.now() - 60_000))).toBe(2);
+      const rows = await repos.aiRuns.list(u.id);
+      expect(rows).toHaveLength(7);
+      expect(rows.filter((r) => r.siftId === siftId)).toHaveLength(6);
+      expect(rows.find((r) => r.stage === "plan")?.workflowRunId).toBe("wrun_1");
+    });
+
+    it("aiRuns: setStatus flips the accounting row and is tenant-scoped", async () => {
+      const repos = getRepos();
+      const a = await createUser(repos, "status-a@example.com");
+      const b = await createUser(repos, "status-b@example.com");
+      const { id } = await repos.aiRuns.insert({
+        ...aiRun(a.id, null),
+        stage: SIFT_ACCOUNTING_STAGE,
+        siftId: "sift_x",
+      });
+      expect(await repos.aiRuns.countSucceededToday(a.id)).toBe(1);
+
+      await repos.aiRuns.setStatus(b.id, id, "failed", "not yours");
+      expect(await repos.aiRuns.countSucceededToday(a.id)).toBe(1);
+
+      await repos.aiRuns.setStatus(a.id, id, "failed", "workflow died");
+      expect(await repos.aiRuns.countSucceededToday(a.id)).toBe(0);
+      const [row] = await repos.aiRuns.list(a.id, 1);
+      expect(row?.status).toBe("failed");
+      expect(row?.error).toBe("workflow died");
+    });
+
+    it("aiRuns: rollup aggregates every tenant by day, stage, model, and user", async () => {
+      const repos = getRepos();
+      const a = await createUser(repos, "roll-a@example.com");
+      const b = await createUser(repos, "roll-b@example.com");
+      await repos.aiRuns.insert({
+        ...aiRun(a.id, null),
+        stage: "enrich",
+        model: "anthropic/claude-haiku-4.5",
+        inputTokens: 100,
+        outputTokens: 10,
+        costCents: 0.25,
+      });
+      await repos.aiRuns.insert({
+        ...aiRun(a.id, null),
+        stage: "plan",
+        model: "anthropic/claude-sonnet-4.5",
+        inputTokens: 200,
+        outputTokens: 20,
+        costCents: 1.5,
+        status: "failed",
+        error: "boom",
+      });
+      await repos.aiRuns.insert({
+        ...aiRun(b.id, null),
+        stage: "enrich",
+        model: "anthropic/claude-haiku-4.5",
+        inputTokens: 50,
+        outputTokens: 5,
+        costCents: null,
+      });
+      const since = new Date(Date.now() - 60_000);
+
+      const byStage = await repos.aiRuns.rollup({ since, by: "stage" });
+      expect(byStage.map((r) => r.key)).toEqual(["plan", "enrich"]);
+      expect(byStage[1]).toEqual({
+        key: "enrich",
+        runs: 2,
+        failed: 0,
+        inputTokens: 150,
+        outputTokens: 15,
+        costCents: 0.25,
+      });
+      expect(byStage[0]).toMatchObject({ key: "plan", runs: 1, failed: 1, costCents: 1.5 });
+
+      const byModel = await repos.aiRuns.rollup({ since, by: "model" });
+      expect(byModel.map((r) => r.key)).toEqual([
+        "anthropic/claude-sonnet-4.5",
+        "anthropic/claude-haiku-4.5",
+      ]);
+
+      const byUser = await repos.aiRuns.rollup({ since, by: "user" });
+      expect(byUser.map((r) => [r.key, r.runs])).toEqual([
+        [a.id, 2],
+        [b.id, 1],
+      ]);
+
+      const byDay = await repos.aiRuns.rollup({ since, by: "day" });
+      expect(byDay).toHaveLength(1);
+      expect(byDay[0]!.key).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(byDay[0]!.runs).toBe(3);
+
+      // The window is honored.
+      expect(
+        await repos.aiRuns.rollup({ since: new Date(Date.now() + 60_000), by: "day" }),
+      ).toEqual([]);
     });
 
     it("stripeEvents: first sight wins, delete re-arms", async () => {

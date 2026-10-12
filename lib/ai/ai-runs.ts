@@ -15,6 +15,9 @@ export interface RecordRunInput {
   meta: TriageMeta;
   status: AiRunStatus;
   error?: string | null;
+  /** Set for per-stage rows written by the `siftTask` workflow. */
+  siftId?: string | null;
+  workflowRunId?: string | null;
 }
 
 export async function recordAiRun(input: RecordRunInput): Promise<{ id: string }> {
@@ -24,6 +27,8 @@ export async function recordAiRun(input: RecordRunInput): Promise<{ id: string }
     taskId: input.taskId ?? null,
     promptVersion: input.meta.promptVersion,
     stage: input.meta.stage,
+    siftId: input.siftId ?? null,
+    workflowRunId: input.workflowRunId ?? null,
     model: input.meta.model,
     transport: input.meta.transport,
     status: input.status,

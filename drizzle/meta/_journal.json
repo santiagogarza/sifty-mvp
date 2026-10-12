@@ -57,6 +57,13 @@
       "when": 1791785944320,
       "tag": "0007_grace_periods",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791793385923,
+      "tag": "0008_workflow_ai_runs",
+      "breakpoints": true
     }
   ]
 }
