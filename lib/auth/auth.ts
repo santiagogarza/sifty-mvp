@@ -7,7 +7,7 @@ import {
   seedDemoWorkspaceIfEmpty,
 } from "@/lib/demo/seed-demo";
 import { sendTemplate } from "@/lib/email/templates";
-import { TRIAL_DAYS } from "@/lib/entitlements/entitlements";
+import { TRIAL_DAYS, creatorSnapshot } from "@/lib/entitlements/entitlements";
 import { reportError } from "@/lib/observability/report-error";
 import { id as makeId } from "@/lib/utils/ids";
 import { betterAuth } from "better-auth";
@@ -266,17 +266,7 @@ async function onUserCreated(repos: Repos, user: AuthUser): Promise<void> {
   }
 
   if (isCreator) {
-    await repos.entitlements.upsert(user.id, {
-      tier: "creator",
-      trialStartedAt: null,
-      trialEndsAt: null,
-      subscriptionActive: true,
-      stripeCustomerId: null,
-      stripeSubscriptionId: null,
-      stripeStatus: null,
-      currentPeriodEnd: null,
-      aiRunsLimitDay: 1_000_000,
-    });
+    await repos.entitlements.upsert(user.id, creatorSnapshot());
   } else {
     await repos.entitlements.startTrialIfMissing(user.id, TRIAL_DAYS);
   }

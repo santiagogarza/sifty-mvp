@@ -14,6 +14,8 @@ import {
   getModelPreference,
 } from "@/lib/ai/models";
 import { authClient } from "@/lib/auth/client";
+import type { Entitlement, Tier } from "@/lib/domain/types";
+import { tierLabel, tierSummary } from "@/lib/entitlements/entitlements";
 import { useStore } from "@/lib/store/store";
 import { resetLocalWorkspace } from "@/lib/store/sync";
 import { cn } from "@/lib/utils/cn";
@@ -25,8 +27,7 @@ import { SessionsPanel } from "./sessions-panel";
 export interface SettingsAccount {
   email: string;
   displayName: string;
-  tier: "creator" | "trialing" | "active" | "expired";
-  trialEndsAt: string | null;
+  entitlement: Entitlement;
   /** True when running with SIFTY_DISABLE_AUTH — sign-out is meaningless. */
   authBypass: boolean;
 }
@@ -64,11 +65,16 @@ export function SettingsClient({ account }: { account: SettingsAccount }) {
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="text-[13.5px] text-[var(--fg)] truncate">{account.email}</div>
-              <div className="text-[12px] text-[var(--fg-muted)] mt-0.5">{tierLine(account)}</div>
+              <div className="text-[12px] text-[var(--fg-muted)] mt-0.5">
+                {tierSummary(account.entitlement)}
+              </div>
             </div>
-            <Badge tone={account.tier === "creator" ? "ember" : tierBadgeTone(account.tier)}>
-              {tierLabel(account.tier)}
+            <Badge tone={tierBadgeTone(account.entitlement.tier)}>
+              {tierLabel(account.entitlement.tier)}
             </Badge>
+          </div>
+          <div className="text-[12px] text-[var(--fg-muted)] mt-2">
+            {siftsLine(account.entitlement)}
           </div>
           <div className="mt-3 flex items-center gap-2 border-t border-[var(--border)] pt-3">
             <Link
@@ -229,35 +235,25 @@ function accountDescription(account: SettingsAccount): string {
   if (account.authBypass) {
     return "Running with SIFTY_DISABLE_AUTH=1 — sign-in is bypassed for local development.";
   }
-  return "The creator account is permanently free; everyone else gets a 30-day trial.";
+  return "Capture, organize, and sync are free for everyone. Sifting with AI is where plans differ.";
 }
 
-function tierLabel(tier: SettingsAccount["tier"]): string {
-  return { creator: "Creator", trialing: "Trial", active: "Pro", expired: "Expired" }[tier];
-}
-
-function tierBadgeTone(tier: SettingsAccount["tier"]): "mist" | "sage" | "neutral" {
+function tierBadgeTone(tier: Tier): "ember" | "mist" | "sage" | "neutral" {
   return {
-    creator: "neutral" as const,
+    creator: "ember" as const,
+    comped: "sage" as const,
+    pro: "sage" as const,
     trialing: "mist" as const,
-    active: "sage" as const,
-    expired: "neutral" as const,
+    free: "neutral" as const,
   }[tier];
 }
 
-function tierLine(account: SettingsAccount): string {
-  switch (account.tier) {
-    case "creator":
-      return "Creator — unlimited AI usage";
-    case "trialing":
-      return account.trialEndsAt
-        ? `Trial ends ${new Date(account.trialEndsAt).toLocaleDateString(undefined, { month: "long", day: "numeric" })}`
-        : "Trialing";
-    case "active":
-      return "Sifty Pro — subscription active";
-    case "expired":
-      return "Trial ended — upgrade to keep using AI triage";
+function siftsLine(ent: Entitlement): string {
+  if (!Number.isFinite(ent.caps.siftsPerDay)) return `${ent.siftsToday} sifts today — unlimited`;
+  if (ent.tier === "free") {
+    return `${ent.siftsToday} of ${ent.caps.siftsPerDay} free sifts used today`;
   }
+  return `${ent.siftsToday} sifts today — unlimited, fair-use cap ${ent.caps.siftsPerDay}/day`;
 }
 
 function SectionCard({

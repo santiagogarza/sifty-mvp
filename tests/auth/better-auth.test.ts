@@ -156,8 +156,8 @@ describe("getSession()", () => {
     expect(session).not.toBeNull();
     expect(session!.user).toEqual(user);
     expect(session!.sessionId).toBeTruthy();
-    expect(session!.subscriptionActive).toBe(false);
-    expect(session!.trialStartedAt).toBeTruthy();
+    expect(session!.entitlement?.tier).toBe("trialing");
+    expect(session!.entitlement?.trialStartedAt).toBeTruthy();
   });
 
   it("returns null without a cookie and for a tampered cookie", async () => {

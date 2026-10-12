@@ -17,7 +17,10 @@
     "test:e2e:install": "playwright install --with-deps chromium",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "invite:mint": "tsx --env-file-if-exists=.env.local scripts/invite.ts mint",
+    "invite:revoke": "tsx --env-file-if-exists=.env.local scripts/invite.ts revoke",
+    "invite:list": "tsx --env-file-if-exists=.env.local scripts/invite.ts list"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.85",
@@ -65,6 +68,7 @@
     "postcss": "^8.4.49",
     "puppeteer-core": "^25.1.0",
     "tailwindcss": "^4.0.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.3",
     "vitest": "^4.1.9"
   },

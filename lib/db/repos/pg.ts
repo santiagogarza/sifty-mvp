@@ -1,7 +1,8 @@
 import { LABEL_TONES, type Label, type LabelTone } from "@/lib/domain/types";
 import type { Memory, Subtask, Task, TaskEditableField } from "@/lib/domain/types";
+import { emptySnapshot, trialSnapshot } from "@/lib/entitlements/entitlements";
 import { id as makeId } from "@/lib/utils/ids";
-import { and, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "../client";
 import * as schema from "../schema";
@@ -12,6 +13,10 @@ import {
   type EntitlementRepo,
   type EntitlementSnapshot,
   IdConflictError,
+  type InviteCode,
+  type InviteCodeRepo,
+  type InviteConsumeFailure,
+  type InviteRedemption,
   type LabelRepo,
   type MemoryCreateInput,
   type MemoryRepo,
@@ -108,84 +113,64 @@ export function createPostgresRepos(): Repos {
     },
   };
 
-  const entitlements: EntitlementRepo = {
-    async get(userId) {
-      const db = getDb();
-      const [ent] = await db
-        .select()
-        .from(schema.entitlements)
-        .where(eq(schema.entitlements.userId, userId));
-      const [user] = await db.select().from(schema.users).where(eq(schema.users.id, userId));
-      if (!ent || !user) return null;
-      return {
-        tier: ent.tier,
-        trialStartedAt: user.trialStartedAt?.toISOString() ?? null,
-        trialEndsAt: ent.trialEndsAt?.toISOString() ?? null,
-        subscriptionActive: ent.tier === "active" || ent.tier === "creator",
-        stripeCustomerId: user.stripeCustomerId,
-        stripeSubscriptionId: ent.stripeSubscriptionId,
-        stripeStatus: ent.stripeStatus,
-        currentPeriodEnd: ent.currentPeriodEnd?.toISOString() ?? null,
-        aiRunsLimitDay: ent.aiRunsLimitDay,
-      };
-    },
-    async upsert(userId, snapshot) {
-      const db = getDb();
-      await db
-        .insert(schema.entitlements)
-        .values({
-          userId,
-          tier: snapshot.tier,
-          trialEndsAt: snapshot.trialEndsAt ? new Date(snapshot.trialEndsAt) : null,
-          stripeSubscriptionId: snapshot.stripeSubscriptionId,
-          stripeStatus: snapshot.stripeStatus,
-          currentPeriodEnd: snapshot.currentPeriodEnd ? new Date(snapshot.currentPeriodEnd) : null,
-          aiRunsLimitDay: snapshot.aiRunsLimitDay,
+  // One executor type covers both the pool and a transaction handle.
+  type Executor = Pick<ReturnType<typeof getDb>, "select" | "insert" | "update">;
+
+  async function readEntitlement(
+    ex: Executor,
+    userId: string,
+    opts: { lock?: boolean } = {},
+  ): Promise<EntitlementSnapshot | null> {
+    const q = ex.select().from(schema.entitlements).where(eq(schema.entitlements.userId, userId));
+    const [ent] = opts.lock ? await q.for("update") : await q;
+    const [user] = await ex.select().from(schema.users).where(eq(schema.users.id, userId));
+    if (!ent || !user) return null;
+    return entitlementRowToSnapshot(ent, user);
+  }
+
+  async function writeEntitlement(
+    ex: Executor,
+    userId: string,
+    snapshot: EntitlementSnapshot,
+  ): Promise<void> {
+    const columns = entitlementColumns(snapshot, new Date());
+    await ex
+      .insert(schema.entitlements)
+      .values({ userId, ...columns })
+      .onConflictDoUpdate({ target: schema.entitlements.userId, set: columns });
+    if (snapshot.trialStartedAt || snapshot.stripeCustomerId) {
+      await ex
+        .update(schema.users)
+        .set({
+          trialStartedAt: snapshot.trialStartedAt ? new Date(snapshot.trialStartedAt) : undefined,
+          stripeCustomerId: snapshot.stripeCustomerId ?? undefined,
           updatedAt: new Date(),
         })
-        .onConflictDoUpdate({
-          target: schema.entitlements.userId,
-          set: {
-            tier: snapshot.tier,
-            trialEndsAt: snapshot.trialEndsAt ? new Date(snapshot.trialEndsAt) : null,
-            stripeSubscriptionId: snapshot.stripeSubscriptionId,
-            stripeStatus: snapshot.stripeStatus,
-            currentPeriodEnd: snapshot.currentPeriodEnd
-              ? new Date(snapshot.currentPeriodEnd)
-              : null,
-            aiRunsLimitDay: snapshot.aiRunsLimitDay,
-            updatedAt: new Date(),
-          },
-        });
-      if (snapshot.trialStartedAt || snapshot.stripeCustomerId) {
-        await db
-          .update(schema.users)
-          .set({
-            trialStartedAt: snapshot.trialStartedAt ? new Date(snapshot.trialStartedAt) : undefined,
-            stripeCustomerId: snapshot.stripeCustomerId ?? undefined,
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.users.id, userId));
-      }
+        .where(eq(schema.users.id, userId));
+    }
+  }
+
+  const entitlements: EntitlementRepo = {
+    async get(userId) {
+      return readEntitlement(getDb(), userId);
+    },
+    async upsert(userId, snapshot) {
+      await writeEntitlement(getDb(), userId, snapshot);
       return { ...snapshot };
+    },
+    async update(userId, mutate) {
+      const db = getDb();
+      return db.transaction(async (tx) => {
+        const current = await readEntitlement(tx, userId, { lock: true });
+        const next = mutate(current);
+        await writeEntitlement(tx, userId, next);
+        return { ...next };
+      });
     },
     async startTrialIfMissing(userId, days) {
       const existing = await entitlements.get(userId);
       if (existing) return existing;
-      const now = new Date();
-      const end = new Date(now);
-      end.setDate(end.getDate() + days);
-      return entitlements.upsert(userId, {
-        tier: "trialing",
-        trialStartedAt: now.toISOString(),
-        trialEndsAt: end.toISOString(),
-        subscriptionActive: false,
-        stripeCustomerId: null,
-        stripeSubscriptionId: null,
-        stripeStatus: null,
-        currentPeriodEnd: null,
-        aiRunsLimitDay: 50,
-      });
+      return entitlements.upsert(userId, trialSnapshot(days));
     },
   };
 
@@ -521,7 +506,231 @@ export function createPostgresRepos(): Repos {
     },
   };
 
-  return { users, entitlements, tasks, labels, memories, aiRuns, stripeEvents };
+  const inviteCodes: InviteCodeRepo = {
+    async create(input) {
+      const db = getDb();
+      const [row] = await db
+        .insert(schema.inviteCodes)
+        .values({
+          id: makeId("inv"),
+          codeHash: input.codeHash,
+          grants: input.grants,
+          durationMonths: input.durationMonths,
+          maxRedemptions: input.maxRedemptions,
+          expiresAt: toDate(input.expiresAt),
+          note: input.note,
+        })
+        .returning();
+      return rowToInviteCode(row!);
+    },
+    async findByHash(codeHash) {
+      const db = getDb();
+      const [row] = await db
+        .select()
+        .from(schema.inviteCodes)
+        .where(eq(schema.inviteCodes.codeHash, codeHash));
+      return row ? rowToInviteCode(row) : null;
+    },
+    async getById(id) {
+      const db = getDb();
+      const [row] = await db.select().from(schema.inviteCodes).where(eq(schema.inviteCodes.id, id));
+      return row ? rowToInviteCode(row) : null;
+    },
+    async list() {
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.inviteCodes)
+        .orderBy(desc(schema.inviteCodes.createdAt));
+      return rows.map(rowToInviteCode);
+    },
+    async revoke(id, at = new Date()) {
+      const db = getDb();
+      await db
+        .update(schema.inviteCodes)
+        .set({ revokedAt: at })
+        .where(and(eq(schema.inviteCodes.id, id), isNull(schema.inviteCodes.revokedAt)));
+      return inviteCodes.getById(id);
+    },
+    async consume(codeId, userId, input) {
+      const db = getDb();
+      const now = input.now ?? new Date();
+      class Refused extends Error {
+        constructor(readonly reason: InviteConsumeFailure) {
+          super(reason);
+        }
+      }
+      try {
+        return await db.transaction(async (tx) => {
+          // Lock the entitlement row first so the grant is derived from the
+          // committed state and a concurrent Stripe webhook serializes
+          // behind us instead of being overwritten.
+          const current = await readEntitlement(tx, userId, { lock: true });
+          const grant = input.grant(current);
+
+          // The unique (code_id, user_id) index is the once-per-user guard;
+          // a concurrent duplicate waits on it and then sees no row.
+          const inserted = await tx
+            .insert(schema.inviteRedemptions)
+            .values({
+              id: makeId("red"),
+              codeId,
+              userId,
+              compedUntil: toDate(grant.compedUntil),
+              redeemedAt: now,
+            })
+            .onConflictDoNothing()
+            .returning();
+          if (!inserted.length) throw new Refused("already_redeemed");
+
+          // One conditional UPDATE is the atomic check-and-increment: two
+          // racing redeemers serialize on the row lock and only the first
+          // sees `redemption_count < max_redemptions`.
+          const bumped = await tx
+            .update(schema.inviteCodes)
+            .set({ redemptionCount: sql`${schema.inviteCodes.redemptionCount} + 1` })
+            .where(
+              and(
+                eq(schema.inviteCodes.id, codeId),
+                isNull(schema.inviteCodes.revokedAt),
+                or(isNull(schema.inviteCodes.expiresAt), gt(schema.inviteCodes.expiresAt, now)),
+                lt(schema.inviteCodes.redemptionCount, schema.inviteCodes.maxRedemptions),
+              ),
+            )
+            .returning({ id: schema.inviteCodes.id });
+          if (!bumped.length) {
+            const [code] = await tx
+              .select()
+              .from(schema.inviteCodes)
+              .where(eq(schema.inviteCodes.id, codeId));
+            if (!code) throw new Refused("expired");
+            if (code.revokedAt) throw new Refused("revoked");
+            if (code.expiresAt && code.expiresAt.getTime() <= now.getTime()) {
+              throw new Refused("expired");
+            }
+            throw new Refused("exhausted");
+          }
+
+          // Only the comp columns move; Stripe facts on the row stay as the
+          // webhook left them.
+          const compColumns = {
+            tier: grant.tier,
+            compedAt: toDate(grant.compedAt),
+            compedUntil: toDate(grant.compedUntil),
+            updatedAt: now,
+          };
+          if (current) {
+            await tx
+              .update(schema.entitlements)
+              .set(compColumns)
+              .where(eq(schema.entitlements.userId, userId));
+          } else {
+            await tx.insert(schema.entitlements).values({ userId, ...compColumns });
+          }
+          const entitlement: EntitlementSnapshot = {
+            ...(current ?? emptySnapshot()),
+            tier: grant.tier,
+            compedAt: grant.compedAt,
+            compedUntil: grant.compedUntil,
+          };
+          return { ok: true as const, redemption: rowToRedemption(inserted[0]!), entitlement };
+        });
+      } catch (err) {
+        if (err instanceof Refused) return { ok: false as const, reason: err.reason };
+        throw err;
+      }
+    },
+    async listRedemptions(codeId) {
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.inviteRedemptions)
+        .where(eq(schema.inviteRedemptions.codeId, codeId))
+        .orderBy(desc(schema.inviteRedemptions.redeemedAt));
+      return rows.map(rowToRedemption);
+    },
+    async listRedemptionsForUser(userId) {
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.inviteRedemptions)
+        .where(eq(schema.inviteRedemptions.userId, userId))
+        .orderBy(desc(schema.inviteRedemptions.redeemedAt));
+      return rows.map(rowToRedemption);
+    },
+  };
+
+  return {
+    users,
+    entitlements,
+    tasks,
+    labels,
+    memories,
+    aiRuns,
+    stripeEvents,
+    inviteCodes,
+  };
+}
+
+function rowToInviteCode(row: typeof schema.inviteCodes.$inferSelect): InviteCode {
+  return {
+    id: row.id,
+    codeHash: row.codeHash,
+    grants: row.grants,
+    durationMonths: row.durationMonths,
+    maxRedemptions: row.maxRedemptions,
+    redemptionCount: row.redemptionCount,
+    expiresAt: row.expiresAt?.toISOString() ?? null,
+    note: row.note,
+    revokedAt: row.revokedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function rowToRedemption(row: typeof schema.inviteRedemptions.$inferSelect): InviteRedemption {
+  return {
+    id: row.id,
+    codeId: row.codeId,
+    userId: row.userId,
+    compedUntil: row.compedUntil?.toISOString() ?? null,
+    redeemedAt: row.redeemedAt.toISOString(),
+  };
+}
+
+function toDate(iso: string | null): Date | null {
+  return iso ? new Date(iso) : null;
+}
+
+function entitlementRowToSnapshot(
+  ent: typeof schema.entitlements.$inferSelect,
+  user: typeof schema.users.$inferSelect,
+): EntitlementSnapshot {
+  return {
+    tier: ent.tier,
+    trialStartedAt: user.trialStartedAt?.toISOString() ?? null,
+    trialEndsAt: ent.trialEndsAt?.toISOString() ?? null,
+    subscriptionActive: ent.subscriptionActive,
+    compedAt: ent.compedAt?.toISOString() ?? null,
+    compedUntil: ent.compedUntil?.toISOString() ?? null,
+    stripeCustomerId: user.stripeCustomerId,
+    stripeSubscriptionId: ent.stripeSubscriptionId,
+    stripeStatus: ent.stripeStatus,
+    currentPeriodEnd: ent.currentPeriodEnd?.toISOString() ?? null,
+  };
+}
+
+function entitlementColumns(snapshot: EntitlementSnapshot, now: Date) {
+  return {
+    tier: snapshot.tier,
+    trialEndsAt: toDate(snapshot.trialEndsAt),
+    subscriptionActive: snapshot.subscriptionActive,
+    compedAt: toDate(snapshot.compedAt),
+    compedUntil: toDate(snapshot.compedUntil),
+    stripeSubscriptionId: snapshot.stripeSubscriptionId,
+    stripeStatus: snapshot.stripeStatus,
+    currentPeriodEnd: toDate(snapshot.currentPeriodEnd),
+    updatedAt: now,
+  };
 }
 
 function groupLabelIds(rows: Array<{ taskId: string; labelId: string }>): Map<string, string[]> {

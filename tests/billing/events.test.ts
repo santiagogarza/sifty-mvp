@@ -1,32 +1,26 @@
 import { type ReducibleEvent, applyStripeEvent } from "@/lib/billing/events";
 import type { EntitlementSnapshot } from "@/lib/db/repos/types";
+import { creatorSnapshot, emptySnapshot, trialSnapshot } from "@/lib/entitlements/entitlements";
 import { describe, expect, it } from "vitest";
 
+const DAY = 24 * 60 * 60 * 1000;
+
 function trial(): EntitlementSnapshot {
-  return {
-    tier: "trialing",
-    trialStartedAt: new Date().toISOString(),
-    trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-    subscriptionActive: false,
-    stripeCustomerId: "cus_X",
-    stripeSubscriptionId: null,
-    stripeStatus: null,
-    currentPeriodEnd: null,
-    aiRunsLimitDay: 50,
-  };
+  return { ...trialSnapshot(), stripeCustomerId: "cus_X" };
 }
 
-function creator(): EntitlementSnapshot {
+function lapsedTrial(): EntitlementSnapshot {
+  const started = new Date(Date.now() - 40 * DAY);
+  return { ...trialSnapshot(30, started), tier: "free", stripeCustomerId: "cus_X" };
+}
+
+function comped(): EntitlementSnapshot {
   return {
-    tier: "creator",
-    trialStartedAt: null,
-    trialEndsAt: null,
-    subscriptionActive: true,
-    stripeCustomerId: null,
-    stripeSubscriptionId: null,
-    stripeStatus: null,
-    currentPeriodEnd: null,
-    aiRunsLimitDay: 1_000_000,
+    ...emptySnapshot(),
+    tier: "comped",
+    compedAt: new Date(Date.now() - DAY).toISOString(),
+    compedUntil: null,
+    stripeCustomerId: "cus_X",
   };
 }
 
@@ -43,7 +37,7 @@ function subEvent(
       object: {
         id: "sub_test",
         status,
-        current_period_end: Math.floor((Date.now() + 30 * 24 * 60 * 60 * 1000) / 1000),
+        current_period_end: Math.floor((Date.now() + 30 * DAY) / 1000),
         customer: "cus_X",
       },
     },
@@ -51,37 +45,47 @@ function subEvent(
 }
 
 describe("applyStripeEvent", () => {
-  it("subscription.created (active) → tier active, 200/day cap", () => {
-    const next = applyStripeEvent(trial(), subEvent("customer.subscription.created", "active"));
-    expect(next.tier).toBe("active");
-    expect(next.aiRunsLimitDay).toBe(200);
+  it("subscription.created (active) → pro, subscriptionActive", () => {
+    const start = trial();
+    const next = applyStripeEvent(start, subEvent("customer.subscription.created", "active"));
+    expect(next.tier).toBe("pro");
     expect(next.subscriptionActive).toBe(true);
+    expect(next.stripeSubscriptionId).toBe("sub_test");
+    // Trial dates are kept for history.
+    expect(next.trialEndsAt).toBe(start.trialEndsAt);
   });
 
-  it("subscription.updated (trialing) → active", () => {
+  it("subscription.updated (Stripe trialing) → pro", () => {
     const next = applyStripeEvent(trial(), subEvent("customer.subscription.updated", "trialing"));
-    expect(next.tier).toBe("active");
+    expect(next.tier).toBe("pro");
   });
 
-  it("subscription.updated (past_due) → expired, 0 cap", () => {
+  it("subscription.updated (past_due) during our trial → back to trialing, not dead", () => {
     const next = applyStripeEvent(trial(), subEvent("customer.subscription.updated", "past_due"));
-    expect(next.tier).toBe("expired");
-    expect(next.aiRunsLimitDay).toBe(0);
+    expect(next.subscriptionActive).toBe(false);
+    expect(next.tier).toBe("trialing");
+    expect(next.stripeStatus).toBe("past_due");
   });
 
-  it("subscription.deleted → expired, 0 cap, current period cleared", () => {
-    const next = applyStripeEvent(trial(), subEvent("customer.subscription.deleted", "canceled"));
-    expect(next.tier).toBe("expired");
-    expect(next.aiRunsLimitDay).toBe(0);
+  it("subscription.deleted after the trial lapsed → free, period cleared", () => {
+    const active = applyStripeEvent(
+      lapsedTrial(),
+      subEvent("customer.subscription.created", "active"),
+    );
+    expect(active.tier).toBe("pro");
+    const next = applyStripeEvent(active, subEvent("customer.subscription.deleted", "canceled"));
+    expect(next.tier).toBe("free");
+    expect(next.subscriptionActive).toBe(false);
     expect(next.currentPeriodEnd).toBeNull();
   });
 
-  it("invoice.payment_failed → expired", () => {
-    const next = applyStripeEvent(trial(), {
+  it("invoice.payment_failed → subscription inactive, stripeStatus past_due", () => {
+    const next = applyStripeEvent(lapsedTrial(), {
       type: "invoice.payment_failed",
       data: { object: { customer: "cus_X" } },
     });
-    expect(next.tier).toBe("expired");
+    expect(next.tier).toBe("free");
+    expect(next.subscriptionActive).toBe(false);
     expect(next.stripeStatus).toBe("past_due");
   });
 
@@ -94,8 +98,23 @@ describe("applyStripeEvent", () => {
     expect(next).toEqual(before);
   });
 
+  it("comped precedence: a Stripe cancellation never strips an invite comp", () => {
+    const start = comped();
+    const paying = applyStripeEvent(start, subEvent("customer.subscription.created", "active"));
+    expect(paying.tier).toBe("comped");
+    expect(paying.subscriptionActive).toBe(true);
+
+    const cancelled = applyStripeEvent(
+      paying,
+      subEvent("customer.subscription.deleted", "canceled"),
+    );
+    expect(cancelled.tier).toBe("comped");
+    expect(cancelled.subscriptionActive).toBe(false);
+    expect(cancelled.compedAt).toBe(start.compedAt);
+  });
+
   it("creator entitlement is sticky across every event type", () => {
-    const before = creator();
+    const before = creatorSnapshot();
     for (const status of ["active", "past_due", "canceled"]) {
       const next = applyStripeEvent(before, subEvent("customer.subscription.deleted", status));
       expect(next).toEqual(before);

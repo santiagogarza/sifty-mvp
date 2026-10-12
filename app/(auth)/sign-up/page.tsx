@@ -14,14 +14,17 @@ export default async function SignUpPage({
     <div className="surface-card p-7">
       <h1 className="text-[20px] tracking-[-0.01em] text-[var(--fg)]">Create your account</h1>
       <p className="text-[13.5px] text-[var(--fg-muted)] mt-1">
-        Start your 30-day trial. No card up front.
+        Start with 30 days of Pro. No card up front; Free afterwards.
       </p>
       <div className="mt-6">
         <AuthForm mode="sign-up" next={params.next} googleEnabled={isGoogleAuthEnabled()} />
       </div>
       <div className="mt-6 text-[13px] text-[var(--fg-muted)]">
         Already have an account?{" "}
-        <Link href="/sign-in" className="text-[var(--accent)] hover:underline">
+        <Link
+          href={params.next ? `/sign-in?next=${encodeURIComponent(params.next)}` : "/sign-in"}
+          className="text-[var(--accent)] hover:underline"
+        >
           Sign in
         </Link>
       </div>

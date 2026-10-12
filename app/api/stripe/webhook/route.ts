@@ -1,6 +1,7 @@
 import { type ReducibleEvent, applyStripeEvent } from "@/lib/billing/events";
 import { StripeNotConfiguredError, verifyAndParseEvent } from "@/lib/billing/stripe";
 import { getRepos } from "@/lib/db/repos";
+import { emptySnapshot } from "@/lib/entitlements/entitlements";
 import { reportError } from "@/lib/observability/report-error";
 import { buildRateLimitKey, consumeToken, rateLimitResponseInit } from "@/lib/ratelimit/limiter";
 import { STRIPE_WEBHOOK_POLICY, clientIdFromRequest } from "@/lib/ratelimit/policies";
@@ -107,20 +108,13 @@ async function processEvent(
     );
   }
 
-  const current = (await repos.entitlements.get(userId)) ?? {
-    tier: "trialing",
-    trialStartedAt: null,
-    trialEndsAt: null,
-    subscriptionActive: false,
-    stripeCustomerId: customerId,
-    stripeSubscriptionId: null,
-    stripeStatus: null,
-    currentPeriodEnd: null,
-    aiRunsLimitDay: 50,
-  };
-
-  const next = applyStripeEvent(current, event as unknown as ReducibleEvent);
-  await repos.entitlements.upsert(userId, { ...next, stripeCustomerId: customerId });
+  // Locked read-modify-write: an invite redemption or checkout committing
+  // concurrently is seen by the reducer instead of being overwritten.
+  await repos.entitlements.update(userId, (current) => {
+    const base = current ?? { ...emptySnapshot(), stripeCustomerId: customerId };
+    const next = applyStripeEvent(base, event as unknown as ReducibleEvent);
+    return { ...next, stripeCustomerId: customerId };
+  });
 }
 
 function extractCustomerId(event: Stripe.Event): string | null {

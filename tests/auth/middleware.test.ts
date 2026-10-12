@@ -51,6 +51,15 @@ describe("middleware", () => {
     expect(res.status).toBe(200);
   });
 
+  it("gates /redeem and keeps the invite code in `next`", async () => {
+    const req = new NextRequest("http://localhost/redeem?code=sifty-abc");
+    const res = await middleware(req);
+    expect(res.status).toBe(307);
+    const location = new URL(res.headers.get("location") ?? "", "http://localhost");
+    expect(location.pathname).toBe("/sign-in");
+    expect(location.searchParams.get("next")).toBe("/redeem?code=sifty-abc");
+  });
+
   it("SIFTY_DISABLE_AUTH=1 short-circuits the gate", async () => {
     vi.stubEnv("SIFTY_DISABLE_AUTH", "1");
     const req = new NextRequest("http://localhost/today");

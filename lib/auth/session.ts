@@ -1,11 +1,12 @@
 import { type Repos, getRepos } from "@/lib/db/repos";
+import type { EntitlementSnapshot } from "@/lib/db/repos/types";
 import {
   isDemoSeedEnabled,
   seedDefaultLabels,
   seedDemoWorkspaceIfEmpty,
 } from "@/lib/demo/seed-demo";
 import type { UserProfile } from "@/lib/domain/types";
-import { TRIAL_DAYS } from "@/lib/entitlements/entitlements";
+import { TRIAL_DAYS, creatorSnapshot, withResolvedTier } from "@/lib/entitlements/entitlements";
 import { getSessionCookie } from "better-auth/cookies";
 import { headers } from "next/headers";
 import { AUTH_COOKIE_PREFIX, type Auth, getAuth } from "./auth";
@@ -36,8 +37,8 @@ export function getCreatorEmail(): string {
 
 export interface Session {
   user: UserProfile;
-  trialStartedAt: string | null;
-  subscriptionActive: boolean;
+  /** Persisted billing facts; `deriveEntitlement()` turns them into caps. */
+  entitlement: EntitlementSnapshot | null;
   /** Raw session id for sign-out; null for the auth-bypass session. */
   sessionId: string | null;
 }
@@ -62,13 +63,8 @@ export async function getSession(req?: Request): Promise<Session | null> {
       createdAt: new Date(resolved.user.createdAt).toISOString(),
     } satisfies UserProfile);
 
-  const ent = await repos.entitlements.get(user.id);
-  return {
-    user,
-    trialStartedAt: ent?.trialStartedAt ?? null,
-    subscriptionActive: !!ent?.subscriptionActive,
-    sessionId: resolved.session.id,
-  };
+  const entitlement = await repos.entitlements.get(user.id);
+  return { user, entitlement, sessionId: resolved.session.id };
 }
 
 function isAuthBypassMode(): boolean {
@@ -106,24 +102,28 @@ async function resolveHeaders(req?: Request): Promise<Headers | null> {
 /**
  * One bootstrap per repos instance: the bypass user is created (or found by
  * email), entitled, and seeded exactly once per process. Keyed by the repos
- * object so `setReposForTesting()` gets a fresh bootstrap.
+ * object so `setReposForTesting()` gets a fresh bootstrap. Only the user is
+ * memoized; the entitlement is re-read per request so a checkout or invite
+ * redemption shows up without a restart.
  */
-const bypassBootstraps = new WeakMap<Repos, Promise<Session>>();
+const bypassBootstraps = new WeakMap<Repos, Promise<UserProfile>>();
 
-function getBypassSession(): Promise<Session> {
+async function getBypassSession(): Promise<Session> {
   const repos = getRepos();
   let bootstrap = bypassBootstraps.get(repos);
   if (!bootstrap) {
-    bootstrap = bootstrapBypassSession(repos);
+    bootstrap = bootstrapBypassUser(repos);
     bypassBootstraps.set(repos, bootstrap);
     // Never cache a rejection: a transient DB failure would otherwise
     // poison every bypass request this instance serves.
     bootstrap.catch(() => bypassBootstraps.delete(repos));
   }
-  return bootstrap;
+  const user = await bootstrap;
+  const entitlement = await repos.entitlements.get(user.id);
+  return { user, entitlement, sessionId: null };
 }
 
-async function bootstrapBypassSession(repos: Repos): Promise<Session> {
+async function bootstrapBypassUser(repos: Repos): Promise<UserProfile> {
   const email = (process.env.SIFTY_USER_EMAIL ?? CREATOR_EMAIL).toLowerCase();
   const isCreator = isCreatorEmail(email);
 
@@ -154,17 +154,8 @@ async function bootstrapBypassSession(repos: Repos): Promise<Session> {
   }
 
   if (isCreator) {
-    await repos.entitlements.upsert(user.id, {
-      tier: "creator",
-      trialStartedAt: null,
-      trialEndsAt: null,
-      subscriptionActive: true,
-      stripeCustomerId: null,
-      stripeSubscriptionId: null,
-      stripeStatus: null,
-      currentPeriodEnd: null,
-      aiRunsLimitDay: 1_000_000,
-    });
+    const existing = await repos.entitlements.get(user.id);
+    await repos.entitlements.upsert(user.id, withResolvedTier(existing ?? creatorSnapshot(), true));
   } else {
     await repos.entitlements.startTrialIfMissing(user.id, TRIAL_DAYS);
   }
@@ -175,11 +166,5 @@ async function bootstrapBypassSession(repos: Repos): Promise<Session> {
     await seedDefaultLabels(repos, user.id);
   }
 
-  const ent = await repos.entitlements.get(user.id);
-  return {
-    user,
-    trialStartedAt: ent?.trialStartedAt ?? null,
-    subscriptionActive: !!ent?.subscriptionActive,
-    sessionId: null,
-  };
+  return user;
 }

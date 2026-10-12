@@ -1,4 +1,5 @@
 import type { EntitlementSnapshot } from "@/lib/db/repos/types";
+import { withResolvedTier } from "@/lib/entitlements/entitlements";
 
 /**
  * Stripe event reducer.
@@ -6,12 +7,17 @@ import type { EntitlementSnapshot } from "@/lib/db/repos/types";
  * Pure: takes the user's current entitlement and a Stripe event, returns
  * the next entitlement. Tested exhaustively in `tests/billing/events.test.ts`.
  *
- * Two invariants:
+ * Three invariants:
  *
  * 1. Creator never downgrades. Their entitlement is sticky — even if Stripe
  *    fires a `subscription.deleted` for some reason (we never bill them in
  *    practice, but defense in depth).
- * 2. The reducer is deterministic for an `(entitlement, event)` pair. Repeat
+ * 2. The reducer only writes the *Stripe facts* (`subscriptionActive`,
+ *    `stripeStatus`, ids, period end). The effective tier is re-resolved
+ *    from all facts with the precedence `creator > comped > pro > trialing >
+ *    free`, so a Stripe cancellation never strips an invite-code comp and a
+ *    comp never hides a paying subscription from the Stripe fields.
+ * 3. The reducer is deterministic for an `(entitlement, event)` pair. Repeat
  *    invocations produce the same output. Idempotency at the persistence
  *    layer (the `stripeEvents` table) prevents duplicated *side effects*;
  *    this reducer protects against state divergence in the case where the
@@ -42,7 +48,6 @@ export type ReducibleEvent =
   | { type: "invoice.payment_failed"; data: { object: StripeInvoiceLike } };
 
 const ACTIVE_STATUSES = new Set(["active", "trialing"]);
-const PAST_DUE_STATUSES = new Set(["past_due", "unpaid", "incomplete"]);
 
 export function applyStripeEvent(
   current: EntitlementSnapshot,
@@ -54,72 +59,42 @@ export function applyStripeEvent(
     return current;
   }
 
+  const resolve = (facts: Partial<EntitlementSnapshot>): EntitlementSnapshot =>
+    withResolvedTier({ ...current, ...facts }, false);
+
   switch (event.type) {
     case "customer.subscription.created":
     case "customer.subscription.updated": {
       const sub = event.data.object;
-      const isActive = ACTIVE_STATUSES.has(sub.status);
-      const isPastDue = PAST_DUE_STATUSES.has(sub.status);
       const periodEnd = new Date(sub.current_period_end * 1000).toISOString();
-      if (isActive) {
-        return {
-          ...current,
-          tier: "active",
-          subscriptionActive: true,
-          stripeSubscriptionId: sub.id,
-          stripeStatus: sub.status,
-          currentPeriodEnd: periodEnd,
-          aiRunsLimitDay: 200,
-          // Trial dates stay so we can show "started Pro on..." later.
-        };
-      }
-      if (isPastDue) {
-        return {
-          ...current,
-          tier: "expired",
-          subscriptionActive: false,
-          stripeSubscriptionId: sub.id,
-          stripeStatus: sub.status,
-          currentPeriodEnd: periodEnd,
-          aiRunsLimitDay: 0,
-        };
-      }
-      // canceled, incomplete_expired, etc.
-      return {
-        ...current,
-        tier: "expired",
-        subscriptionActive: false,
+      // past_due / unpaid / incomplete / canceled / incomplete_expired all
+      // mean "not paying right now"; grace periods are a later extension.
+      return resolve({
+        subscriptionActive: ACTIVE_STATUSES.has(sub.status),
         stripeSubscriptionId: sub.id,
         stripeStatus: sub.status,
         currentPeriodEnd: periodEnd,
-        aiRunsLimitDay: 0,
-      };
+        // Trial dates stay so we can show "started Pro on..." later.
+      });
     }
     case "customer.subscription.deleted": {
       const sub = event.data.object;
-      return {
-        ...current,
-        tier: "expired",
+      return resolve({
         subscriptionActive: false,
         stripeSubscriptionId: sub.id,
         stripeStatus: sub.status ?? "canceled",
         currentPeriodEnd: null,
-        aiRunsLimitDay: 0,
-      };
+      });
     }
     case "invoice.paid": {
-      // Defensive: nudge active state in case we missed the subscription event.
-      if (current.subscriptionActive) return current;
+      // Subscription events drive state; a paid invoice adds nothing new.
       return current;
     }
     case "invoice.payment_failed": {
-      return {
-        ...current,
-        tier: "expired",
+      return resolve({
         subscriptionActive: false,
         stripeStatus: "past_due",
-        aiRunsLimitDay: 0,
-      };
+      });
     }
     default: {
       // TS exhaustiveness check; explicit "no-op" for unknown events.

@@ -28,6 +28,7 @@ pnpm test         # vitest unit + integration suite
 pnpm test:e2e     # Playwright smoke (boots dev server)
 pnpm db:generate  # produce a new Drizzle migration from lib/db/schema.ts
 pnpm db:migrate   # apply migrations to DATABASE_URL
+pnpm invite:mint  # mint an invite code (see Billing → Invite codes)
 ```
 
 ### Quickest local setup (no auth, no DB, no AI keys)
@@ -159,6 +160,7 @@ Required for production:
 | `BETTER_AUTH_SECRET` | Signs session cookies and email tokens. ≥ 32 chars. Replaces `AUTH_SECRET`. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google sign-in. Optional: the button is hidden until both are set. Redirect URI: `<app url>/api/auth/callback/google`. |
 | `CREATOR_EMAIL` | Email address that gets the permanent unlimited tier. |
+| `INVITE_CODE_PEPPER` | Pepper for invite-code hashes (`openssl rand -hex 32`). |
 | `DATABASE_URL` | Postgres connection (Vercel Postgres / Neon / Supabase). |
 | `AI_TRANSPORT` | `gateway` (default) or `direct`. Explicit; never inferred from keys. |
 | `AI_GATEWAY_API_KEY` | Vercel AI Gateway key. Required when `AI_TRANSPORT=gateway`. |
@@ -179,7 +181,8 @@ Optional:
 - `SIFTY_AI_OFFLINE=1` — keyless dev: AI routes use the deterministic
   offline heuristic instead of a provider.
 - `RATELIMIT_TRIAGE_PER_MIN`, `RATELIMIT_STRIPE_USER_PER_MIN`,
-  `RATELIMIT_STRIPE_WEBHOOK_PER_MIN` — token bucket capacity overrides.
+  `RATELIMIT_STRIPE_WEBHOOK_PER_MIN`, `RATELIMIT_REDEEM_PER_MIN` — token
+  bucket capacity overrides.
   The triage cap is enforced twice: an in-process bucket per instance, and
   a persistent sliding window over `ai_runs` that holds across serverless
   instances.
@@ -225,6 +228,24 @@ schema validation, and offline fallback as triage.
 
 ## Billing
 
+Tiers (`lib/entitlements/entitlements.ts`), lowest to highest; when several
+facts apply the highest wins (`creator > comped > pro > trialing > free`):
+
+| Tier | Who | Sifts/day | Execution budget | Connectors |
+| --- | --- | --- | --- | --- |
+| `free` | Everyone after the trial | 5 | — | no |
+| `trialing` | New sign-ups, 30 days of Pro | 200 (fair use) | $10/mo | yes |
+| `pro` | Paying via Stripe | 200 (fair use) | $10/mo | yes |
+| `comped` | Pro granted by an invite code, no Stripe | 200 (fair use) | $10/mo | yes |
+| `creator` | `CREATOR_EMAIL` | unlimited | unlimited | yes |
+
+Capture, organize, sync, and reminders are free for every tier. The
+`entitlements` row stores facts (trial window, `subscription_active`,
+`comped_at`/`comped_until`); `deriveEntitlement()` resolves the effective
+tier and its caps at read time, and `canRunAi()` gates on `caps.siftsPerDay`.
+AI routes answer `402` with `code: "free_cap"` (upgrade path) or
+`"fair_use_cap"` (Pro ceiling).
+
 - Checkout: `/api/stripe/checkout` (POST `{ cadence: "monthly" | "yearly" }`)
   creates the Stripe customer if needed, then a Checkout Session with
   `allow_promotion_codes: true`. Discount/comp codes you create in the
@@ -235,8 +256,32 @@ schema validation, and offline fallback as triage.
   deduplicates by `event.id` in the `stripe_events` table, then runs the
   pure reducer in `lib/billing/events.ts` against the user's
   entitlement. Creator entitlement is sticky.
-- UI: `/settings/billing` shows tier, trial countdown, Upgrade
-  (monthly/yearly), Manage subscription.
+- UI: `/settings/billing` shows tier, sifts used today, trial countdown,
+  Upgrade (monthly/yearly), Manage subscription, and invite-code redemption.
+
+### Invite codes
+
+Invite codes grant `comped` (Pro without Stripe). Stripe promo codes stay for
+percentage discounts at checkout; invite codes are for family, friends, and
+anyone who should never enter a card.
+
+```bash
+pnpm invite:mint --months 12 --max 1 --expires 2027-06-30 --note "Ana"
+pnpm invite:list
+pnpm invite:revoke sifty-… [--cascade]   # --cascade also ends redeemers' comps
+```
+
+- Format: `sifty-` + 20 characters from an alphabet without 0/O/1/l/I
+  (~117 bits). Only `sha256(INVITE_CODE_PEPPER + code)` is stored; the
+  plaintext is printed once at mint time.
+- `--months` omitted means forever; stacking a second timed code extends
+  from the current comp end. `--max` is the redemption cap across users;
+  each user can redeem a given code once.
+- Redeem at `/redeem?code=sifty-…` (signed-out visitors go through sign-in
+  or sign-up and land back on the code) or in Settings → Billing. The API,
+  `POST /api/invites/redeem`, is rate-limited per user and client.
+- Requires `DATABASE_URL` and `INVITE_CODE_PEPPER`; both the CLI and the app
+  must use the same pepper.
 
 ## Pre-deploy smoke checklist
 
@@ -255,7 +300,8 @@ Run through this on the preview URL before promoting to production:
 - [ ] Forging a webhook signature returns 400.
 - [ ] Replaying the same `event.id` returns 200 + `deduped: true` with
       no duplicate DB writes.
-- [ ] Trial-expired account hits the AI route → 402 with the cap message.
+- [ ] Free account past 5 sifts hits the AI route → 402 with
+      `code: "free_cap"` and the upgrade message.
 - [ ] Bursting `/api/triage` past the per-minute cap returns 429 with
       `Retry-After`.
 - [ ] Sentry / logs receive a structured `reportError(...)` payload from

@@ -32,6 +32,7 @@ const PROTECTED_PREFIXES = [
   "/done",
   "/memory",
   "/settings",
+  "/redeem",
 ];
 
 const SIGN_IN_PATH = "/sign-in";
@@ -61,7 +62,9 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
 function redirectToSignIn(req: NextRequest): NextResponse {
   const url = req.nextUrl.clone();
   url.pathname = SIGN_IN_PATH;
-  url.searchParams.set("next", req.nextUrl.pathname);
+  // Keep the query so `/redeem?code=…` survives the round trip.
+  url.search = "";
+  url.searchParams.set("next", `${req.nextUrl.pathname}${req.nextUrl.search}`);
   return NextResponse.redirect(url);
 }
 

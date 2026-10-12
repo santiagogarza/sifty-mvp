@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { authClient, authErrorMessage } from "@/lib/auth/client";
+import { safeNextPath } from "@/lib/auth/safe-next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -19,7 +20,8 @@ type Sent = { kind: "verify" | "magic"; email: string } | null;
 
 export function AuthForm({ mode, next, googleEnabled }: AuthFormProps) {
   const router = useRouter();
-  const callbackURL = safeNext(next);
+  // Origin only matters for the same-origin comparison; the result is a path.
+  const callbackURL = safeNextPath(next, "http://sifty.local");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [displayName, setDisplayName] = React.useState("");
@@ -246,22 +248,4 @@ function Divider() {
       <div className="h-px flex-1 bg-[var(--border)]" />
     </div>
   );
-}
-
-/**
- * Only same-origin paths; anything else falls back to /today. Rejects
- * protocol-relative (`//`) and backslash (`/\evil`) forms, which browsers
- * and server redirects can treat as a new host.
- */
-export function safeNext(next?: string): string {
-  if (!next) return "/today";
-  const isLocalPath = (p: string) => /^\/(?![/\\])[^\\]*$/.test(p);
-  try {
-    // Check the raw and the once-decoded form: `/%5Cevil` decodes to `/\evil`.
-    if (!isLocalPath(next) || !isLocalPath(decodeURIComponent(next))) return "/today";
-    if (new URL(next, "http://sifty.local").origin !== "http://sifty.local") return "/today";
-  } catch {
-    return "/today";
-  }
-  return next;
 }

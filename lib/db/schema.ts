@@ -57,14 +57,22 @@ export const entitlements = pgTable("entitlements", {
   userId: text("user_id")
     .primaryKey()
     .references(() => users.id, { onDelete: "cascade" }),
-  tier: text("tier", { enum: ["creator", "trialing", "active", "expired"] }).notNull(),
+  /**
+   * Effective tier when the row was last written. Readers re-derive it
+   * (`deriveEntitlement`) because trial and comp expiry are time-based.
+   */
+  tier: text("tier", { enum: ["free", "trialing", "pro", "comped", "creator"] }).notNull(),
   trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
+  /** Mirror of Stripe: a paying subscription exists. */
+  subscriptionActive: boolean("subscription_active").notNull().default(false),
+  /** Invite-code comp: when it was granted, and when it ends (null = forever). */
+  compedAt: timestamp("comped_at", { withTimezone: true }),
+  compedUntil: timestamp("comped_until", { withTimezone: true }),
   /** Stripe subscription id, set when subscribed. */
   stripeSubscriptionId: text("stripe_subscription_id"),
   /** "active" | "trialing" | "past_due" | "canceled" | etc. raw from Stripe. */
   stripeStatus: text("stripe_status"),
   currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
-  aiRunsLimitDay: integer("ai_runs_limit_day").notNull().default(0),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -292,6 +300,52 @@ export const stripeEvents = pgTable("stripe_events", {
   type: text("type").notNull(),
   receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Invite codes grant `comped` (Pro without Stripe). Only the SHA-256 of
+ * `INVITE_CODE_PEPPER` + code is stored; the plaintext is shown once when
+ * minted. Revocation is a timestamp so the audit trail keeps the row.
+ */
+export const inviteCodes = pgTable(
+  "invite_codes",
+  {
+    id: text("id").primaryKey(),
+    codeHash: text("code_hash").notNull(),
+    grants: text("grants", { enum: ["pro"] })
+      .notNull()
+      .default("pro"),
+    /** Months of comp per redemption; null = forever. */
+    durationMonths: integer("duration_months"),
+    maxRedemptions: integer("max_redemptions").notNull().default(1),
+    redemptionCount: integer("redemption_count").notNull().default(0),
+    /** Last moment the code can be redeemed; null = no deadline. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    note: text("note"),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("invite_codes_hash_idx").on(t.codeHash)],
+);
+
+export const inviteRedemptions = pgTable(
+  "invite_redemptions",
+  {
+    id: text("id").primaryKey(),
+    codeId: text("code_id")
+      .notNull()
+      .references(() => inviteCodes.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Comp end granted by this redemption; null = forever. */
+    compedUntil: timestamp("comped_until", { withTimezone: true }),
+    redeemedAt: timestamp("redeemed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("invite_redemptions_code_user_idx").on(t.codeId, t.userId),
+    index("invite_redemptions_user_idx").on(t.userId),
+  ],
+);
 
 export type DbUser = typeof users.$inferSelect;
 export type DbEntitlement = typeof entitlements.$inferSelect;
