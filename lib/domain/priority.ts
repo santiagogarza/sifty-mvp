@@ -36,6 +36,42 @@ export function bucketLabel(bucket: PriorityBucket): string {
   }
 }
 
+/**
+ * What the priority pill says. Two axes, named plainly (SIF-14, D11): the
+ * Eisenhower verbs ("Do now", "Delegate") read as actions and collided with
+ * the statuses, and a bare "Both"/"Neither" needs the matrix to decode.
+ */
+export function priorityPillLabel(bucket: PriorityBucket): string {
+  switch (bucket) {
+    case "do_now":
+      return "Urgent + important";
+    case "schedule":
+      return "Important";
+    case "delegate":
+      return "Urgent";
+    case "drop":
+      return "Low priority";
+    case "unset":
+      return "Not ranked";
+  }
+}
+
+/** One line for the pill's tooltip: what the two axes say about this task. */
+export function priorityPillHint(bucket: PriorityBucket): string {
+  switch (bucket) {
+    case "do_now":
+      return "Urgent and important — your ball, today.";
+    case "schedule":
+      return "Important but not urgent — worth scheduling before it becomes urgent.";
+    case "delegate":
+      return "Urgent but not important — do quickly, hand off, or question it.";
+    case "drop":
+      return "Neither urgent nor important right now.";
+    case "unset":
+      return "Sifty has not ranked this yet.";
+  }
+}
+
 export function bucketTone(bucket: PriorityBucket): "ember" | "mist" | "sage" | "neutral" {
   switch (bucket) {
     case "do_now":

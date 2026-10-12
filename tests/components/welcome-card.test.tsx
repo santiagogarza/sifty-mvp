@@ -42,6 +42,8 @@ function makeTask(id: string, labelIds: string[]): Task {
     siftId: null,
     siftStage: null,
     plan: null,
+    recurrence: null,
+    seriesId: null,
     labelIds,
     subtasks: [],
     editedFields: [],

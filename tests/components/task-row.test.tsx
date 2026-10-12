@@ -35,6 +35,8 @@ function makeTask(overrides: Partial<Task> & { id: string; lifecycle: Lifecycle 
     siftId: null,
     siftStage: null,
     plan: null,
+    recurrence: null,
+    seriesId: null,
     labelIds: [],
     subtasks: [],
     editedFields: [],
@@ -99,6 +101,26 @@ describe("TaskRow complete circle", () => {
     const high = makeTask({ id: "task_high", lifecycle: "inbox", confidence: 0.9 });
     render(<TaskRow task={high} onOpen={vi.fn()} labels={[]} />);
     expect(screen.queryByTestId("confidence-pill")).toBeNull();
+  });
+
+  it("shows the labeled priority pill and a repeat mark for recurring tasks", () => {
+    const task = makeTask({
+      id: "task_rep",
+      lifecycle: "active",
+      priorityBucket: "schedule",
+      recurrence: { freq: "weekly", mode: "fixed", weekdays: [1, 4] },
+      seriesId: "task_rep",
+    });
+    render(<TaskRow task={task} onOpen={vi.fn()} labels={[]} />);
+    expect(screen.getByTestId("priority-pill")).toHaveTextContent("Important");
+    expect(screen.getByRole("img", { name: "Repeats weekly on Mon, Thu" })).toBeInTheDocument();
+  });
+
+  it("renders no pill or repeat mark for an unranked one-off", () => {
+    const task = makeTask({ id: "task_plain", lifecycle: "inbox" });
+    render(<TaskRow task={task} onOpen={vi.fn()} labels={[]} />);
+    expect(screen.queryByTestId("priority-pill")).toBeNull();
+    expect(screen.queryByTestId("repeat-glyph")).toBeNull();
   });
 
   it("clicking the title opens the sheet and leaves lifecycle alone", async () => {

@@ -16,7 +16,6 @@ import {
   normalizeAssigneeName,
 } from "@/lib/domain/assignee";
 import { LABEL_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
-import { bucketLabel } from "@/lib/domain/priority";
 import { SNOOZE_LABELS, resolveSnooze, toLocalIsoDate } from "@/lib/domain/snooze";
 import { STATUSES_IN_ORDER, STATUS_META, statusLabel } from "@/lib/domain/status";
 import {
@@ -51,7 +50,8 @@ import Link from "next/link";
 import * as React from "react";
 import { AiThinking } from "./ai-status";
 import { ConfidencePill } from "./confidence-pill";
-import { PriorityGlyph } from "./priority-glyph";
+import { PriorityPill } from "./priority-pill";
+import { RecurrenceRow } from "./recurrence-editor";
 import { StatusIcon } from "./status-icon";
 
 /**
@@ -193,8 +193,11 @@ function DetailBody({
             <AiThinking stage={task.siftStage} />
           ) : (
             <>
-              <PriorityGlyph bucket={task.priorityBucket} size={11} />
-              <span>{bucketLabel(task.priorityBucket)}</span>
+              <PriorityPill
+                bucket={task.priorityBucket}
+                urgency={task.urgency}
+                importance={task.importance}
+              />
               {organizing ? (
                 <span className="ml-2">
                   <AiThinking stage={task.siftStage} />
@@ -328,6 +331,10 @@ function DetailBody({
           >
             <StatusPicker task={task} />
           </MetaCell>
+        </section>
+
+        <section className="mt-2">
+          <RecurrenceRow task={task} />
         </section>
 
         <section {...fillProps(2, "mt-5")}>
