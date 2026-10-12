@@ -68,6 +68,13 @@ describe("middleware", () => {
     expect(location.searchParams.get("next")).toBe("/redeem?code=sifty-abc");
   });
 
+  it("leaves the public site pages open to signed-out visitors", async () => {
+    for (const path of ["/", "/pricing", "/privacy", "/terms"]) {
+      const res = await middleware(new NextRequest(`http://localhost${path}`));
+      expect(res.status, path).toBe(200);
+    }
+  });
+
   it("SIFTY_DISABLE_AUTH=1 short-circuits the gate", async () => {
     vi.stubEnv("SIFTY_DISABLE_AUTH", "1");
     const req = new NextRequest("http://localhost/today");
