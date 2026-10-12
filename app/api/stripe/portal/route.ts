@@ -1,6 +1,7 @@
 import { getSession } from "@/lib/auth/session";
 import { StripeNotConfiguredError, getStripe } from "@/lib/billing/stripe";
 import { getRepos } from "@/lib/db/repos";
+import { reportError } from "@/lib/observability/report-error";
 import { buildRateLimitKey, consumeToken, rateLimitResponseInit } from "@/lib/ratelimit/limiter";
 import { STRIPE_USER_POLICY, clientIdFromRequest } from "@/lib/ratelimit/policies";
 import { NextResponse } from "next/server";
@@ -50,6 +51,7 @@ export async function POST(req: Request) {
     if (err instanceof StripeNotConfiguredError) {
       return NextResponse.json({ error: err.message }, { status: 503 });
     }
+    reportError(err, { area: "stripe.portal" });
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Portal session failed" },
       { status: 500 },
