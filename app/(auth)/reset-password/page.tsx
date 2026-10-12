@@ -1,7 +1,7 @@
 import { ResetPasswordForm } from "@/components/auth/password-forms";
 import Link from "next/link";
 
-export const metadata = { title: "Choose a new Sifty password" };
+export const metadata = { title: { absolute: "Choose a new Sifty password" } };
 
 export default async function ResetPasswordPage({
   searchParams,
