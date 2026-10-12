@@ -18,8 +18,10 @@ import {
   type InviteConsumeFailure,
   type InviteRedemption,
   type LabelRepo,
+  MAX_PUSH_SUBSCRIPTIONS_PER_USER,
   type MemoryCreateInput,
   type MemoryRepo,
+  NOTIFICATION_CLAIM_LEASE_MS,
   type NotificationChannel,
   type NotificationPreferencesRecord,
   type NotificationPreferencesRepo,
@@ -744,7 +746,8 @@ export function createPostgresRepos(): Repos {
         .select()
         .from(schema.pushSubscriptions)
         .where(eq(schema.pushSubscriptions.userId, userId))
-        .orderBy(schema.pushSubscriptions.createdAt);
+        .orderBy(schema.pushSubscriptions.createdAt)
+        .limit(MAX_PUSH_SUBSCRIPTIONS_PER_USER);
       return rows.map(rowToPushSubscription);
     },
     async upsert(userId, input) {
@@ -793,16 +796,30 @@ export function createPostgresRepos(): Repos {
   };
 
   const notificationSends: NotificationSendRepo = {
-    async claim(input) {
+    async claim(input, now = new Date()) {
       const db = getDb();
       // The unique (user, kind, channel, period) index is the lock: a
-      // concurrent claimant waits on it and then inserts nothing.
-      const inserted = await db
+      // concurrent claimant waits on it and then updates nothing, unless
+      // the existing row is a `pending` claim whose lease ran out.
+      const leaseEdge = new Date(now.getTime() - NOTIFICATION_CLAIM_LEASE_MS);
+      const rows = await db
         .insert(schema.notificationSends)
-        .values({ id: makeId("send"), ...input, status: "pending" })
-        .onConflictDoNothing()
+        .values({ id: makeId("send"), ...input, status: "pending", createdAt: now })
+        .onConflictDoUpdate({
+          target: [
+            schema.notificationSends.userId,
+            schema.notificationSends.kind,
+            schema.notificationSends.channel,
+            schema.notificationSends.periodKey,
+          ],
+          set: { createdAt: now, error: null },
+          setWhere: and(
+            eq(schema.notificationSends.status, "pending"),
+            lt(schema.notificationSends.createdAt, leaseEdge),
+          ),
+        })
         .returning({ id: schema.notificationSends.id });
-      return inserted[0] ?? null;
+      return rows[0] ?? null;
     },
     async finalize(id, outcome) {
       const db = getDb();

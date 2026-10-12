@@ -1,3 +1,4 @@
+import { MAX_PUSH_SUBSCRIPTIONS_PER_USER } from "@/lib/db/repos/types";
 import type { UserProfile } from "@/lib/domain/types";
 import { DEFAULT_PREFERENCES } from "@/lib/notifications/preferences";
 import { createUnsubscribeToken, verifyUnsubscribeToken } from "@/lib/notifications/unsubscribe";
@@ -192,6 +193,46 @@ describe("/api/notifications/push/subscribe", () => {
     expect(empty.status).toBe(400);
   });
 
+  it("caps devices per account and still accepts a refresh of a known endpoint", async () => {
+    const { POST } = await import("@/app/api/notifications/push/subscribe/route");
+    const { req, user } = await signedInRequest(
+      "http://localhost/api/notifications/push/subscribe",
+      { method: "POST", body: subscription },
+    );
+    expect((await POST(req)).status).toBe(200);
+    for (let i = 1; i < MAX_PUSH_SUBSCRIPTIONS_PER_USER; i += 1) {
+      await getTestRepos().pushSubscriptions.upsert(user.id, {
+        endpoint: `https://push.example/dev${i}`,
+        p256dh: "p",
+        auth: "a",
+        userAgent: null,
+      });
+    }
+    const overflow = await POST(
+      (
+        await signedInRequest("http://localhost/api/notifications/push/subscribe", {
+          user,
+          method: "POST",
+          body: { ...subscription, endpoint: "https://push.example/one-too-many" },
+        })
+      ).req,
+    );
+    expect(overflow.status).toBe(409);
+    const refresh = await POST(
+      (
+        await signedInRequest("http://localhost/api/notifications/push/subscribe", {
+          user,
+          method: "POST",
+          body: subscription,
+        })
+      ).req,
+    );
+    expect(refresh.status).toBe(200);
+    expect(await getTestRepos().pushSubscriptions.listForUser(user.id)).toHaveLength(
+      MAX_PUSH_SUBSCRIPTIONS_PER_USER,
+    );
+  });
+
   it("503s with a clear message when push is not configured", async () => {
     vi.stubEnv("VAPID_PUBLIC_KEY", "");
     vi.stubEnv("VAPID_PRIVATE_KEY", "");
@@ -214,7 +255,7 @@ describe("/api/notifications/unsubscribe", () => {
   beforeEach(() => vi.stubEnv("NEXT_PUBLIC_APP_URL", APP));
   afterEach(() => vi.unstubAllEnvs());
 
-  it("turns the email channel off for a valid token and redirects to settings", async () => {
+  it("GET only confirms; the form POST turns email off and redirects; one-click POST is JSON", async () => {
     const { GET, POST } = await import("@/app/api/notifications/unsubscribe/route");
     const repos = getTestRepos();
     const user = await repos.users.create({
@@ -223,25 +264,35 @@ describe("/api/notifications/unsubscribe", () => {
       isCreator: false,
     });
     const token = createUnsubscribeToken(user.id);
+    const url = `http://localhost/api/notifications/unsubscribe?token=${encodeURIComponent(token)}`;
 
-    const res = await GET(
-      new Request(
-        `http://localhost/api/notifications/unsubscribe?token=${encodeURIComponent(token)}`,
-      ),
+    // A link scanner's GET changes nothing.
+    const page = await GET(new Request(url));
+    expect(page.status).toBe(200);
+    expect(page.headers.get("content-type")).toContain("text/html");
+    const html = await page.text();
+    expect(html).toContain('name="confirm"');
+    expect(html).toContain(`action="${APP}/api/notifications/unsubscribe?token=`);
+    expect(await repos.notificationPreferences.get(user.id)).toBeNull();
+
+    const res = await POST(
+      new Request(url, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: "confirm=1",
+      }),
     );
     expect(res.status).toBe(303);
     expect(res.headers.get("location")).toBe(`${APP}/settings/notifications?unsubscribed=1`);
-    const stored = await repos.notificationPreferences.get(user.id);
-    expect(stored?.emailEnabled).toBe(false);
+    expect((await repos.notificationPreferences.get(user.id))?.emailEnabled).toBe(false);
 
-    // One-click POST on an already-unsubscribed user is fine and idempotent.
+    // RFC 8058 one-click on an already-unsubscribed user is fine and idempotent.
     const post = await POST(
-      new Request(
-        `http://localhost/api/notifications/unsubscribe?token=${encodeURIComponent(token)}`,
-        {
-          method: "POST",
-        },
-      ),
+      new Request(url, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: "List-Unsubscribe=One-Click",
+      }),
     );
     expect(await post.json()).toEqual({ ok: true, unsubscribed: false });
   });
@@ -281,6 +332,13 @@ describe("GET /api/cron/send-digests", () => {
   it("runs the digest cycle and reports counts", async () => {
     const res = await get("Bearer cron-secret-test");
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ ok: true, users: 0, sent: 0, skipped: 0, failed: 0 });
+    expect(await res.json()).toMatchObject({
+      ok: true,
+      users: 0,
+      sent: 0,
+      skipped: 0,
+      failed: 0,
+      truncated: false,
+    });
   });
 });

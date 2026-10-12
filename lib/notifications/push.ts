@@ -2,6 +2,9 @@ import type { PushSubscriptionRecord, Repos } from "@/lib/db/repos/types";
 import { reportError } from "@/lib/observability/report-error";
 import webpush from "web-push";
 import type { PushPayload } from "./digest";
+import { type PushConfig, inspectPushEnv } from "./push-config";
+
+export { type PushConfig, PushMisconfiguredError, inspectPushEnv } from "./push-config";
 
 /**
  * Web Push delivery.
@@ -10,44 +13,41 @@ import type { PushPayload } from "./digest";
  * `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`). With none of them set, push is
  * a no-op everywhere — Settings hides the toggle and `sendPushToUser`
  * reports `not_configured` — so the rest of notifications works without
- * it. Setting some but not all three is a deployment mistake and throws.
+ * it. Setting some but not all three is a deployment mistake: the
+ * production boot guard refuses it, and elsewhere it is reported and
+ * treated as "push off".
  */
 
-export interface PushConfig {
-  publicKey: string;
-  privateKey: string;
-  /** `mailto:` or `https:` URL push services may contact about abuse. */
-  subject: string;
-}
+const PUSH_REQUEST_TIMEOUT_MS = 10_000;
 
-export class PushMisconfiguredError extends Error {
-  constructor(missing: string[]) {
-    super(
-      `Web Push is partially configured: ${missing.join(", ")} missing. Set VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, and VAPID_SUBJECT together (generate a pair with \`npx web-push generate-vapid-keys\`), or unset all three to disable push.`,
-    );
-    this.name = "PushMisconfiguredError";
-  }
-}
+let reportedMisconfig = false;
 
+/**
+ * Runtime view: a partial or invalid VAPID setup behaves as "push off" so
+ * Settings and email digests keep working, and is reported once per
+ * process through the observability seam. On Vercel production the boot
+ * guard already refuses to start with that env, so this path is for
+ * previews and local dev.
+ */
 export function getPushConfig(): PushConfig | null {
-  const publicKey = process.env.VAPID_PUBLIC_KEY?.trim() || "";
-  const privateKey = process.env.VAPID_PRIVATE_KEY?.trim() || "";
-  const subject = process.env.VAPID_SUBJECT?.trim() || "";
-  if (!publicKey && !privateKey && !subject) return null;
-  const missing = [
-    !publicKey && "VAPID_PUBLIC_KEY",
-    !privateKey && "VAPID_PRIVATE_KEY",
-    !subject && "VAPID_SUBJECT",
-  ].filter((x): x is string => typeof x === "string");
-  if (missing.length) throw new PushMisconfiguredError(missing);
-  if (!/^(mailto:|https:\/\/)/.test(subject)) {
-    throw new Error("VAPID_SUBJECT must be a mailto: address or an https: URL.");
+  const result = inspectPushEnv();
+  if (result === null) return null;
+  if (result instanceof Error) {
+    if (!reportedMisconfig) {
+      reportedMisconfig = true;
+      reportError(result, { area: "notifications.push.config" });
+    }
+    return null;
   }
-  return { publicKey, privateKey, subject };
+  return result;
 }
 
 export function isPushConfigured(): boolean {
   return getPushConfig() !== null;
+}
+
+export function resetPushConfigReportForTesting(): void {
+  reportedMisconfig = false;
 }
 
 /** What the push service answered for one subscription. */
@@ -76,6 +76,8 @@ const webPushTransport: PushTransport = async (subscription, payload, config) =>
         // A digest that cannot be delivered within the hour is stale.
         TTL: 60 * 60,
         urgency: "normal",
+        // A stalled push service must not eat the cron's time budget.
+        timeout: PUSH_REQUEST_TIMEOUT_MS,
       },
     );
     return "delivered";

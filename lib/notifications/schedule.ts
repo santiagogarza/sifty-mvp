@@ -95,20 +95,28 @@ export interface DueDigest {
   periodKey: string;
 }
 
-/** Hours elapsed since `sendHour` on the local clock, modulo a day. */
+/**
+ * Hours elapsed since `sendHour` on today's local clock; negative before
+ * it. Deliberately no wrap past midnight: the period is keyed by today's
+ * date, so 02:00 must not read as four hours after yesterday's 22:00 and
+ * fire today's digest before today's send hour.
+ */
 export function hoursSince(localHour: number, sendHour: number): number {
-  return (localHour - sendHour + 24) % 24;
+  return localHour - sendHour;
 }
 
 /**
  * Which digests are due for this user at `now`: enabled, past their
- * (quiet-hours-adjusted) send hour, and not more than `MAX_LATE_HOURS`
- * late. The ledger decides whether a due digest was already sent.
+ * (quiet-hours-adjusted) send hour today, and not more than
+ * `MAX_LATE_HOURS` late. The ledger decides whether a due digest was
+ * already sent.
  */
 export function dueDigests(prefs: NotificationPreferencesInput, now: Date): DueDigest[] {
   const local = localTime(now, prefs.timezone);
-  const inWindow = (scheduledHour: number) =>
-    hoursSince(local.hour, effectiveSendHour(prefs, scheduledHour)) <= MAX_LATE_HOURS;
+  const inWindow = (scheduledHour: number) => {
+    const late = hoursSince(local.hour, effectiveSendHour(prefs, scheduledHour));
+    return late >= 0 && late <= MAX_LATE_HOURS;
+  };
 
   const out: DueDigest[] = [];
   if (prefs.morningPlanEnabled && inWindow(prefs.morningPlanHour)) {

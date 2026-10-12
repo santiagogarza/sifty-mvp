@@ -1,9 +1,12 @@
 import type { PushSubscriptionRecord } from "@/lib/db/repos/types";
+import { findProductionEnvProblems } from "@/lib/env/production-guards";
 import {
   PushMisconfiguredError,
   type PushTransport,
   getPushConfig,
+  inspectPushEnv,
   isPushConfigured,
+  resetPushConfigReportForTesting,
   sendPushToUser,
   setPushTransportForTesting,
 } from "@/lib/notifications/push";
@@ -54,19 +57,49 @@ describe("push config", () => {
     setPushTransportForTesting(null);
   });
 
-  it("fails loudly when only some of the three are set", () => {
+  it("treats a partial setup as push off, reports it once, and blocks a production boot", () => {
     vi.stubEnv("VAPID_PUBLIC_KEY", "pub");
     vi.stubEnv("VAPID_PRIVATE_KEY", "");
     vi.stubEnv("VAPID_SUBJECT", "");
-    expect(() => getPushConfig()).toThrow(PushMisconfiguredError);
-    expect(() => getPushConfig()).toThrow(/VAPID_PRIVATE_KEY, VAPID_SUBJECT missing/);
+    const partial = inspectPushEnv();
+    expect(partial).toBeInstanceOf(PushMisconfiguredError);
+    expect((partial as Error).message).toMatch(/VAPID_PRIVATE_KEY, VAPID_SUBJECT missing/);
+
+    const reported: unknown[] = [];
+    setErrorSink((err) => {
+      reported.push(err);
+    });
+    resetPushConfigReportForTesting();
+    expect(getPushConfig()).toBeNull();
+    expect(isPushConfigured()).toBe(false);
+    expect(getPushConfig()).toBeNull();
+    expect(reported).toHaveLength(1);
+    setErrorSink(() => undefined);
+
+    const problems = findProductionEnvProblems({
+      VERCEL_ENV: "production",
+      BETTER_AUTH_SECRET: "x".repeat(32),
+      DATABASE_URL: "postgres://x",
+      VAPID_PUBLIC_KEY: "pub",
+    });
+    expect(problems.blocking.some((p) => /Web Push is partially configured/.test(p))).toBe(true);
+    expect(
+      findProductionEnvProblems({
+        VERCEL_ENV: "production",
+        BETTER_AUTH_SECRET: "x".repeat(32),
+        DATABASE_URL: "postgres://x",
+      }).blocking,
+    ).toEqual([]);
   });
 
   it("rejects a subject that is neither mailto: nor https:", () => {
     vi.stubEnv("VAPID_PUBLIC_KEY", "pub");
     vi.stubEnv("VAPID_PRIVATE_KEY", "priv");
     vi.stubEnv("VAPID_SUBJECT", "santi@example.com");
-    expect(() => getPushConfig()).toThrow(/mailto:/);
+    expect((inspectPushEnv() as Error).message).toMatch(/mailto:/);
+    resetPushConfigReportForTesting();
+    setErrorSink(() => undefined);
+    expect(getPushConfig()).toBeNull();
     vi.stubEnv("VAPID_SUBJECT", "mailto:santi@example.com");
     expect(getPushConfig()).toEqual({
       publicKey: "pub",

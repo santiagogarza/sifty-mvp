@@ -151,14 +151,17 @@ describe("composeDueReminder", () => {
 });
 
 describe("composeWeeklyReview", () => {
-  it("summarises the last 7 local days and the next 7", () => {
+  it("summarises the 7 local days ending yesterday and the 7 starting today", () => {
     const tasks = [
       task({ id: "done-recent", lifecycle: "done", completedAt: "2026-10-10T15:00:00Z" }),
       task({ id: "done-edge", lifecycle: "done", completedAt: "2026-10-05T06:00:00Z" }),
       task({ id: "done-old", lifecycle: "done", completedAt: "2026-10-04T15:00:00Z" }),
+      // 2026-10-12T03:00Z is already Monday 05:00 in Ljubljana: outside the range label.
+      task({ id: "done-today", lifecycle: "done", completedAt: "2026-10-12T03:00:00Z" }),
       task({ id: "slipped", lifecycle: "active", due: "2026-10-08" }),
       task({ id: "this-week", lifecycle: "inbox", due: "2026-10-15" }),
-      task({ id: "next-week", lifecycle: "active", due: "2026-10-20" }),
+      task({ id: "last-day", lifecycle: "inbox", due: "2026-10-18" }),
+      task({ id: "next-week", lifecycle: "active", due: "2026-10-19" }),
       task({ id: "today", lifecycle: "waiting", due: "2026-10-12" }),
     ];
     const review = composeWeeklyReview({ ...base, tasks });
@@ -167,8 +170,8 @@ describe("composeWeeklyReview", () => {
     expect(review!.completed.map((t) => t.id)).toEqual(["done-recent", "done-edge"]);
     expect(review!.completedCount).toBe(2);
     expect(review!.overdue.map((t) => t.id)).toEqual(["slipped"]);
-    expect(review!.upcoming.map((t) => t.id)).toEqual(["today", "this-week"]);
-    expect(review).toMatchObject({ inboxCount: 1, focusCount: 2, waitingCount: 1 });
+    expect(review!.upcoming.map((t) => t.id)).toEqual(["today", "this-week", "last-day"]);
+    expect(review).toMatchObject({ inboxCount: 2, focusCount: 2, waitingCount: 1 });
     expect(composeWeeklyReview({ ...base, tasks: [] })).toBeNull();
   });
 });

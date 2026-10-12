@@ -98,6 +98,8 @@ describe("dueDigests", () => {
     expect(dueDigests(p, new Date("2026-10-12T13:00:00Z"))).toEqual([
       { kind: "due_reminder", periodKey: "2026-10-12" },
     ]);
+    // 20:00Z = 22:00 local: 7 hours late for the reminder, window closed.
+    expect(dueDigests(p, new Date("2026-10-12T20:00:00Z"))).toEqual([]);
   });
 
   it("serves the same local hour on both sides of a DST change", () => {
@@ -138,6 +140,28 @@ describe("dueDigests", () => {
     });
     expect(dueDigests(off, new Date("2026-10-11T07:00:00Z"))).toEqual([]);
     expect(dueDigests(off, new Date("2026-10-11T15:00:00Z"))).toEqual([]);
+  });
+
+  it("never fires today's digest before today's send hour, even for late schedules", () => {
+    // 22:00 send hour: 02:00 is not "4 hours after yesterday's 22:00".
+    const late = prefs({
+      timezone: "UTC",
+      morningPlanHour: 22,
+      dueRemindersEnabled: false,
+      weeklyReviewEnabled: false,
+    });
+    expect(hoursSince(2, 22)).toBe(-20);
+    expect(dueDigests(late, new Date("2026-10-12T02:00:00Z"))).toEqual([]);
+    expect(dueDigests(late, new Date("2026-10-12T21:59:00Z"))).toEqual([]);
+    expect(dueDigests(late, new Date("2026-10-12T22:00:00Z"))).toEqual([
+      { kind: "morning_plan", periodKey: "2026-10-12" },
+    ]);
+    expect(dueDigests(late, new Date("2026-10-12T23:30:00Z"))).toEqual([
+      { kind: "morning_plan", periodKey: "2026-10-12" },
+    ]);
+    // Next day 00:00–04:00 would be "late" for the 12th, but the period key
+    // is now the 13th and its send hour has not come.
+    expect(dueDigests(late, new Date("2026-10-13T01:00:00Z"))).toEqual([]);
   });
 
   it("quiet hours push the morning plan to the end of the window", () => {

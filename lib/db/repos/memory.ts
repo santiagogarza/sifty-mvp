@@ -20,8 +20,10 @@ import {
   type InviteCodeRepo,
   type InviteRedemption,
   type LabelRepo,
+  MAX_PUSH_SUBSCRIPTIONS_PER_USER,
   type MemoryCreateInput,
   type MemoryRepo,
+  NOTIFICATION_CLAIM_LEASE_MS,
   type NotificationPreferencesRecord,
   type NotificationPreferencesRepo,
   type NotificationSendRecord,
@@ -571,6 +573,7 @@ export function createMemoryRepos(): MemoryReposHandle {
       return Array.from(state.pushSubscriptions.values())
         .filter((s) => s.userId === userId)
         .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+        .slice(0, MAX_PUSH_SUBSCRIPTIONS_PER_USER)
         .map((s) => ({ ...s }));
     },
     async upsert(userId, input) {
@@ -606,21 +609,29 @@ export function createMemoryRepos(): MemoryReposHandle {
   };
 
   const notificationSends: NotificationSendRepo = {
-    async claim(input) {
-      const taken = state.notificationSends.some(
+    async claim(input, now = new Date()) {
+      const existing = state.notificationSends.find(
         (s) =>
           s.userId === input.userId &&
           s.kind === input.kind &&
           s.channel === input.channel &&
           s.periodKey === input.periodKey,
       );
-      if (taken) return null;
+      if (existing) {
+        const expired =
+          existing.status === "pending" &&
+          Date.parse(existing.createdAt) < now.getTime() - NOTIFICATION_CLAIM_LEASE_MS;
+        if (!expired) return null;
+        existing.createdAt = now.toISOString();
+        existing.error = null;
+        return { id: existing.id };
+      }
       const row: NotificationSendRecord = {
         id: makeId("send"),
         ...input,
         status: "pending",
         error: null,
-        createdAt: new Date().toISOString(),
+        createdAt: now.toISOString(),
         sentAt: null,
       };
       state.notificationSends.push(row);

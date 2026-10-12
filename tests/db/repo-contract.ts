@@ -1,5 +1,5 @@
 import type { Repos } from "@/lib/db/repos";
-import { IdConflictError } from "@/lib/db/repos/types";
+import { IdConflictError, NOTIFICATION_CLAIM_LEASE_MS } from "@/lib/db/repos/types";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -369,6 +369,37 @@ export function describeRepoContract(getRepos: () => Repos): void {
         (s) => s.id === claim!.id,
       )!;
       expect(failed).toMatchObject({ status: "failed", error: "boom", sentAt: null });
+    });
+
+    it("notificationSends: an abandoned pending claim is taken over after its lease", async () => {
+      const repos = getRepos();
+      const a = await createUser(repos, "lease@example.com");
+      const key = {
+        userId: a.id,
+        kind: "morning_plan" as const,
+        channel: "email" as const,
+        periodKey: "2026-10-12",
+      };
+      const t0 = new Date("2026-10-12T05:00:00Z");
+      const first = await repos.notificationSends.claim(key, t0);
+      expect(first).not.toBeNull();
+      // Still inside the lease: refused.
+      expect(
+        await repos.notificationSends.claim(
+          key,
+          new Date(t0.getTime() + NOTIFICATION_CLAIM_LEASE_MS - 1000),
+        ),
+      ).toBeNull();
+      // Past the lease and still pending: same row, handed to the new runner.
+      const retaken = await repos.notificationSends.claim(
+        key,
+        new Date(t0.getTime() + NOTIFICATION_CLAIM_LEASE_MS + 1000),
+      );
+      expect(retaken?.id).toBe(first!.id);
+      // Finalized rows are never taken over, however old.
+      await repos.notificationSends.finalize(first!.id, { status: "sent" });
+      expect(await repos.notificationSends.claim(key, new Date("2026-10-12T23:00:00Z"))).toBeNull();
+      expect(await repos.notificationSends.listForUser(a.id)).toHaveLength(1);
     });
 
     it("users.delete cascades notification rows", async () => {

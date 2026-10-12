@@ -26,9 +26,14 @@ import { unsubscribeUrl } from "./unsubscribe";
  *
  * Idempotency: `notificationSends.claim` is the only gate. A rerun in the
  * same hour, a second overlapping cron, or a crash after the send all
- * leave the ledger row in place, so nothing goes out twice. A digest with
- * nothing to say is recorded as `skipped` for the period, which also stops
- * every later tick in the window from recomputing it.
+ * leave the ledger row in place, so nothing goes out twice; only a claim
+ * left `pending` past its lease is taken over. A digest with nothing to
+ * say is recorded as `skipped` for the period, which also stops every
+ * later tick in the window from recomputing it.
+ *
+ * Time budget: the walk stops once `timeBudgetMs` is spent and reports
+ * `truncated`. Users not reached are still inside their late window on
+ * the next tick, so nothing is lost — it just arrives an hour later.
  */
 
 export interface DigestRunResult {
@@ -39,16 +44,22 @@ export interface DigestRunResult {
   skipped: number;
   failed: number;
   byKind: Record<DigestKind, { sent: number; skipped: number; failed: number }>;
+  /** True when the run stopped on `timeBudgetMs` or `maxUsers` before the last user. */
+  truncated: boolean;
 }
 
 export interface DigestRunOptions {
   now?: Date;
   /** Preference rows per page while walking users. */
   pageSize?: number;
-  /** Hard cap on rows examined per run; protects a function's time budget. */
+  /** Hard cap on rows examined per run. */
   maxUsers?: number;
+  /** Wall-clock budget; keep it under the route's `maxDuration`. */
+  timeBudgetMs?: number;
   appUrl?: string;
 }
+
+const DEFAULT_TIME_BUDGET_MS = 45_000;
 
 export async function sendDueDigests(
   repos: Repos,
@@ -57,7 +68,9 @@ export async function sendDueDigests(
   const now = opts.now ?? new Date();
   const pageSize = opts.pageSize ?? 100;
   const maxUsers = opts.maxUsers ?? 5_000;
+  const timeBudgetMs = opts.timeBudgetMs ?? DEFAULT_TIME_BUDGET_MS;
   const appUrl = opts.appUrl ?? emailAppUrl();
+  const startedAt = Date.now();
 
   const result: DigestRunResult = {
     users: 0,
@@ -69,13 +82,18 @@ export async function sendDueDigests(
       due_reminder: { sent: 0, skipped: 0, failed: 0 },
       weekly_review: { sent: 0, skipped: 0, failed: 0 },
     },
+    truncated: false,
   };
 
   let cursor: string | undefined;
-  while (result.users < maxUsers) {
+  walk: while (true) {
     const page = await repos.notificationPreferences.list(pageSize, cursor);
     if (page.length === 0) break;
     for (const prefs of page) {
+      if (result.users >= maxUsers || Date.now() - startedAt > timeBudgetMs) {
+        result.truncated = true;
+        break walk;
+      }
       result.users += 1;
       cursor = prefs.userId;
       const due = dueDigests(prefs, now);
@@ -85,6 +103,12 @@ export async function sendDueDigests(
       await deliverForUser(repos, prefs, due, channels, { now, appUrl }, result);
     }
     if (page.length < pageSize) break;
+  }
+  if (result.truncated) {
+    reportError(new Error("digest run stopped before reaching every user"), {
+      area: "notifications.digest",
+      tags: { users: result.users, elapsedMs: Date.now() - startedAt },
+    });
   }
   return result;
 }
@@ -134,7 +158,10 @@ async function deliverForUser(
   for (const { kind, periodKey } of due) {
     let digest: Digest | null | undefined;
     for (const channel of channels) {
-      const claim = await repos.notificationSends.claim({ userId, kind, channel, periodKey });
+      const claim = await repos.notificationSends.claim(
+        { userId, kind, channel, periodKey },
+        ctx.now,
+      );
       if (!claim) {
         bump(result, kind, "skipped");
         continue;

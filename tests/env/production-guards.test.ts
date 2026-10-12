@@ -129,9 +129,15 @@ describe("snapshotEnv", () => {
     const literalReads = source.match(/process\.env\.[A-Z_]+/g) ?? [];
     expect(new Set(literalReads)).toEqual(
       new Set(
-        [...DEMO_FLAGS, "VERCEL_ENV", "DATABASE_URL", "BETTER_AUTH_SECRET"].map(
-          (k) => `process.env.${k}`,
-        ),
+        [
+          ...DEMO_FLAGS,
+          "VERCEL_ENV",
+          "DATABASE_URL",
+          "BETTER_AUTH_SECRET",
+          "VAPID_PUBLIC_KEY",
+          "VAPID_PRIVATE_KEY",
+          "VAPID_SUBJECT",
+        ].map((k) => `process.env.${k}`),
       ),
     );
     expect(source).not.toMatch(/process\.env\[/);

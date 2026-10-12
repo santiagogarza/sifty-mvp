@@ -1,4 +1,7 @@
-import type { NotificationPreferencesInput } from "@/lib/db/repos/types";
+import {
+  NOTIFICATION_CLAIM_LEASE_MS,
+  type NotificationPreferencesInput,
+} from "@/lib/db/repos/types";
 import { setEmailProviderForTesting } from "@/lib/email";
 import type { EmailMessage, EmailProvider } from "@/lib/email/types";
 import { DEFAULT_PREFERENCES } from "@/lib/notifications/preferences";
@@ -200,6 +203,54 @@ describe("sendDueDigests", () => {
     expect(subjects.some((s) => s.startsWith("Your week in review"))).toBe(true);
     const ledger = await getTestRepos().notificationSends.listForUser(user.id);
     expect(ledger.map((l) => l.periodKey).sort()).toEqual(["2026-10-11", "2026-W41"]);
+  });
+
+  it("retries a claim a crashed runner left pending once its lease expires", async () => {
+    const user = await seedUser("crash@example.com");
+    // Simulate a runner that claimed and died before finalizing.
+    const claim = await getTestRepos().notificationSends.claim(
+      { userId: user.id, kind: "morning_plan", channel: "email", periodKey: "2026-10-12" },
+      SEVEN_LJU,
+    );
+    expect(claim).not.toBeNull();
+
+    const soon = await sendDueDigests(getTestRepos(), {
+      now: new Date(SEVEN_LJU.getTime() + 60_000),
+      appUrl: APP,
+    });
+    expect(soon).toMatchObject({ sent: 0, skipped: 1 });
+
+    const later = await sendDueDigests(getTestRepos(), {
+      now: new Date(SEVEN_LJU.getTime() + NOTIFICATION_CLAIM_LEASE_MS + 60_000),
+      appUrl: APP,
+    });
+    expect(later).toMatchObject({ sent: 1, skipped: 0 });
+    const ledger = await getTestRepos().notificationSends.listForUser(user.id);
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0]).toMatchObject({ id: claim!.id, status: "sent" });
+  });
+
+  it("stops at the time budget, reports it, and finishes on the next tick", async () => {
+    for (let i = 0; i < 4; i += 1) await seedUser(`budget${i}@example.com`);
+    const reported: unknown[] = [];
+    setErrorSink((err) => {
+      reported.push(err);
+    });
+    const first = await sendDueDigests(getTestRepos(), {
+      now: SEVEN_LJU,
+      appUrl: APP,
+      pageSize: 2,
+      timeBudgetMs: -1,
+    });
+    expect(first).toMatchObject({ users: 0, sent: 0, truncated: true });
+    expect(reported).toHaveLength(1);
+
+    const next = await sendDueDigests(getTestRepos(), {
+      now: new Date(SEVEN_LJU.getTime() + 60 * 60 * 1000),
+      appUrl: APP,
+      pageSize: 2,
+    });
+    expect(next).toMatchObject({ users: 4, sent: 4, truncated: false });
   });
 
   it("walks users in pages", async () => {

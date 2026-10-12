@@ -168,18 +168,27 @@ export function NotificationsPanel({
     setPushMessage(null);
     try {
       const endpoint = await unsubscribeFromPush();
+      let remaining = data?.pushSubscriptions.length ?? 0;
       if (endpoint) {
-        await fetch("/api/notifications/push/subscribe", {
+        const res = await fetch("/api/notifications/push/subscribe", {
           method: "DELETE",
           credentials: "include",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ endpoint }),
         });
+        const body = (await res.json().catch(() => ({}))) as { removed?: boolean };
+        if (body.removed) remaining -= 1;
       }
       setThisDeviceSubscribed(false);
-      const next = { ...prefs, pushEnabled: false };
-      setPrefs(next);
-      if (await save(next)) await load();
+      // This control is per device; the account-wide channel only goes off
+      // when no other device would still receive pushes.
+      if (remaining <= 0) {
+        const next = { ...prefs, pushEnabled: false };
+        setPrefs(next);
+        if (await save(next)) await load();
+      } else {
+        await load();
+      }
     } finally {
       setPushBusy(false);
     }

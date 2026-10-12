@@ -221,8 +221,9 @@ export function composeDueReminder(input: DigestInput): DueReminder | null {
 }
 
 /**
- * Weekly review: the last 7 local days of completions, what slipped, and
- * what the coming week holds. Null when the account is entirely idle.
+ * Weekly review: the 7 local days ending yesterday for completions (the
+ * range `rangeLabel` prints), what slipped, and the 7 days starting today
+ * for what is coming. Null when the account is entirely idle.
  */
 export function composeWeeklyReview(input: DigestInput): WeeklyReview | null {
   const local = localTime(input.now, input.timeZone);
@@ -235,13 +236,13 @@ export function composeWeeklyReview(input: DigestInput): WeeklyReview | null {
     .filter((t) => {
       if (t.lifecycle !== "done" || !t.completedAt) return false;
       const doneKey = localTime(new Date(t.completedAt), input.timeZone).dateKey;
-      return doneKey >= weekAgoKey && doneKey <= dateKey;
+      return doneKey >= weekAgoKey && doneKey < dateKey;
     })
     .sort((a, b) => (a.completedAt! < b.completedAt! ? 1 : -1));
 
   const open = openTasks(input.tasks).sort(compareForDigest(dateKey));
   const overdue = open.filter((t) => dueState(t.due, dateKey) === "overdue");
-  const upcoming = open.filter((t) => t.due !== null && t.due >= dateKey && t.due <= horizonKey);
+  const upcoming = open.filter((t) => t.due !== null && t.due >= dateKey && t.due < horizonKey);
   const inboxCount = open.filter((t) => t.lifecycle === "inbox").length;
   const focusCount = open.filter((t) => t.lifecycle === "active").length;
   const waitingCount = open.filter((t) => t.lifecycle === "waiting").length;

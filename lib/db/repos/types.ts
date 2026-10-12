@@ -364,7 +364,11 @@ export interface PushSubscriptionRecord extends PushSubscriptionInput {
   lastUsedAt: string | null;
 }
 
+/** Devices per account; keeps the digest fan-out and the Settings list bounded. */
+export const MAX_PUSH_SUBSCRIPTIONS_PER_USER = 20;
+
 export interface PushSubscriptionRepo {
+  /** Oldest first, capped at `MAX_PUSH_SUBSCRIPTIONS_PER_USER`. */
   listForUser(userId: string): Promise<PushSubscriptionRecord[]>;
   /**
    * Idempotent on `endpoint`: the same browser re-subscribing updates keys
@@ -392,18 +396,30 @@ export interface NotificationSendRecord {
   sentAt: string | null;
 }
 
+/**
+ * How long a `pending` claim is honoured. A runner killed between claim
+ * and finalize (function timeout, crash) would otherwise block that period
+ * forever; after the lease the next run takes the claim over.
+ */
+export const NOTIFICATION_CLAIM_LEASE_MS = 10 * 60 * 1000;
+
 export interface NotificationSendRepo {
   /**
    * Reserve (user, kind, channel, period) before sending. Returns null when
-   * a row already exists in any status, so a rerun or a concurrent run
-   * leaves the first claimant as the only sender.
+   * a row already exists — finalized in any status, or still `pending`
+   * within its lease — so a rerun or a concurrent run leaves the first
+   * claimant as the only sender. A `pending` row older than the lease is
+   * taken over (same id, fresh `createdAt`).
    */
-  claim(input: {
-    userId: string;
-    kind: DigestKind;
-    channel: NotificationChannel;
-    periodKey: string;
-  }): Promise<{ id: string } | null>;
+  claim(
+    input: {
+      userId: string;
+      kind: DigestKind;
+      channel: NotificationChannel;
+      periodKey: string;
+    },
+    now?: Date,
+  ): Promise<{ id: string } | null>;
   finalize(
     id: string,
     outcome: { status: Exclude<NotificationSendStatus, "pending">; error?: string | null },
