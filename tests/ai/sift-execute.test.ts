@@ -127,6 +127,25 @@ describe("sift steps (offline)", () => {
     expect(await repos.aiRuns.countSucceededToday(user.id)).toBe(0);
   });
 
+  it("keeps a due the user set at capture and the date-free title that came with it", async () => {
+    // What the capture chip produces: due protected, provisional title
+    // without the date phrase, raw text untouched.
+    const { repos, user, task, input } = await seed();
+    await repos.tasks.update(
+      user.id,
+      task.id,
+      { due: "2026-12-24", title: "Draft the investor update and send it to the board" },
+      { editedFields: ["due"] },
+    );
+    await beginSift(input);
+    await executeSiftStage(input, "enrich", "wrun_1");
+    const enriched = await repos.tasks.get(user.id, task.id);
+    expect(enriched?.due).toBe("2026-12-24");
+    expect(enriched?.title).toBe("Draft the investor update and send it to the board");
+    expect(enriched?.nextAction).not.toMatch(/friday/i);
+    expect(enriched?.editedFields).toEqual(["due"]);
+  });
+
   it("never overwrites a field the user edited between steps", async () => {
     const { repos, user, task, input } = await seed();
     await beginSift(input);
@@ -272,6 +291,6 @@ describe("sift steps (online)", () => {
     const row = (await repos.aiRuns.list(user.id)).find((r) => r.stage === "enrich");
     expect(row?.model).toBe("anthropic/claude-haiku-4.5");
     expect(row?.costCents).toBeCloseTo(60, 6);
-    expect(row?.promptVersion).toBe("enrich.v1");
+    expect(row?.promptVersion).toBe("enrich.v2");
   });
 });

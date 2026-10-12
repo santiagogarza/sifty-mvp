@@ -72,6 +72,28 @@ afterEach(() => {
   registerSyncHooks(null);
 });
 
+describe("createTask with a capture due date", () => {
+  it("stores the due as a protected user edit and uses the date-free title", () => {
+    const task = useStore.getState().createTask({
+      sourceText: "Call the dentist tomorrow 3pm",
+      due: "2026-10-13",
+      title: "Call the dentist",
+    });
+    expect(task.due).toBe("2026-10-13");
+    expect(task.editedFields).toEqual(["due"]);
+    expect(task.title).toBe("Call the dentist");
+    expect(task.sourceText).toBe("Call the dentist tomorrow 3pm");
+    expect(hooks.taskUpserted).toHaveBeenCalledWith(task, { created: true });
+  });
+
+  it("without a due nothing is protected and the title is the text", () => {
+    const task = useStore.getState().createTask({ sourceText: "Call the dentist" });
+    expect(task.due).toBeNull();
+    expect(task.editedFields).toEqual([]);
+    expect(task.title).toBe("Call the dentist");
+  });
+});
+
 describe("duplicateTask", () => {
   it("copies content, resets subtasks with fresh ids, and skips due/AI history", () => {
     const original = seed({ id: "task_src" });
