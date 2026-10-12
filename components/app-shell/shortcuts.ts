@@ -32,7 +32,8 @@ export const SHORTCUT_GROUPS: ReadonlyArray<ShortcutGroup> = [
     title: "Navigate",
     shortcuts: [
       { keys: [["/"]], also: [[MOD, "K"]], description: "Command palette" },
-      { keys: [["↑"], ["↓"]], also: [["j"], ["k"]], description: "Move through the list" },
+      { keys: [["↓"]], also: [["j"]], description: "Move down the list" },
+      { keys: [["↑"]], also: [["k"]], description: "Move up the list" },
       { keys: [["↵"]], description: "Open the highlighted task" },
       { keys: [["Esc"]], description: "Close the open overlay or clear a selection" },
     ],

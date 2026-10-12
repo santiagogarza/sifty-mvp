@@ -673,7 +673,7 @@ registerSyncHooks(hooks);
 
 /** Sign-out / account-switch: drop the local cache and the sync ledger. */
 export function resetLocalWorkspace(): void {
-  useStore.setState({ tasks: [], labels: [], memories: [] });
+  useStore.setState({ tasks: [], labels: [], memories: [], welcomeDismissed: false });
   ledger = emptyLedger();
   saveLedger();
   publishStatus();
