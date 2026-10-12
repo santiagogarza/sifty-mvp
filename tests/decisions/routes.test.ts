@@ -150,7 +150,14 @@ describe("POST /api/decisions/:id/answer", () => {
 
   it("resolves the decision, wakes the run that asked, and puts the task back in motion", async () => {
     const { repos, task, decision } = await seedQuestion();
+    // The write must precede the wake: the run's fold step reads the task.
+    let contextAtWake: string | null | undefined;
+    client.resume.mockImplementation(async () => {
+      contextAtWake = (await repos.tasks.get(userId, task.id))?.sourceContext;
+      return { ok: true, runId: "wrun_asked" };
+    });
     const res = await answer(decision.id, { option: "A decision", text: "Pick an accountant" });
+    expect(contextAtWake).toBe("Answer: A decision — Pick an accountant");
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.mode).toBe("resumed");
@@ -247,6 +254,31 @@ describe("POST /api/decisions/:id/answer", () => {
     expect(res.status).toBe(200);
     expect((await res.json()).mode).toBe("resifted");
     expect((await getTestRepos().decisions.get(userId, decision.id))?.status).toBe("answered");
+  });
+});
+
+describe("listOpen (notifications export)", () => {
+  it("is bounded to 50 by default", async () => {
+    const repos = getTestRepos();
+    for (let i = 0; i < 52; i += 1) {
+      await repos.decisions.create(userId, {
+        kind: "clarifying_question",
+        taskId: null,
+        payload: {
+          kind: "clarifying_question",
+          question: `Q${i}`,
+          options: [],
+          siftId: `sift_${i}`,
+          confidence: 0.4,
+        },
+        resumeToken: null,
+        expiresAt: null,
+      });
+    }
+    const { listOpen } = await import("@/lib/decisions/service");
+    expect(await listOpen(userId)).toHaveLength(50);
+    expect(await listOpen(userId, { limit: 3 })).toHaveLength(3);
+    expect(await repos.decisions.countOpen(userId)).toBe(52);
   });
 });
 
