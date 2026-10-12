@@ -16,6 +16,8 @@ import type { TriageMeta } from "./triage-agent";
  */
 
 export const BRIEF_PROMPT_VERSION = "brief.v1";
+/** Part of the prompt contract: a change bumps BRIEF_PROMPT_VERSION. */
+export const BRIEF_TEMPERATURE = 0.2;
 
 const OFFLINE_MODEL = "sifty.local.brief-template";
 
@@ -137,7 +139,7 @@ export async function generateAgentBrief(input: AgentBriefInput): Promise<AgentB
       preferences: input.preferences,
       todayIso,
     }),
-    temperature: 0.2,
+    temperature: BRIEF_TEMPERATURE,
   });
 
   const usage = usageFromResult(resolved, result);

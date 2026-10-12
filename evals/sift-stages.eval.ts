@@ -49,8 +49,10 @@ afterAll(() => {
   const baseline = readCostBaseline();
   costWarnings = compareCosts(cost, baseline);
 
-  if (mode.update) {
-    if (mode.offline && !mode.only) writeRubricBaseline(nextRubrics);
+  if (mode.update && mode.only) {
+    console.log("evals: EVAL_ONLY is set; baselines not updated from a partial run");
+  } else if (mode.update) {
+    if (mode.offline) writeRubricBaseline(nextRubrics);
     writeCostBaseline({
       prices: registryPrices(),
       estimated: mode.offline ? cost : baseline.estimated,

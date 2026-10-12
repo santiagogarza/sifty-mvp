@@ -60,6 +60,8 @@ export interface TriageResult {
 }
 
 const HEURISTIC_MODEL = "sifty.local.heuristic";
+/** Part of the prompt contract: a change bumps TRIAGE_PROMPT_VERSION. */
+export const TRIAGE_TEMPERATURE = 0.2;
 
 export async function triageTask(input: TriageInput): Promise<TriageResult> {
   const start = Date.now();
@@ -107,7 +109,7 @@ async function runOnline(
     schemaDescription: "Sifty triage output for a single captured task.",
     system: TRIAGE_SYSTEM_PROMPT,
     prompt: userPrompt,
-    temperature: 0.2,
+    temperature: TRIAGE_TEMPERATURE,
   });
 
   const usage = usageFromResult(resolved, result);

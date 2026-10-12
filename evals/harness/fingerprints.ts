@@ -3,10 +3,12 @@ import {
   AgentBriefOutput,
   BRIEF_PROMPT_VERSION,
   BRIEF_SYSTEM_PROMPT,
+  BRIEF_TEMPERATURE,
   buildBriefUserPrompt,
 } from "@/lib/ai/agent-brief";
 import { TRIAGE_SYSTEM_PROMPT, buildTriageUserPrompt } from "@/lib/ai/prompts";
 import { STAGE_DEFINITIONS } from "@/lib/ai/sift/stages";
+import { TRIAGE_TEMPERATURE } from "@/lib/ai/triage-agent";
 import { TRIAGE_PROMPT_VERSION, TriageOutput } from "@/lib/ai/triage-schema";
 import { SIFT_STAGES } from "@/lib/domain/types";
 import { asSchema } from "ai";
@@ -80,7 +82,7 @@ export function computeFingerprints(): Fingerprints {
       preferences: CANONICAL_CAPTURE.preferences,
     }),
     schema: asSchema(TriageOutput).jsonSchema,
-    temperature: 0.2,
+    temperature: TRIAGE_TEMPERATURE,
   });
 
   out[BRIEF_PROMPT_VERSION] = hash({
@@ -92,6 +94,7 @@ export function computeFingerprints(): Fingerprints {
       todayIso: CANONICAL_TODAY,
     }),
     schema: asSchema(AgentBriefOutput).jsonSchema,
+    temperature: BRIEF_TEMPERATURE,
   });
 
   return out;
