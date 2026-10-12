@@ -140,22 +140,29 @@ export function applyStripeEvent(
     return graceEndFrom(at);
   };
 
+  /**
+   * Subscription events are only authoritative for the subscription we
+   * track, with two exceptions: nothing tracked yet, or a paying
+   * subscription superseding whatever we had. Stripe does not guarantee
+   * ordering, so after a cancel-and-resubscribe the old subscription's
+   * late `deleted` / `past_due` must not overwrite the new one, and a late
+   * update for a subscription already in a terminal state is not a
+   * resurrection.
+   */
+  const isStaleSubscriptionEvent = (sub: StripeSubscriptionLike): boolean => {
+    const tracked = current.stripeSubscriptionId;
+    if (!tracked) return false;
+    if (sub.id === tracked) {
+      return ENDED_STATUSES.has(current.stripeStatus ?? "") && !ENDED_STATUSES.has(sub.status);
+    }
+    return hasOpenStripeSubscription(current) && !PAYING_STATUSES.has(sub.status);
+  };
+
   switch (event.type) {
     case "customer.subscription.created":
     case "customer.subscription.updated": {
       const sub = event.data.object;
-      // `canceled` / `incomplete_expired` are terminal in Stripe. An update
-      // for that same subscription arriving afterwards is out-of-order
-      // delivery (Stripe does not guarantee ordering), not a resurrection:
-      // a late `past_due` must not reopen grace, a late `active` must not
-      // restore Pro. A different subscription id is a genuine new one.
-      if (
-        sub.id === current.stripeSubscriptionId &&
-        ENDED_STATUSES.has(current.stripeStatus ?? "") &&
-        !ENDED_STATUSES.has(sub.status)
-      ) {
-        return current;
-      }
+      if (isStaleSubscriptionEvent(sub)) return current;
       const periodEnd = new Date(sub.current_period_end * 1000).toISOString();
       const ids = {
         stripeSubscriptionId: sub.id,
@@ -174,6 +181,7 @@ export function applyStripeEvent(
     }
     case "customer.subscription.deleted": {
       const sub = event.data.object;
+      if (isStaleSubscriptionEvent(sub)) return current;
       return resolve({
         subscriptionActive: false,
         stripeSubscriptionId: sub.id,

@@ -2,7 +2,7 @@
 import { PaymentFailedBanner } from "@/components/billing/payment-failed-banner";
 import { render, screen } from "@testing-library/react";
 import { createElement } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 describe("PaymentFailedBanner", () => {
   it("names the grace deadline and links to billing", () => {
@@ -21,7 +21,10 @@ describe("PaymentFailedBanner", () => {
   });
 
   it("names the UTC calendar day, matching the email, whatever the local timezone", () => {
-    // 03:00Z on the 19th is still the 18th in the Americas; the email says the 19th.
+    // 03:00Z on the 19th is still the 18th in the Americas; the email says the
+    // 19th. Node re-reads TZ at runtime, so this holds even on a UTC runner.
+    vi.stubEnv("TZ", "America/Los_Angeles");
+    expect(new Date("2026-10-19T03:00:00.000Z").getDate()).toBe(18);
     render(
       createElement(PaymentFailedBanner, {
         problem: { kind: "grace", graceEndsAt: "2026-10-19T03:00:00.000Z" },

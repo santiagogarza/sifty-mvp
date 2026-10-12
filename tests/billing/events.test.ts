@@ -358,6 +358,70 @@ describe("applyStripeEvent — dunning grace period", () => {
     expect(fresh.stripeSubscriptionId).toBe("sub_new");
   });
 
+  it("after re-subscribing, late events for the old subscription do not touch the new one", () => {
+    const cancelled = applyStripeEvent(
+      paying(),
+      subEvent("customer.subscription.deleted", "canceled"),
+    );
+    const newSub = (
+      status: string,
+      type:
+        | "customer.subscription.created"
+        | "customer.subscription.updated"
+        | "customer.subscription.deleted" = "customer.subscription.updated",
+    ): ReducibleEvent => ({
+      type,
+      data: {
+        object: {
+          id: "sub_new",
+          status,
+          current_period_end: Math.floor((NOW.getTime() + 30 * DAY) / 1000),
+          customer: "cus_X",
+        },
+      },
+    });
+    const resubscribed = applyStripeEvent(
+      cancelled,
+      newSub("active", "customer.subscription.created"),
+    );
+    expect(resubscribed.tier).toBe("pro");
+
+    // Old sub_test events arriving late: deleted, past_due, unpaid.
+    expect(
+      applyStripeEvent(resubscribed, subEvent("customer.subscription.deleted", "canceled")),
+    ).toBe(resubscribed);
+    expect(
+      applyStripeEvent(resubscribed, subEvent("customer.subscription.updated", "past_due")),
+    ).toBe(resubscribed);
+    expect(
+      applyStripeEvent(resubscribed, subEvent("customer.subscription.updated", "unpaid")),
+    ).toBe(resubscribed);
+    // The tracked subscription's own events still apply.
+    const dunning = applyStripeEvent(resubscribed, newSub("past_due"));
+    expect(dunning.graceEndsAt).not.toBeNull();
+    const gone = applyStripeEvent(dunning, newSub("canceled", "customer.subscription.deleted"));
+    expect(gone.tier).toBe("free");
+    expect(gone.stripeSubscriptionId).toBe("sub_new");
+  });
+
+  it("a paying subscription supersedes a tracked one that is still open", () => {
+    const inGrace = applyStripeEvent(paying(), failed(), NOW);
+    const replaced = applyStripeEvent(inGrace, {
+      type: "customer.subscription.created",
+      data: {
+        object: {
+          id: "sub_replacement",
+          status: "active",
+          current_period_end: Math.floor((NOW.getTime() + 30 * DAY) / 1000),
+          customer: "cus_X",
+        },
+      },
+    });
+    expect(replaced.stripeSubscriptionId).toBe("sub_replacement");
+    expect(replaced.subscriptionActive).toBe(true);
+    expect(replaced.graceEndsAt).toBeNull();
+  });
+
   it("payment_failed on an incomplete, paused, or expired subscription changes nothing", () => {
     for (const status of ["incomplete", "incomplete_expired", "paused"]) {
       const before = applyStripeEvent(
