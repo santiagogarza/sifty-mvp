@@ -8,6 +8,10 @@ import { gotoApp } from "./helpers";
  * resumes the suspended run, which folds the answer into the same sift.
  */
 
+// Every e2e worker shares one bypass user and its two sift slots, so a
+// sift can queue behind the other suites' captures; give it room.
+test.describe.configure({ timeout: 120_000 });
+
 interface TaskShape {
   id: string;
   aiStatus: string;
@@ -31,7 +35,7 @@ async function captureUnsureTask(request: APIRequestContext, word: string): Prom
         const res = await request.get(`/api/tasks/${task.id}`);
         return res.ok() ? ((await res.json()).task as TaskShape).aiStatus : "fetch-failed";
       },
-      { timeout: 30_000, intervals: [300, 500, 1000] },
+      { timeout: 90_000, intervals: [300, 500, 1000] },
     )
     .toBe("ready");
   const res = await request.get(`/api/tasks/${task.id}`);
@@ -79,7 +83,7 @@ test("a terse capture asks a question; answering it in the inbox resumes the sif
         const t = (await res.json()).task as TaskShape;
         return t.aiStatus === "ready" ? t.aiAttempts : 0;
       },
-      { timeout: 30_000 },
+      { timeout: 90_000 },
     )
     .toBe(2);
   const after = (await (await request.get(`/api/tasks/${task.id}`)).json()).task as TaskShape;
