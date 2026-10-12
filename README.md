@@ -241,56 +241,45 @@ Rules that hold at every step:
 - With `SIFTY_AI_OFFLINE=1` (or `?offline=1` off production) every stage
   uses the deterministic heuristic through the same steps.
 
-## Background jobs (Vercel Workflow)
+### The `dailyPlan` workflow
 
-Durable, multi-step work runs on [Vercel Workflow](https://vercel.com/docs/workflows)
-(`workflow` v5, on Vercel Queues). Workflow and step functions live in
-`lib/workflows/`; routes enqueue through `startWorkflow()` in
-`lib/workflows/dispatch.ts`, the single seam tests swap out.
+`lib/workflows/daily-plan.ts` re-ranks Today and Focus against the user's
+whole open list, once a night per account and on demand from **Re-plan
+today** on the Today page (Pro and creator; `caps.dailyPlan`). Backed by
+`lib/ai/plan/`:
 
-How it is wired:
-
-- `next.config.ts` is wrapped with `withWorkflow()`, which compiles the
-  `"use workflow"` / `"use step"` directives and generates the queue-triggered
-  flow route under `app/.well-known/workflow/` at build time (gitignored).
-- **On Vercel** the managed "Vercel World" is selected from
-  `VERCEL_DEPLOYMENT_ID`: storage, queues, and OIDC auth are provisioned by
-  the platform, runs are pinned to the deployment that started them, and
-  every run shows up under the project's **Workflows** tab. Two project
-  settings must stay on: *Enable access to System Environment Variables*
-  and Fluid Compute (both default on for new projects). Workflow is
-  available on the Hobby plan with an included monthly allotment of events.
-- **Locally** (`pnpm dev`, `pnpm start`, Playwright) the bundled Local World
-  runs inside the Next.js process and stores runs as JSON under
-  `.next/workflow-data/`. No extra service, no env var. `pnpm dev` uses
-  webpack: Turbopack on Next 15.1 cannot bundle the Workflow runtime
-  (`assert/strict` resolution in `@vercel/queue`), and `pnpm dev:turbo`
-  stays available for UI-only work that never enqueues.
-- `SIFTY_AI_OFFLINE=1` keeps every step deterministic (same heuristic as the
-  synchronous triage), so the full pipeline runs in CI and demos without a
-  provider key.
-
-Operating it:
-
-```bash
-pnpm workflow:web               # local dashboard: runs, steps, inputs/outputs
-pnpm workflow:runs              # list local runs in the terminal
-npx workflow inspect runs --backend vercel --project sifty-app --team santiagogarzas-projects
-```
-
-Smoke test a deployment as the creator: `POST /api/admin/workflow-ping`
-(button at `/admin/costs`) starts a one-step workflow and waits for it.
-`completed` means the queue trigger, flow route, and storage all work.
-
-Concurrency: Workflow has no built-in per-user concurrency key, so
-`lib/workflows/user-lock.ts` turns hook tokens into slots: a run claims one
-of N `scope:userId:slot` tokens before its first step and holds it until the
-run ends; when all slots are busy it suspends on the owners' results.
-
-Cost accounting: every step writes an `ai_runs` row with `stage`,
-`prompt_version`, `sift_id`, and `workflow_run_id`. Caps count sifts, not
-steps (`sift_id IS NULL OR stage = 'sift'`). The creator-only `/admin/costs`
-page rolls the table up by day, stage, model, and account.
+- **Bounded reads.** Two queries (open tasks due within seven days, soonest
+  first; the most recently touched open tasks) are merged and ranked
+  deterministically; the top 60 go to the model, the rest are a count. A
+  user with 500 tasks costs the same as one with ten. Tasks mid-sift are
+  skipped — their own `prioritize` stage is about to score them.
+- **One model call per run** (`dailyplan.v1`, stage `prioritize`,
+  fast-class model), one `ai_runs` row that counts as one sift against the
+  tier cap. The row is reserved before `start()` (so the next request's
+  cap count already includes it) and completed with the model's usage by
+  the decide step, so a retried step never bills twice. The model answers
+  in aliases (`t1`, `t2`, …) that resolve only to the task ids the prompt
+  was rendered with, so a hallucinated handle maps to nothing and a
+  re-ranked list cannot redirect a decision.
+- **Guards the model cannot skip** (`lib/ai/plan/apply.ts`): `editedFields`
+  protection per field; a task due more than a day out is never pulled
+  into Today (snoozes stay snoozed); at most eight score-driven promotions
+  per run; deadline-forced tasks are in Today regardless.
+- **Explainable.** Every applied change writes a `task_events` row
+  (`plan.moved_in` / `plan.moved_out` / `plan.rescored`) with a message
+  such as "Moved into Today: due tomorrow, deep work", and the same text
+  becomes the task's `rationale`. The run's summary and moves are stored
+  on `daily_plans` and shown on the Today page.
+- **Scheduling.** `/api/cron/daily-plan` (daily, 04:00 UTC on Hobby) walks
+  every account, skips free tiers, idle accounts, and anyone at their cap,
+  then claims one `cron` plan per user and local day (partial unique index)
+  before `start()`. Claims are atomic per user (advisory lock): at most one
+  plan runs at a time, so two overlapping "Re-plan today" clicks start one
+  workflow. The plan is for the user's local date — tomorrow when it
+  is already past 18:00 there — resolved in UTC until a saved timezone
+  exists; the manual route takes the browser's zone.
+- Offline (`SIFTY_AI_OFFLINE=1`) the deterministic variant applies the same
+  rules the prompt describes, so the whole flow runs in CI and demos.
 
 ## Configuration
 

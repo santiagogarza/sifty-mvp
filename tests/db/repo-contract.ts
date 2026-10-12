@@ -1,5 +1,6 @@
 import type { Repos } from "@/lib/db/repos";
 import {
+  DAILY_PLAN_LEASE_MS,
   IdConflictError,
   NOTIFICATION_CLAIM_LEASE_MS,
   SIFT_ACCOUNTING_STAGE,
@@ -472,6 +473,232 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect(await repos.stripeEvents.recordIfNew("evt_1", "invoice.paid")).toBe(false);
       await repos.stripeEvents.delete("evt_1");
       expect(await repos.stripeEvents.recordIfNew("evt_1", "invoice.paid")).toBe(true);
+    });
+
+    it("tasks.list filters by due date and orders soonest first when asked", async () => {
+      const repos = getRepos();
+      const u = await createUser(repos, "due-list@example.com");
+      const late = await repos.tasks.create(u.id, { sourceText: "Late", sourceContext: null });
+      const soon = await repos.tasks.create(u.id, { sourceText: "Soon", sourceContext: null });
+      const undated = await repos.tasks.create(u.id, { sourceText: "None", sourceContext: null });
+      const done = await repos.tasks.create(u.id, { sourceText: "Done", sourceContext: null });
+      await repos.tasks.update(u.id, late.id, { due: "2026-10-20" });
+      await repos.tasks.update(u.id, soon.id, { due: "2026-10-14" });
+      await repos.tasks.update(u.id, done.id, { due: "2026-10-13", lifecycle: "done" });
+
+      const byDue = await repos.tasks.list(u.id, {
+        lifecycles: ["inbox", "active", "waiting"],
+        dueOnOrBefore: "2026-10-20",
+        orderBy: "due",
+        limit: 10,
+      });
+      expect(byDue.map((t) => t.id)).toEqual([soon.id, late.id]);
+      const horizon = await repos.tasks.list(u.id, { dueOnOrBefore: "2026-10-15", orderBy: "due" });
+      expect(horizon.map((t) => t.id)).toEqual([done.id, soon.id]);
+      // `orderBy: "due"` alone drops undated rows; the default keeps them.
+      expect((await repos.tasks.list(u.id, { orderBy: "due" })).map((t) => t.id)).not.toContain(
+        undated.id,
+      );
+      expect((await repos.tasks.list(u.id)).map((t) => t.id)).toContain(undated.id);
+    });
+
+    it("users.list pages every account in id order", async () => {
+      const repos = getRepos();
+      const made = await Promise.all(
+        ["p1@example.com", "p2@example.com", "p3@example.com"].map((e) => createUser(repos, e)),
+      );
+      const ids = made.map((u) => u.id).sort();
+      const first = await repos.users.list(2);
+      expect(first.map((u) => u.id)).toEqual(ids.slice(0, 2));
+      const rest = await repos.users.list(2, first[1]!.id);
+      expect(rest.map((u) => u.id)).toEqual(ids.slice(2));
+      expect(await repos.users.list(2, ids[2])).toEqual([]);
+    });
+
+    it("taskEvents: append is idempotent on id, tenant-scoped, and listable per task", async () => {
+      const repos = getRepos();
+      const a = await createUser(repos, "events-a@example.com");
+      const b = await createUser(repos, "events-b@example.com");
+      const task = await repos.tasks.create(a.id, { sourceText: "T", sourceContext: null });
+      const other = await repos.tasks.create(a.id, { sourceText: "O", sourceContext: null });
+
+      const first = await repos.taskEvents.append(a.id, {
+        id: "evt_fixed",
+        taskId: task.id,
+        kind: "plan.moved_in",
+        payload: { reason: "due tomorrow" },
+      });
+      const replay = await repos.taskEvents.append(a.id, {
+        id: "evt_fixed",
+        taskId: task.id,
+        kind: "plan.moved_out",
+        payload: { reason: "changed my mind" },
+      });
+      expect(replay).toEqual(first);
+      expect(replay.kind).toBe("plan.moved_in");
+      await expect(
+        repos.taskEvents.append(b.id, {
+          id: "evt_fixed",
+          taskId: task.id,
+          kind: "plan.moved_in",
+          payload: {},
+        }),
+      ).rejects.toBeInstanceOf(IdConflictError);
+
+      await repos.taskEvents.append(a.id, {
+        taskId: other.id,
+        kind: "plan.rescored",
+        payload: {},
+      });
+      expect(await repos.taskEvents.list(a.id)).toHaveLength(2);
+      const forTask = await repos.taskEvents.listForTask(a.id, task.id, 10);
+      expect(forTask.map((e) => e.id)).toEqual(["evt_fixed"]);
+      expect(forTask[0]!.payload).toEqual({ reason: "due tomorrow" });
+      expect(await repos.taskEvents.listForTask(b.id, task.id, 10)).toEqual([]);
+      expect(await repos.taskEvents.list(b.id)).toEqual([]);
+    });
+
+    it("dailyPlans: one running plan per user, one cron claim per local day, lease and tenancy", async () => {
+      const repos = getRepos();
+      const a = await createUser(repos, "plans-a@example.com");
+      const b = await createUser(repos, "plans-b@example.com");
+      const base = { userId: a.id, planDate: "2026-10-13", timezone: "Europe/Ljubljana" };
+      const run = async (userId: string) =>
+        (await repos.aiRuns.insert({ ...aiRun(userId, null), stage: "prioritize" })).id;
+      const t0 = new Date("2026-10-13T03:00:00.000Z");
+      const later = new Date(t0.getTime() + DAILY_PLAN_LEASE_MS + 1_000);
+
+      const cron = await repos.dailyPlans.claim(
+        { ...base, trigger: "cron", aiRunId: await run(a.id) },
+        t0,
+      );
+      expect(cron.ok).toBe(true);
+      if (!cron.ok) throw new Error("unreachable");
+      expect(cron.plan).toMatchObject({ ...base, trigger: "cron", status: "running", moves: [] });
+      expect(cron.plan.aiRunId).toBeTruthy();
+
+      // While it runs, every further claim for this user is refused — manual too.
+      const blocked = await repos.dailyPlans.claim(
+        { ...base, trigger: "manual", aiRunId: await run(a.id) },
+        t0,
+      );
+      expect(blocked).toEqual({
+        ok: false,
+        reason: "running",
+        plan: expect.objectContaining({ id: cron.plan.id }),
+      });
+      // Other users are independent.
+      expect(
+        (
+          await repos.dailyPlans.claim(
+            { ...base, userId: b.id, trigger: "cron", aiRunId: await run(b.id) },
+            t0,
+          )
+        ).ok,
+      ).toBe(true);
+
+      // Once it finishes, the same local day still refuses a cron rerun but takes a manual plan.
+      await repos.dailyPlans.update(a.id, cron.plan.id, { status: "completed" });
+      expect(
+        await repos.dailyPlans.claim({ ...base, trigger: "cron", aiRunId: await run(a.id) }, t0),
+      ).toEqual({
+        ok: false,
+        reason: "planned",
+      });
+      const manual = await repos.dailyPlans.claim(
+        { ...base, trigger: "manual", aiRunId: await run(a.id) },
+        t0,
+      );
+      expect(manual.ok).toBe(true);
+      if (!manual.ok) throw new Error("unreachable");
+      expect((await repos.dailyPlans.latest(a.id))!.id).toBe(manual.plan.id);
+      expect((await repos.dailyPlans.runningFor(a.id, t0))!.id).toBe(manual.plan.id);
+
+      // Past the lease a running row is considered dead: it no longer blocks.
+      expect(await repos.dailyPlans.runningFor(a.id, later)).toBeNull();
+      const afterLease = await repos.dailyPlans.claim(
+        { ...base, trigger: "manual", aiRunId: await run(a.id) },
+        later,
+      );
+      expect(afterLease.ok).toBe(true);
+
+      const finished = await repos.dailyPlans.update(a.id, cron.plan.id, {
+        status: "completed",
+        workflowRunId: "wrun_1",
+        summary: "Lead with the deck.",
+        moves: [{ taskId: "task_1", title: "Deck", kind: "moved_in", reason: "due tomorrow" }],
+        considered: 12,
+        finishedAt: "2026-10-13T04:05:00.000Z",
+      });
+      expect(finished).toMatchObject({
+        status: "completed",
+        workflowRunId: "wrun_1",
+        summary: "Lead with the deck.",
+        considered: 12,
+        finishedAt: "2026-10-13T04:05:00.000Z",
+      });
+      expect(finished!.moves).toEqual([
+        { taskId: "task_1", title: "Deck", kind: "moved_in", reason: "due tomorrow" },
+      ]);
+      expect((await repos.dailyPlans.get(a.id, cron.plan.id))!.moves).toHaveLength(1);
+
+      // Tenancy: B can neither read nor update A's plans.
+      expect(await repos.dailyPlans.get(b.id, cron.plan.id)).toBeNull();
+      expect(await repos.dailyPlans.update(b.id, cron.plan.id, { status: "failed" })).toBeNull();
+      expect((await repos.dailyPlans.get(a.id, cron.plan.id))!.status).toBe("completed");
+
+      // Deleting the user takes the plans with it.
+      await repos.users.delete(a.id);
+      expect(await repos.dailyPlans.latest(a.id)).toBeNull();
+    });
+
+    it("aiRuns.complete fills a reserved row in place and is tenant-scoped", async () => {
+      const repos = getRepos();
+      const a = await createUser(repos, "complete-a@example.com");
+      const b = await createUser(repos, "complete-b@example.com");
+      const { id } = await repos.aiRuns.insert({
+        ...aiRun(a.id, null),
+        stage: "prioritize",
+        model: "sifty.workflow",
+        transport: "workflow",
+        inputTokens: null,
+        outputTokens: null,
+        costCents: 0,
+      });
+      await repos.aiRuns.complete(b.id, id, {
+        model: "hijack",
+        transport: "gateway",
+        status: "failed",
+        durationMs: 1,
+        inputTokens: 1,
+        outputTokens: 1,
+        costCents: 1,
+      });
+      expect((await repos.aiRuns.list(a.id))[0]!.model).toBe("sifty.workflow");
+      await repos.aiRuns.complete(a.id, id, {
+        model: "anthropic/claude-haiku-4.5",
+        transport: "gateway",
+        status: "succeeded",
+        durationMs: 1200,
+        inputTokens: 900,
+        outputTokens: 120,
+        costCents: 0.15,
+        workflowRunId: "wrun_c",
+        error: null,
+      });
+      const [row] = await repos.aiRuns.list(a.id);
+      expect(row).toMatchObject({
+        id,
+        model: "anthropic/claude-haiku-4.5",
+        transport: "gateway",
+        status: "succeeded",
+        durationMs: 1200,
+        inputTokens: 900,
+        outputTokens: 120,
+        workflowRunId: "wrun_c",
+      });
+      expect(row!.costCents).toBeCloseTo(0.15);
+      expect(await repos.aiRuns.list(a.id)).toHaveLength(1);
     });
   });
 

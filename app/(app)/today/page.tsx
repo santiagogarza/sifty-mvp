@@ -1,6 +1,7 @@
 "use client";
 
 import { PageShell } from "@/components/app-shell/page-shell";
+import { DailyPlanCard } from "@/components/tasks/daily-plan-card";
 import { TaskView } from "@/components/tasks/task-view";
 import { selectTodayTasks } from "@/lib/store/selectors";
 import * as React from "react";
@@ -41,6 +42,7 @@ export default function TodayPage() {
         selector={selectTodayTasks}
         emptyTitle="Nothing pressing today."
         emptyDescription="When something needs your attention, it'll show up here. Until then, enjoy the quiet."
+        aboveList={<DailyPlanCard />}
       />
     </PageShell>
   );
