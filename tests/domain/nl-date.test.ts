@@ -196,6 +196,11 @@ describe("parseNaturalDate: explicit dates", () => {
       due: "2026-10-20",
       time: "noon",
     });
+    expect(parseNaturalDate("Dentist 10/20 morning", now)).toMatchObject({
+      due: "2026-10-20",
+      time: "morning",
+      text: "10/20 morning",
+    });
     expect(due("Submit 12/3/26", now)).toBe("2026-12-03");
     expect(due("Submit 2026-11-02", now)).toBe("2026-11-02");
     expect(parseNaturalDate("Submit 13/40", now)).toBeNull();

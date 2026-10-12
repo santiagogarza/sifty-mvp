@@ -227,7 +227,7 @@ const RULES: Rule[] = [
       // no such restriction.
       const tail = text.slice(m.index + m[0].length);
       if (
-        !/^(?:\s*$|\s*[,.;!?)]|\s+(?:at\s+)?(?:\d{1,2}(?::\d{2})?\s*(?:am|pm)|\d{1,2}:\d{2}|noon|midday|midnight)\b)/i.test(
+        !/^(?:\s*$|\s*[,.;!?)]|\s+(?:at\s+)?(?:\d{1,2}(?::\d{2})?\s*(?:am|pm)|\d{1,2}:\d{2}|noon|midday|midnight|morning|afternoon|evening|night)\b)/i.test(
           tail,
         )
       ) {
