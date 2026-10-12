@@ -71,6 +71,13 @@
       "when": 1791794394146,
       "tag": "0009_sift_task_state",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791806267132,
+      "tag": "0010_recurring_tasks",
+      "breakpoints": true
     }
   ]
 }

@@ -35,6 +35,8 @@ const existing: Task = {
   siftId: null,
   siftStage: null,
   plan: null,
+  recurrence: null,
+  seriesId: null,
   labelIds: [],
   subtasks: [],
   editedFields: [],
@@ -67,6 +69,20 @@ describe("taskPatchColumns", () => {
     expect(taskPatchColumns(stored, { due: "2026-11-01" }, { now })).not.toHaveProperty(
       "editedFields",
     );
+  });
+
+  it("writes recurrence and seriesId, including explicit nulls", () => {
+    const rule = { freq: "daily" as const, mode: "after_completion" as const };
+    expect(taskPatchColumns(existing, { recurrence: rule, seriesId: "task_1" }, { now })).toEqual({
+      recurrence: rule,
+      seriesId: "task_1",
+      updatedAt: now,
+    });
+    expect(taskPatchColumns(existing, { recurrence: null }, { now })).toEqual({
+      recurrence: null,
+      updatedAt: now,
+    });
+    expect(taskPatchColumns(existing, { title: "x" }, { now })).not.toHaveProperty("recurrence");
   });
 
   it("derives the priority bucket from the scalars unless set or protected", () => {

@@ -401,8 +401,19 @@ function taskWireFields(task: Task): Record<string, unknown> {
     subtasks: task.subtasks
       .slice(0, TASK_LIMITS.maxSubtasks)
       .map((s) => ({ ...s, title: clip(s.title, TASK_LIMITS.subtaskTitle) })),
+    recurrence: task.recurrence,
+    seriesId: task.seriesId,
     editedFields: task.editedFields,
   };
+}
+
+/** The browser's IANA zone, so the server resolves "completed today" on the user's calendar. */
+function clientTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Keep only the dirty keys; `["*"]` keeps everything. */
@@ -412,7 +423,14 @@ function pick(fields: Record<string, unknown>, keys: readonly string[]): Record<
 }
 
 function taskPatchBody(task: Task, keys: readonly string[]): Record<string, unknown> {
-  return pick(taskWireFields(task), keys);
+  const body = pick(taskWireFields(task), keys);
+  // Completing a recurring task spawns its next instance server-side; the
+  // next due is a local calendar day, so the server needs our zone.
+  if (body.lifecycle === "done" && task.recurrence) {
+    const timeZone = clientTimeZone();
+    if (timeZone) body.timeZone = timeZone;
+  }
+  return body;
 }
 
 function taskCreateBody(task: Task): Record<string, unknown> {
@@ -535,7 +553,20 @@ async function pushTaskPatchJob(id: string): Promise<boolean> {
   if (!res) return false;
   if (res.status === 404) return pushTaskCreateJob(id);
   if (!res.ok) return reportRejection(res, "tasks", id, `task patch ${id}`);
+  const data = (await res.json().catch(() => null)) as { spawned?: Task | null } | null;
+  if (data?.spawned) adoptSpawnedTask(data.spawned);
   return true;
+}
+
+/**
+ * The server created the next instance of a recurring task in response to
+ * our completion. Show it now rather than on the next pull — unless this
+ * browser already deleted it, or has local edits to it that a pull would
+ * reconcile properly.
+ */
+function adoptSpawnedTask(task: Task): void {
+  if (ledger.deleted.tasks.includes(task.id) || isDirty("tasks", task.id)) return;
+  useStore.getState().adoptTaskFromServer(task);
 }
 
 async function pushTaskDeleteJob(id: string): Promise<boolean> {

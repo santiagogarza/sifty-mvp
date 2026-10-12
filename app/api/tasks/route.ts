@@ -63,8 +63,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
 
-  const { id, sourceText, sourceContext, createdAt, editedFields, modelPreference, ...enrichment } =
-    parsed.data;
+  const {
+    id,
+    sourceText,
+    sourceContext,
+    createdAt,
+    editedFields,
+    modelPreference,
+    timeZone: _timeZone,
+    ...enrichment
+  } = parsed.data;
   const repos = getRepos();
   const userId = session.user.id;
   try {

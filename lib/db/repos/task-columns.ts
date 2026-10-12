@@ -52,6 +52,8 @@ export function taskPatchColumns(
   if ("siftId" in patch) columns.siftId = patch.siftId ?? null;
   if ("siftStage" in patch) columns.siftStage = patch.siftStage ?? null;
   if ("plan" in patch) columns.plan = patch.plan ?? null;
+  if ("recurrence" in patch) columns.recurrence = patch.recurrence ?? null;
+  if ("seriesId" in patch) columns.seriesId = patch.seriesId ?? null;
   if (patch.subtasks !== undefined) columns.subtasks = patch.subtasks;
 
   if (

@@ -8,12 +8,14 @@ import {
 import { normalizeAssigneeName } from "@/lib/domain/assignee";
 import { TASK_LIMITS } from "@/lib/domain/limits";
 import { bucketFromScalars } from "@/lib/domain/priority";
+import { type EditScope, recurrenceAfterEdit } from "@/lib/domain/recurrence";
 import { mergeTriageIntoTask } from "@/lib/domain/triage-merge";
 import {
   type AiStatus,
   type Label,
   type Lifecycle,
   type Memory,
+  type Recurrence,
   type Subtask,
   type Task,
   type TaskEditableField,
@@ -85,11 +87,18 @@ interface SiftyState {
   viewMode: TaskViewMode;
   /** First-run welcome card closed on this device. */
   welcomeDismissed: boolean;
+  /**
+   * Recurring tasks whose edits currently apply to this instance only
+   * (`recurrenceAfterEdit`). Session-only: every sheet visit starts in
+   * "all future" mode, the default people expect from a template.
+   */
+  instanceScope: Record<string, true>;
 
   setHydrated: (v: boolean) => void;
   setModelPreference: (preference: ModelPreference) => void;
   setViewMode: (mode: TaskViewMode) => void;
   dismissWelcome: () => void;
+  setEditScope: (taskId: string, scope: EditScope) => void;
 
   createTask: (input: { sourceText: string; sourceContext?: string | null }) => Task;
   updateTask: (
@@ -107,6 +116,12 @@ interface SiftyState {
   duplicateTask: (id: string) => Task | null;
   /** Patch several tasks' status in one go, each through `updateTask`. */
   moveTasksToLifecycle: (ids: readonly string[], lifecycle: Lifecycle) => void;
+  /**
+   * Set or clear the repeat rule. The first rule on a task makes it the
+   * origin of its series (`seriesId` = its own id); clearing the rule keeps
+   * the series id as history.
+   */
+  setRecurrence: (taskId: string, rule: Recurrence | null) => void;
   toggleSubtask: (taskId: string, subtaskId: string) => void;
   addSubtask: (taskId: string, title: string) => void;
   removeSubtask: (taskId: string, subtaskId: string) => void;
@@ -138,6 +153,11 @@ interface SiftyState {
    */
   replaceTaskFromServer: (task: Task) => void;
   /**
+   * Server-origin insert-or-replace: a task the server created on our
+   * behalf (the next instance of a recurring task). No push.
+   */
+  adoptTaskFromServer: (task: Task) => void;
+  /**
    * Adopt server-owned fields (sift progress, AI status) without marking
    * the task dirty: nothing here is pushed back.
    */
@@ -165,7 +185,7 @@ interface SiftyState {
   ensureLabel: (name: string) => Label;
 }
 
-const VERSION = 4;
+const VERSION = 5;
 
 /** Bookkeeping fields the server derives itself; never worth a push. */
 const UNSYNCED_KEYS = new Set(["id", "createdAt", "updatedAt", "completedAt"]);
@@ -193,6 +213,10 @@ export const useStore = create<SiftyState>()(
         }
       };
 
+      /** The recurrence to store after `keys` change on `task`, honoring its edit scope. */
+      const scopedRecurrence = (task: Task, keys: readonly string[]) =>
+        recurrenceAfterEdit(task, keys, get().instanceScope[task.id] ? "instance" : "series");
+
       return {
         hydrated: false,
         tasks: [],
@@ -201,11 +225,17 @@ export const useStore = create<SiftyState>()(
         modelPreference: DEFAULT_MODEL_PREFERENCE,
         viewMode: "list",
         welcomeDismissed: false,
+        instanceScope: {},
 
         setHydrated: (v) => set({ hydrated: v }),
         setModelPreference: (preference) => set({ modelPreference: preference }),
         setViewMode: (mode) => set({ viewMode: mode }),
         dismissWelcome: () => set({ welcomeDismissed: true }),
+        setEditScope: (taskId, scope) =>
+          set((s) => {
+            const { [taskId]: _current, ...rest } = s.instanceScope;
+            return { instanceScope: scope === "instance" ? { ...rest, [taskId]: true } : rest };
+          }),
 
         createTask: ({ sourceText, sourceContext }) => {
           const now = new Date().toISOString();
@@ -238,6 +268,8 @@ export const useStore = create<SiftyState>()(
             siftId: null,
             siftStage: null,
             plan: null,
+            recurrence: null,
+            seriesId: null,
             labelIds: [],
             subtasks: [],
             editedFields: [],
@@ -261,6 +293,10 @@ export const useStore = create<SiftyState>()(
               const scopedPatch = { ...patch };
               if ("assigneeName" in patch) {
                 scopedPatch.assigneeName = normalizeAssigneeName(patch.assigneeName);
+              }
+              if (!("recurrence" in patch)) {
+                const recurrence = scopedRecurrence(t, Object.keys(patch));
+                if (recurrence) scopedPatch.recurrence = recurrence;
               }
               const next: Task = {
                 ...t,
@@ -331,6 +367,9 @@ export const useStore = create<SiftyState>()(
             siftId: null,
             siftStage: null,
             plan: null,
+            // A copy is a one-off: it never joins the original's series.
+            recurrence: null,
+            seriesId: null,
             labelIds: [...source.labelIds],
             subtasks: source.subtasks.map((st) => ({
               id: id("st"),
@@ -355,6 +394,15 @@ export const useStore = create<SiftyState>()(
           for (const taskId of ids) {
             if (findTask(taskId)) updateTask(taskId, { lifecycle });
           }
+        },
+
+        setRecurrence: (taskId, rule) => {
+          const task = findTask(taskId);
+          if (!task) return;
+          get().updateTask(taskId, {
+            recurrence: rule,
+            seriesId: rule ? (task.seriesId ?? task.id) : task.seriesId,
+          });
         },
 
         toggleSubtask: (taskId, subtaskId) => {
@@ -384,8 +432,10 @@ export const useStore = create<SiftyState>()(
             tasks: s.tasks.map((t) => {
               if (t.id !== taskId) return t;
               const order = t.subtasks.length;
+              const recurrence = scopedRecurrence(t, ["subtasks"]);
               return {
                 ...t,
+                ...(recurrence ? { recurrence } : {}),
                 subtasks: [...t.subtasks, { id: id("st"), title: cleaned, done: false, order }],
                 updatedAt: new Date().toISOString(),
                 editedFields: Array.from(new Set([...t.editedFields, "subtasks"])),
@@ -398,16 +448,17 @@ export const useStore = create<SiftyState>()(
         removeSubtask: (taskId, subtaskId) => {
           const prev = findTask(taskId);
           set((s) => ({
-            tasks: s.tasks.map((t) =>
-              t.id !== taskId
-                ? t
-                : {
-                    ...t,
-                    subtasks: t.subtasks.filter((st) => st.id !== subtaskId),
-                    updatedAt: new Date().toISOString(),
-                    editedFields: Array.from(new Set([...t.editedFields, "subtasks"])),
-                  },
-            ),
+            tasks: s.tasks.map((t) => {
+              if (t.id !== taskId) return t;
+              const recurrence = scopedRecurrence(t, ["subtasks"]);
+              return {
+                ...t,
+                ...(recurrence ? { recurrence } : {}),
+                subtasks: t.subtasks.filter((st) => st.id !== subtaskId),
+                updatedAt: new Date().toISOString(),
+                editedFields: Array.from(new Set([...t.editedFields, "subtasks"])),
+              };
+            }),
           }));
           notifyTask(taskId, prev);
         },
@@ -438,6 +489,14 @@ export const useStore = create<SiftyState>()(
           set((s) => ({
             tasks: s.tasks.map((t) => (t.id === task.id ? task : t)),
           }));
+        },
+
+        adoptTaskFromServer: (task) => {
+          set((s) =>
+            s.tasks.some((t) => t.id === task.id)
+              ? { tasks: s.tasks.map((t) => (t.id === task.id ? task : t)) }
+              : { tasks: [task, ...s.tasks] },
+          );
         },
 
         patchTaskFromServer: (taskId, patch) => {
@@ -562,6 +621,13 @@ export const useStore = create<SiftyState>()(
           // v3 persisted a raw model id (`preferredModelId`); map it onto the registry preference.
           const legacy = (persisted as { preferredModelId?: string }).preferredModelId;
           state.modelPreference = normalizeModelPreference(legacy);
+        }
+        if (version < 5 && state.tasks) {
+          state.tasks = state.tasks.map((t) => ({
+            ...t,
+            recurrence: t.recurrence ?? null,
+            seriesId: t.seriesId ?? null,
+          }));
         }
         return state as SiftyState;
       },

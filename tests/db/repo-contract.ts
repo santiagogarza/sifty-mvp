@@ -225,6 +225,36 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect(await repos.tasks.list(u.id)).toEqual([]);
     });
 
+    it("tasks: recurrence and series id round-trip, and clear to null", async () => {
+      const repos = getRepos();
+      const u = await createUser(repos, "repeat@example.com");
+      const task = await repos.tasks.create(u.id, {
+        sourceText: "Weekly review",
+        sourceContext: null,
+      });
+      expect(task.recurrence).toBeNull();
+      expect(task.seriesId).toBeNull();
+
+      const rule = {
+        freq: "weekly" as const,
+        mode: "fixed" as const,
+        weekdays: [1, 4],
+        seriesValues: { title: "Weekly review", urgency: 0.7 },
+      };
+      const set = await repos.tasks.update(u.id, task.id, { recurrence: rule, seriesId: task.id });
+      expect(set?.recurrence).toEqual(rule);
+      expect(set?.seriesId).toBe(task.id);
+      expect((await repos.tasks.list(u.id))[0]?.recurrence).toEqual(rule);
+
+      // A narrow patch to another field leaves the rule alone.
+      const retitled = await repos.tasks.update(u.id, task.id, { title: "Review" });
+      expect(retitled?.recurrence).toEqual(rule);
+
+      const cleared = await repos.tasks.update(u.id, task.id, { recurrence: null });
+      expect(cleared?.recurrence).toBeNull();
+      expect(cleared?.seriesId).toBe(task.id);
+    });
+
     it("memories: update and delete", async () => {
       const repos = getRepos();
       const u = await createUser(repos, "mem@example.com");

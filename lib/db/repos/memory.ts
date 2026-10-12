@@ -257,6 +257,8 @@ export function createMemoryRepos(): MemoryReposHandle {
         siftId: null,
         siftStage: null,
         plan: null,
+        recurrence: null,
+        seriesId: null,
         labelIds: [],
         subtasks: [],
         editedFields: [],

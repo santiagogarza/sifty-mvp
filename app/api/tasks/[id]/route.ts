@@ -1,6 +1,8 @@
 import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
 import { TaskPatchSchema } from "@/lib/domain/task-patch-schema";
+import type { Task } from "@/lib/domain/types";
+import { spawnNextInstance } from "@/lib/recurrence/spawn";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -25,6 +27,12 @@ export async function GET(req: Request, ctx: RouteContext) {
   return NextResponse.json({ task, labels });
 }
 
+/**
+ * Narrow update. Completing a recurring task also spawns its next instance
+ * (`spawnNextInstance`, idempotent) and returns it as `spawned` so the
+ * client can show it without waiting for the next pull; `spawned` is null
+ * otherwise.
+ */
 export async function PATCH(req: Request, ctx: RouteContext) {
   const { id } = await ctx.params;
   const session = await getSession(req);
@@ -35,10 +43,24 @@ export async function PATCH(req: Request, ctx: RouteContext) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
-  const { editedFields, ...patch } = parsed.data;
-  const task = await getRepos().tasks.update(session.user.id, id, patch, { editedFields });
+  const { editedFields, timeZone, ...patch } = parsed.data;
+  const repos = getRepos();
+  const userId = session.user.id;
+  const completing = patch.lifecycle === "done";
+  const before = completing ? await repos.tasks.get(userId, id) : null;
+  const task = await repos.tasks.update(userId, id, patch, { editedFields });
   if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json({ task });
+
+  let spawned: Task | null = null;
+  if (completing && task.recurrence) {
+    const next = await spawnNextInstance(repos, userId, {
+      parent: task,
+      previousLifecycle: before?.lifecycle ?? "active",
+      timeZone,
+    });
+    spawned = next?.task ?? null;
+  }
+  return NextResponse.json({ task, spawned });
 }
 
 export async function DELETE(req: Request, ctx: RouteContext) {

@@ -953,6 +953,8 @@ function rowToTask(row: typeof schema.tasks.$inferSelect, labelIds: string[]): T
     siftId: row.siftId,
     siftStage: row.siftStage,
     plan: row.plan ?? null,
+    recurrence: (row.recurrence as Task["recurrence"]) ?? null,
+    seriesId: row.seriesId,
     labelIds,
     subtasks: row.subtasks ?? [],
     editedFields: (row.editedFields ?? []) as TaskEditableField[],
