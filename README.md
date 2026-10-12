@@ -327,8 +327,9 @@ them. Backed by the Decisions inbox (`memory_proposal` decisions):
   labels) for the first time — once per task and sift, tracked by a
   `memory.extracted` task event.
 - **One call, `memory.v1`** on the `memory` route (fast class). The prompt
-  sees the capture, how Sifty organized it, what is already remembered, and
-  the user's edit; it answers with at most three proposals (text, kind,
+  sees the capture, how Sifty organized it, the *pinned* memories (the same
+  gate sift, plan, and brief apply; unpinned notes stay local and only
+  dedupe), and the user's edit; it answers with at most three proposals (text, kind,
   quoted evidence, confidence) and is told that an empty list is the usual
   answer. The `ai_runs` row carries the task's `siftId`, so it is a detail
   row of that sift, never a billing unit.

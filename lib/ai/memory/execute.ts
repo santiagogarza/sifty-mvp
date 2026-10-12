@@ -53,14 +53,18 @@ export async function extractMemories(
     return { outcome: "skipped", reason: "prefilter" };
   }
 
-  const existing = await repos.memories.list(input.userId, {
-    limit: EXISTING_MEMORIES_IN_CONTEXT,
-  });
+  // Pinned notes are what the user lets models see (same rule as sift,
+  // plan, and brief); the unpinned rest is read only for local dedupe and
+  // never leaves the box.
+  const [pinned, existing] = await Promise.all([
+    repos.memories.list(input.userId, { pinned: true, limit: EXISTING_MEMORIES_IN_CONTEXT }),
+    repos.memories.list(input.userId, { limit: EXISTING_MEMORIES_IN_CONTEXT }),
+  ]);
   const ctx: MemoryContext = {
     task,
     trigger: input.trigger,
     contradictions: input.contradictions,
-    existing: existing.map((m) => ({ text: m.text, kind: m.kind })),
+    existing: pinned.map((m) => ({ text: m.text, kind: m.kind })),
     todayIso: new Date().toISOString().slice(0, 10),
   };
 

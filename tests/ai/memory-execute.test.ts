@@ -171,6 +171,44 @@ describe("extractMemories (offline)", () => {
 });
 
 describe("extractMemories (model)", () => {
+  it("shows the model only pinned memories; unpinned ones still dedupe locally", async () => {
+    const repos = getTestRepos();
+    const user = await repos.users.create({
+      email: "pin@example.com",
+      displayName: "M",
+      isCreator: false,
+    });
+    await repos.memories.create(user.id, { text: "Prefers mornings for deep work", pinned: true });
+    await repos.memories.create(user.id, { text: "Private: therapist on Tuesdays", pinned: false });
+    await repos.memories.create(user.id, { text: "Ana is the user's accountant", pinned: false });
+    const task = await seedSifted(repos, user.id, "Ask Ana, my accountant, about VAT");
+    const { resolveProvider } = await import("@/lib/ai/provider");
+    vi.mocked(resolveProvider).mockReturnValue(mockResolvedProvider("memory"));
+    const { generateObject } = await import("ai");
+    vi.mocked(generateObject).mockResolvedValue({
+      object: {
+        proposals: [
+          {
+            text: "ana is the user's accountant",
+            kind: "fact",
+            evidence: "Ana, my accountant",
+            confidence: 0.9,
+          },
+        ],
+      },
+      usage: { inputTokens: 1, outputTokens: 1 },
+      response: { modelId: "claude-haiku-4-5-20251001" },
+    } as never);
+
+    const outcome = await extractMemories(input(user.id, task.id, { offline: false }), null);
+    const call = vi.mocked(generateObject).mock.calls[0]![0] as { prompt: string };
+    expect(call.prompt).toContain("Prefers mornings for deep work");
+    expect(call.prompt).not.toContain("therapist");
+    expect(call.prompt).not.toContain("Ana is the user's accountant");
+    // The unpinned duplicate still blocks the proposal.
+    expect(outcome).toEqual({ outcome: "skipped", reason: "nothing" });
+  });
+
   it("applies the confidence floor, dedupes, and prices the run", async () => {
     const repos = getTestRepos();
     const user = await repos.users.create({
