@@ -1,6 +1,7 @@
 import { MAX_PUSH_SUBSCRIPTIONS_PER_USER } from "@/lib/db/repos/types";
 import type { UserProfile } from "@/lib/domain/types";
 import { DEFAULT_PREFERENCES } from "@/lib/notifications/preferences";
+import { setPushTransportForTesting } from "@/lib/notifications/push";
 import { createUnsubscribeToken, verifyUnsubscribeToken } from "@/lib/notifications/unsubscribe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createUserWithCookie } from "../helpers/auth";
@@ -251,6 +252,55 @@ describe("/api/notifications/push/subscribe", () => {
   });
 });
 
+describe("/api/notifications/push/test", () => {
+  afterEach(() => {
+    setPushTransportForTesting(null);
+    vi.unstubAllEnvs();
+  });
+
+  it("401s signed out, 503s without VAPID, 404s without devices, then delivers", async () => {
+    const { POST } = await import("@/app/api/notifications/push/test/route");
+    expect(
+      (await POST(new Request("http://localhost/api/notifications/push/test", { method: "POST" })))
+        .status,
+    ).toBe(401);
+
+    vi.stubEnv("VAPID_PUBLIC_KEY", "");
+    vi.stubEnv("VAPID_PRIVATE_KEY", "");
+    vi.stubEnv("VAPID_SUBJECT", "");
+    const { req, user } = await signedInRequest("http://localhost/api/notifications/push/test", {
+      method: "POST",
+    });
+    const off = await POST(req);
+    expect(off.status).toBe(503);
+    expect((await off.json()).error).toMatch(/not configured/);
+
+    vi.stubEnv("VAPID_PUBLIC_KEY", "pub");
+    vi.stubEnv("VAPID_PRIVATE_KEY", "priv");
+    vi.stubEnv("VAPID_SUBJECT", "mailto:ops@example.com");
+    const next = () =>
+      signedInRequest("http://localhost/api/notifications/push/test", { user, method: "POST" });
+    const none = await POST((await next()).req);
+    expect(none.status).toBe(404);
+
+    await getTestRepos().pushSubscriptions.upsert(user.id, {
+      endpoint: "https://push.example/test",
+      p256dh: "p",
+      auth: "a",
+      userAgent: null,
+    });
+    const bodies: string[] = [];
+    setPushTransportForTesting(async (_sub, payload) => {
+      bodies.push(payload.title);
+      return "delivered";
+    });
+    const sent = await POST((await next()).req);
+    expect(sent.status).toBe(200);
+    expect(await sent.json()).toMatchObject({ ok: true, delivered: 1, removed: 0, failed: 0 });
+    expect(bodies).toEqual(["Sifty notifications are on"]);
+  });
+});
+
 describe("/api/notifications/unsubscribe", () => {
   beforeEach(() => vi.stubEnv("NEXT_PUBLIC_APP_URL", APP));
   afterEach(() => vi.unstubAllEnvs());
@@ -295,6 +345,39 @@ describe("/api/notifications/unsubscribe", () => {
       }),
     );
     expect(await post.json()).toEqual({ ok: true, unsubscribed: false });
+  });
+
+  it("one-click POST turns email off on a user who still had it on", async () => {
+    const { POST } = await import("@/app/api/notifications/unsubscribe/route");
+    const repos = getTestRepos();
+    const user = await repos.users.create({
+      email: "oneclick@example.com",
+      displayName: "O",
+      isCreator: false,
+    });
+    await repos.notificationPreferences.upsert(user.id, {
+      ...DEFAULT_PREFERENCES,
+      timezone: "Europe/Ljubljana",
+      morningPlanHour: 6,
+    });
+    const token = createUnsubscribeToken(user.id);
+    const post = await POST(
+      new Request(
+        `http://localhost/api/notifications/unsubscribe?token=${encodeURIComponent(token)}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          body: "List-Unsubscribe=One-Click",
+        },
+      ),
+    );
+    expect(await post.json()).toEqual({ ok: true, unsubscribed: true });
+    // Only the email channel moved; the rest of the row is intact.
+    expect(await repos.notificationPreferences.get(user.id)).toMatchObject({
+      emailEnabled: false,
+      morningPlanHour: 6,
+      timezone: "Europe/Ljubljana",
+    });
   });
 
   it("rejects bad tokens without touching anything", async () => {

@@ -232,7 +232,7 @@ export function NotificationsPanel({
 
   return (
     <div className="max-w-2xl" data-testid="notifications-panel">
-      {unsubscribed === "1" ? (
+      {unsubscribed === "1" && !prefs.emailEnabled ? (
         <Notice tone="ok">Digest emails are off. Account and security emails still arrive.</Notice>
       ) : null}
       {unsubscribed === "invalid" ? (
