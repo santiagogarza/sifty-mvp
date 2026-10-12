@@ -69,6 +69,7 @@ export const RecurrenceSchema = z
     weekdays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
     dayOfMonth: z.number().int().min(1).max(31).optional(),
     seriesValues: SeriesValuesSchema.optional(),
+    spawnedFrom: ClientId.optional(),
   })
   .strict();
 

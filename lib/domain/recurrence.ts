@@ -157,16 +157,21 @@ export function buildNextInstance(
         ? bucketFromScalars(urgency, importance)
         : parent.priorityBucket;
 
-  const { seriesValues: _dropped, ...cleanRule } = rule;
+  const { seriesValues: _dropped, spawnedFrom: _lineage, ...cleanRule } = rule;
   const patch: Partial<Task> = {
     title: pick("title"),
     description: pick("description"),
     nextAction: pick("nextAction"),
     lifecycle: opts.lifecycle,
-    // A sifted parent's copy is already organized. Anything else is owed a
-    // sift and says so (`pending`), so a failed or crashed enqueue is
-    // retried by the next completion attempt instead of leaving it idle.
-    aiStatus: parent.aiStatus === "ready" && !opts.needsSift ? "ready" : "pending",
+    // A sifted parent's copy is already organized; a deliberately unsifted
+    // (`idle`) parent's copy stays that way. Anything else — or a caller
+    // that says a sift is owed — is `pending`, so a failed or crashed
+    // enqueue is retried by the next completion attempt.
+    aiStatus: opts.needsSift
+      ? "pending"
+      : parent.aiStatus === "ready" || parent.aiStatus === "idle"
+        ? parent.aiStatus
+        : "pending",
     aiError: null,
     urgency,
     importance,
@@ -183,7 +188,7 @@ export function buildNextInstance(
       (st, order): Subtask => ({ id: makeId("st"), title: st.title, done: false, order }),
     ),
     plan: parent.plan,
-    recurrence: cleanRule,
+    recurrence: { ...cleanRule, spawnedFrom: parent.id },
     seriesId: parent.seriesId ?? parent.id,
   };
   return {

@@ -206,7 +206,7 @@ describe("buildNextInstance", () => {
       confidence: 0.9,
       clarifyingQuestion: null,
       plan: { executor: "self" },
-      recurrence: { freq: "weekly", mode: "fixed", weekdays: [5] },
+      recurrence: { freq: "weekly", mode: "fixed", weekdays: [5], spawnedFrom: "task_parent" },
       seriesId: "task_parent",
     });
     expect(patch.subtasks).toHaveLength(2);
@@ -269,7 +269,34 @@ describe("buildNextInstance", () => {
     // Bucket re-derived from the restored scalars, not copied from the instance.
     expect(patch.priorityBucket).toBe("do_now");
     expect(patch.subtasks!.map((st) => st.title)).toEqual(["Review calendar"]);
-    expect(patch.recurrence).toEqual({ freq: "weekly", mode: "fixed", weekdays: [5] });
+    expect(patch.recurrence).toEqual({
+      freq: "weekly",
+      mode: "fixed",
+      weekdays: [5],
+      spawnedFrom: "task_parent",
+    });
+  });
+
+  it("copies an idle parent as idle and a failed one as pending", () => {
+    const idle = buildNextInstance(task({ aiStatus: "idle" }), {
+      id: "x",
+      completedOn: "2026-10-16",
+      lifecycle: "active",
+    });
+    expect(idle.patch.aiStatus).toBe("idle");
+    const failed = buildNextInstance(task({ aiStatus: "failed", aiError: "cap" }), {
+      id: "x",
+      completedOn: "2026-10-16",
+      lifecycle: "active",
+    });
+    expect(failed.patch.aiStatus).toBe("pending");
+    expect(failed.patch.aiError).toBeNull();
+    // Lineage points at this parent, not at the grandparent it came from.
+    const grand = buildNextInstance(
+      task({ recurrence: { freq: "daily", mode: "fixed", spawnedFrom: "task_grand" } }),
+      { id: "x", completedOn: "2026-10-16", lifecycle: "active" },
+    );
+    expect(grand.patch.recurrence?.spawnedFrom).toBe("task_parent");
   });
 
   it("refuses a parent without a rule", () => {

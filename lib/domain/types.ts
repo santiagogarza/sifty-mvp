@@ -145,6 +145,8 @@ export interface Recurrence {
   dayOfMonth?: number;
   /** Series values this instance deviates from; the next instance restores them. */
   seriesValues?: SeriesValues;
+  /** Id of the instance whose completion spawned this one; absent on the origin. */
+  spawnedFrom?: ID;
 }
 
 export interface Label {

@@ -83,7 +83,7 @@ describe("spawnNextInstance", () => {
       rationale: "Recurring ritual.",
       confidence: 0.9,
       labelIds: [label.id],
-      recurrence: { freq: "weekly", mode: "fixed", weekdays: [5] },
+      recurrence: { freq: "weekly", mode: "fixed", weekdays: [5], spawnedFrom: parent.id },
       seriesId: parent.id,
       completedAt: null,
       sourceText: "weekly review every friday",
@@ -128,7 +128,6 @@ describe("spawnNextInstance", () => {
 
   it("un-complete then complete again spawns nothing while the successor is still open", async () => {
     const { repos, user, parent } = await seedRecurring();
-    await new Promise((r) => setTimeout(r, 5)); // the successor is created strictly later
     const first = await spawnNextInstance(repos, user.id, { parent, previousLifecycle: "active" });
 
     await repos.tasks.update(user.id, parent.id, { lifecycle: "active" });

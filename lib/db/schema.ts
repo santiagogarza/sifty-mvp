@@ -162,6 +162,7 @@ export const tasks = pgTable(
       weekdays?: number[];
       dayOfMonth?: number;
       seriesValues?: Record<string, unknown>;
+      spawnedFrom?: string;
     }>(),
     /** First instance's id for every task in a recurring series; null for a one-off. */
     seriesId: text("series_id"),

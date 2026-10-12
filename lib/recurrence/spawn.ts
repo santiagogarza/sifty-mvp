@@ -50,12 +50,13 @@ export async function spawnNextInstance(
   // it is a stub whose copy patch never landed; fall through and apply it.
   if (existing?.seriesId) return { task: existing, created: false };
   if (!existing) {
-    // Only a *successor* (created after this instance) stands in for a new
-    // one. An older open row — the previous instance un-completed by a
-    // mis-click — must not stop the series from moving forward.
+    // Only this instance's own successor (spawned from it, by lineage, not
+    // by timestamp) stands in for a new one. An older open row — the
+    // previous instance un-completed by a mis-click — must not stop the
+    // series from moving forward.
     const open = (
       await repos.tasks.listBySeries(userId, seriesId, { lifecycles: OPEN_LIFECYCLES })
-    ).find((t) => t.id !== parent.id && t.createdAt > parent.createdAt);
+    ).find((t) => t.id !== parent.id && t.recurrence?.spawnedFrom === parent.id);
     if (open) return { task: open, created: false };
   }
 

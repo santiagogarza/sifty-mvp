@@ -110,7 +110,7 @@ describe("recurring completion", () => {
     const successor = tasks.find((t) => t.id !== id && t.seriesId === id);
     expect(successor).toBeTruthy();
     expect(successor?.lifecycle).not.toBe("done");
-    expect(successor?.recurrence).toEqual({ freq: "daily", mode: "fixed" });
+    expect(successor?.recurrence).toEqual({ freq: "daily", mode: "fixed", spawnedFrom: id });
     expect(successor?.title).toBe("Water the plants");
     // Adopted, not pushed: no create for the successor left this client.
     expect(
