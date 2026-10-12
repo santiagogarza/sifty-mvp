@@ -49,6 +49,8 @@ const task: Task = {
   siftId: "sift_q",
   siftStage: null,
   plan: null,
+  recurrence: null,
+  seriesId: null,
   siftedWithAssumptions: false,
   labelIds: [],
   subtasks: [],

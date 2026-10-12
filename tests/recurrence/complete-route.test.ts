@@ -148,7 +148,7 @@ describe("completing a recurring task over the API", () => {
   it("a done recurring capture that still owes a sift hands it to the successor, not the finished row", async () => {
     const { setWorkflowClientForTesting } = await import("@/lib/workflows/dispatch");
     const start = vi.fn().mockResolvedValue({ runId: "wrun_successor" });
-    setWorkflowClientForTesting({ start, wait: vi.fn() });
+    setWorkflowClientForTesting({ start, wait: vi.fn(), resume: vi.fn() });
     vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
     vi.stubEnv("RATELIMIT_TRIAGE_PER_MIN", "100000");
     try {
@@ -197,7 +197,7 @@ describe("completing a recurring task over the API", () => {
   it("completing while a sift is in flight supersedes it on the parent and sifts the successor", async () => {
     const { setWorkflowClientForTesting } = await import("@/lib/workflows/dispatch");
     const start = vi.fn().mockResolvedValue({ runId: "wrun_handoff" });
-    setWorkflowClientForTesting({ start, wait: vi.fn() });
+    setWorkflowClientForTesting({ start, wait: vi.fn(), resume: vi.fn() });
     vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
     vi.stubEnv("RATELIMIT_TRIAGE_PER_MIN", "100000");
     try {

@@ -45,6 +45,7 @@ function task(overrides: Partial<Task> = {}): Task {
     },
     recurrence: { freq: "weekly", mode: "fixed", weekdays: [5] },
     seriesId: null,
+    siftedWithAssumptions: false,
     labelIds: ["label_a"],
     subtasks: [
       { id: "st_1", title: "Review calendar", done: true, order: 0 },
