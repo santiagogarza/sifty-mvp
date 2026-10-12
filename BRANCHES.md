@@ -15,6 +15,7 @@ purposes and must not be mixed. Read this before opening a PR or pushing.
 - The real Sifty: user accounts, billing, AI features, production quality.
 - All product work targets this branch. Open a PR into `production`.
 - Vercel's production branch setting points here; every merge deploys.
+- CI runs on PRs into `production`.
 - May diverge freely from `master`. It is expected to grow features
   `master` never gets.
 
