@@ -140,6 +140,51 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect((await repos.entitlements.get(other.id))?.stripeCustomerId).toBe("cus_via_update");
     });
 
+    it("entitlements: dunning columns round-trip and expired grace periods are listed oldest first", async () => {
+      const repos = getRepos();
+      const now = new Date("2026-10-12T12:00:00.000Z");
+      const older = await createUser(repos, "grace-older@example.com");
+      const newer = await createUser(repos, "grace-newer@example.com");
+      const open = await createUser(repos, "grace-open@example.com");
+      const base = {
+        ...(await repos.entitlements.startTrialIfMissing(older.id, 30)),
+        tier: "pro" as const,
+        subscriptionActive: false,
+        stripeSubscriptionId: "sub_g",
+        stripeStatus: "past_due",
+      };
+      await repos.entitlements.upsert(older.id, {
+        ...base,
+        graceEndsAt: new Date(now.getTime() - 2 * 86_400_000).toISOString(),
+        stripeSyncedAt: new Date(now.getTime() - 9 * 86_400_000).toISOString(),
+      });
+      await repos.entitlements.upsert(newer.id, {
+        ...base,
+        graceEndsAt: new Date(now.getTime() - 86_400_000).toISOString(),
+        stripeSyncedAt: null,
+      });
+      await repos.entitlements.upsert(open.id, {
+        ...base,
+        graceEndsAt: new Date(now.getTime() + 86_400_000).toISOString(),
+        stripeSyncedAt: now.toISOString(),
+      });
+
+      const read = await repos.entitlements.get(older.id);
+      expect(read?.graceEndsAt).toBe(new Date(now.getTime() - 2 * 86_400_000).toISOString());
+      expect(read?.stripeSyncedAt).toBe(new Date(now.getTime() - 9 * 86_400_000).toISOString());
+      expect((await repos.entitlements.get(newer.id))?.stripeSyncedAt).toBeNull();
+
+      expect(await repos.entitlements.listExpiredGracePeriods(now, 10)).toEqual([
+        older.id,
+        newer.id,
+      ]);
+      expect(await repos.entitlements.listExpiredGracePeriods(now, 1)).toEqual([older.id]);
+
+      await repos.entitlements.update(older.id, (current) => ({ ...current!, graceEndsAt: null }));
+      expect(await repos.entitlements.listExpiredGracePeriods(now, 10)).toEqual([newer.id]);
+      expect((await repos.entitlements.get(older.id))?.graceEndsAt).toBeNull();
+    });
+
     it("tasks: create with client id, patch, subtasks, delete", async () => {
       const repos = getRepos();
       const u = await createUser(repos, "tasks@example.com");

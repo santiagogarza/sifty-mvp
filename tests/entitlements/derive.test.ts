@@ -108,6 +108,7 @@ describe("resolveTier — precedence creator > comped > pro > trialing > free", 
     compedAt: iso(-DAY),
     compedUntil: null,
     trialEndsAt: iso(DAY),
+    graceEndsAt: null,
   };
 
   it("creator wins over all other facts", () => {
@@ -128,6 +129,13 @@ describe("resolveTier — precedence creator > comped > pro > trialing > free", 
     ).toBe("trialing");
   });
 
+  it("an open grace period keeps pro after Stripe stopped billing", () => {
+    const facts = { ...everything, isCreator: false, compedAt: null, subscriptionActive: false };
+    expect(resolveTier({ ...facts, graceEndsAt: iso(DAY) })).toBe("pro");
+    expect(resolveTier({ ...facts, graceEndsAt: iso(-DAY) })).toBe("trialing");
+    expect(resolveTier({ ...facts, trialEndsAt: null, graceEndsAt: iso(-DAY) })).toBe("free");
+  });
+
   it("an expired comp does not shadow a paying subscription", () => {
     expect(
       resolveTier({
@@ -136,6 +144,7 @@ describe("resolveTier — precedence creator > comped > pro > trialing > free", 
         compedAt: iso(-2 * DAY),
         compedUntil: iso(-DAY),
         trialEndsAt: null,
+        graceEndsAt: null,
       }),
     ).toBe("pro");
   });

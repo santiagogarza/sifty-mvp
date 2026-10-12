@@ -59,6 +59,16 @@ export interface EntitlementSnapshot {
   stripeSubscriptionId: string | null;
   stripeStatus: string | null;
   currentPeriodEnd: string | null;
+  /**
+   * Pro is kept until this moment after a failed payment (`subscriptionActive`
+   * is already false). Null when no grace period is running.
+   */
+  graceEndsAt: string | null;
+  /**
+   * `created` of the newest Stripe event applied to the tracked subscription;
+   * older events for that subscription are ignored (out-of-order delivery).
+   */
+  stripeSyncedAt: string | null;
 }
 
 export interface TaskCreateInput {
@@ -132,6 +142,8 @@ export interface EntitlementRepo {
     mutate: (current: EntitlementSnapshot | null) => EntitlementSnapshot,
   ): Promise<EntitlementSnapshot>;
   startTrialIfMissing(userId: string, days: number): Promise<EntitlementSnapshot>;
+  /** Users whose dunning grace period ended at or before `now`, oldest first. */
+  listExpiredGracePeriods(now: Date, limit: number): Promise<string[]>;
 }
 
 /** Thrown when a client-supplied entity id already belongs to another tenant. */

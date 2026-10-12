@@ -1,5 +1,7 @@
 import { AppFrame } from "@/components/app-shell/app-frame";
+import { PaymentFailedBanner } from "@/components/billing/payment-failed-banner";
 import { getSession } from "@/lib/auth/session";
+import { paymentProblem } from "@/lib/entitlements/entitlements";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -19,5 +21,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     const path = (await headers()).get("x-sifty-path");
     redirect(path ? `/sign-in?next=${encodeURIComponent(path)}` : "/sign-in");
   }
-  return <AppFrame>{children}</AppFrame>;
+  const problem = paymentProblem(session.entitlement, session.user.isCreator);
+  return (
+    <AppFrame notice={problem ? <PaymentFailedBanner problem={problem} /> : null}>
+      {children}
+    </AppFrame>
+  );
 }

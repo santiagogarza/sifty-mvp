@@ -13,9 +13,16 @@ import type { Entitlement, FeatureCaps, Tier, UserProfile } from "@/lib/domain/t
  * Precedence when several facts apply: `creator > comped > pro > trialing > free`.
  * A comped user who also pays stays comped until the comp ends, then falls
  * to `pro`; a paying user whose trial window is still open is `pro`, etc.
+ *
+ * `pro` has two sources: Stripe is billing (`subscriptionActive`) or a
+ * payment just failed and the dunning grace period (`graceEndsAt`) is still
+ * open. Grace is time-based like trial and comp, so readers downgrade on
+ * time even if the cron that persists the drop runs late.
  */
 
 export const TRIAL_DAYS = 30;
+/** Days of Pro kept after a failed payment before dropping to free. */
+export const GRACE_PERIOD_DAYS = 7;
 
 export const FREE_SIFTS_PER_DAY = 5;
 /** Pro is "unlimited" in the product; this is the abuse ceiling, not a feature. */
@@ -61,6 +68,7 @@ export interface TierFacts {
   compedAt: string | null;
   compedUntil: string | null;
   trialEndsAt: string | null;
+  graceEndsAt: string | null;
 }
 
 export function isCompActive(
@@ -76,12 +84,53 @@ export function isTrialActive(trialEndsAt: string | null, now: Date = new Date()
   return !!trialEndsAt && now.getTime() < Date.parse(trialEndsAt);
 }
 
+export function isGraceActive(graceEndsAt: string | null, now: Date = new Date()): boolean {
+  return !!graceEndsAt && now.getTime() < Date.parse(graceEndsAt);
+}
+
 export function resolveTier(facts: TierFacts, now: Date = new Date()): Tier {
   if (facts.isCreator) return "creator";
   if (isCompActive(facts, now)) return "comped";
-  if (facts.subscriptionActive) return "pro";
+  if (facts.subscriptionActive || isGraceActive(facts.graceEndsAt, now)) return "pro";
   if (isTrialActive(facts.trialEndsAt, now)) return "trialing";
   return "free";
+}
+
+/** Stripe statuses that mean a payment is owed and Pro is at risk. */
+const DUNNING_STATUSES = new Set(["past_due", "unpaid"]);
+
+export type PaymentProblem =
+  /**
+   * Payment failed; Pro is kept until `graceEndsAt` — the dunning window,
+   * or the end of a still-open app trial when that outlives the window.
+   */
+  | { kind: "grace"; graceEndsAt: string }
+  /** The grace period ran out (or Stripe gave up); Pro is off until payment recovers. */
+  | { kind: "lapsed" };
+
+/**
+ * What the failed-payment banner should say, or null when billing is fine.
+ * Comped and creator accounts are never nagged: their access does not
+ * depend on the card, and the Stripe facts stay recorded for the portal.
+ */
+export function paymentProblem(
+  snapshot: EntitlementSnapshot | null,
+  isCreator: boolean,
+  now: Date = new Date(),
+): PaymentProblem | null {
+  if (!snapshot || isCreator) return null;
+  if (isCompActive(snapshot, now)) return null;
+  if (snapshot.subscriptionActive) return null;
+  if (isGraceActive(snapshot.graceEndsAt, now)) {
+    return { kind: "grace", graceEndsAt: snapshot.graceEndsAt as string };
+  }
+  if (!snapshot.stripeStatus || !DUNNING_STATUSES.has(snapshot.stripeStatus)) return null;
+  // Grace is over but an open app trial still resolves to Pro caps, so Pro
+  // is not paused yet: name the trial end as the deadline instead.
+  if (isTrialActive(snapshot.trialEndsAt, now)) {
+    return { kind: "grace", graceEndsAt: snapshot.trialEndsAt as string };
+  }
+  return { kind: "lapsed" };
 }
 
 /** A snapshot with no facts at all: a `free` account that never had a trial. */
@@ -97,6 +146,8 @@ export function emptySnapshot(): EntitlementSnapshot {
     stripeSubscriptionId: null,
     stripeStatus: null,
     currentPeriodEnd: null,
+    graceEndsAt: null,
+    stripeSyncedAt: null,
   };
 }
 
@@ -149,6 +200,7 @@ export function deriveEntitlement(inputs: EntitlementInputs): Entitlement {
       compedAt: snap?.compedAt ?? null,
       compedUntil: snap?.compedUntil ?? null,
       trialEndsAt: snap?.trialEndsAt ?? null,
+      graceEndsAt: snap?.graceEndsAt ?? null,
     },
     now,
   );
@@ -214,12 +266,25 @@ export function tierLabel(tier: Tier): string {
   }
 }
 
+/**
+ * Calendar day for billing deadlines (trial end, comp end, grace end).
+ * Pinned to UTC so the server render, the client hydration, and the email
+ * (`formatEmailDate`, also UTC) all name the same day regardless of where
+ * the server or the browser sits.
+ */
+export function formatBillingDay(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 /** One-line description for account surfaces. */
 export function tierSummary(
   ent: Pick<Entitlement, "tier" | "trialEndsAt" | "compedUntil">,
 ): string {
-  const fmt = (iso: string) =>
-    new Date(iso).toLocaleDateString(undefined, { month: "long", day: "numeric" });
+  const fmt = (iso: string) => formatBillingDay(iso);
   switch (ent.tier) {
     case "creator":
       return "Creator — unlimited";
