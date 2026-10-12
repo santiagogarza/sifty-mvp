@@ -30,6 +30,9 @@ function seed(patch: Partial<Task> & { id: string }): Task {
     clarifyingQuestion: "Which week?",
     rationale: "Recurring ritual.",
     agentBrief: "## Brief",
+    siftId: null,
+    siftStage: null,
+    plan: null,
     labelIds: ["label_a", "label_b"],
     subtasks: [
       { id: "st_1", title: "Review calendar", done: true, order: 0 },

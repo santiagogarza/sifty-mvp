@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
-import { runTriage } from "@/lib/ai/run-triage";
+import { watchSift } from "@/lib/ai/run-triage";
 import { TASK_LIMITS } from "@/lib/domain/limits";
 import { useStore } from "@/lib/store/store";
 import { ArrowUpRight, Sparkles } from "lucide-react";
@@ -75,7 +75,8 @@ export function CaptureDialog({
     // Open the sheet on the next frame so this dialog's close (and its
     // focus restore) doesn't fight the sheet's focus trap.
     requestAnimationFrame(() => openDetail(task.id));
-    queueMicrotask(() => runTriage(task.id));
+    // The create push enqueues the sift server-side; the browser only watches.
+    queueMicrotask(() => watchSift(task.id));
   };
 
   return (

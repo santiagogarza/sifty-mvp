@@ -298,7 +298,7 @@ function BoardCardContent({
           {taskLabels.length > 2 ? (
             <span className="text-[11px] text-[var(--fg-subtle)]">+{taskLabels.length - 2}</span>
           ) : null}
-          <AiStatusInline status={task.aiStatus} />
+          <AiStatusInline status={task.aiStatus} stage={task.siftStage} />
           <ConfidencePill task={task} compact />
         </div>
       ) : null}

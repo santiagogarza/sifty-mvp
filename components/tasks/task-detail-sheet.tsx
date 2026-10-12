@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/components/ui/sheet";
-import { isTriageInFlight, runTriage } from "@/lib/ai/run-triage";
+import { isTriageInFlight, resiftTask } from "@/lib/ai/run-triage";
 import {
   assigneeDisplayValue,
   delegationLabel,
@@ -190,14 +190,14 @@ function DetailBody({
       <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-elevated)]/95 backdrop-blur px-4 sm:px-5 py-3">
         <div className="flex items-center gap-2 text-[12px] text-[var(--fg-subtle)]">
           {organizing && task.priorityBucket === "unset" ? (
-            <AiThinking />
+            <AiThinking stage={task.siftStage} />
           ) : (
             <>
               <PriorityGlyph bucket={task.priorityBucket} size={11} />
               <span>{bucketLabel(task.priorityBucket)}</span>
               {organizing ? (
                 <span className="ml-2">
-                  <AiThinking />
+                  <AiThinking stage={task.siftStage} />
                 </span>
               ) : (
                 <ConfidencePill task={task} className="ml-1" />
@@ -209,7 +209,7 @@ function DetailBody({
           <Button
             variant="ghost"
             size="iconSm"
-            onClick={() => runTriage(task.id)}
+            onClick={() => resiftTask(task.id)}
             aria-label="Reorganize with Sifty"
             title="Reorganize with Sifty"
           >
@@ -502,7 +502,7 @@ function OrganizeFailed({ task }: { task: Task }) {
           <ArrowRight size={12} />
         </Link>
       ) : (
-        <Button variant="ghost" size="sm" onClick={() => runTriage(task.id)}>
+        <Button variant="ghost" size="sm" onClick={() => resiftTask(task.id)}>
           <RotateCw size={12} />
           Retry
         </Button>
@@ -660,7 +660,8 @@ function AgentBriefSection({ task }: { task: Task }) {
         <Button variant="ghost" size="sm" onClick={generate} disabled={generating}>
           {generating ? (
             <>
-              <AiThinking /> Preparing…
+              <span className="size-[6px] rounded-full bg-[var(--ai)] animate-pulse-soft" />
+              Preparing…
             </>
           ) : task.agentBrief ? (
             <>
@@ -744,7 +745,7 @@ function ClarifyingQuestion({ task }: { task: Task }) {
                   },
                   { editedFields: [] },
                 );
-                runTriage(task.id);
+                resiftTask(task.id);
                 setAnswer("");
               }}
             >

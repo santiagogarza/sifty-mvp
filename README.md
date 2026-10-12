@@ -84,11 +84,11 @@ app/
     auth/[...all]/route.ts     # Better Auth (sign-in/up, verify, reset,
                                # magic link, Google callback, sessions)
     auth/me/route.ts           # who am I (sync layer)
-    tasks/route.ts             # GET (list), POST (create, client ids ok)
-    tasks/[id]/route.ts        # GET, PATCH, DELETE
+    tasks/route.ts             # GET (list), POST (create → enqueues siftTask)
+    tasks/[id]/route.ts        # GET (task + labels; the sift poller), PATCH, DELETE
     labels/route.ts            # GET, PUT (idempotent ensure-by-name)
     memories/...               # GET, POST, PATCH, DELETE
-    triage/route.ts            # AI triage: gate → model → durable apply
+    triage/route.ts            # "Re-sift now": gate → enqueue siftTask → 202
     agent-brief/route.ts       # "Prepare for agent" handoff brief
     admin/workflow-ping/route.ts # creator-only Workflow runtime smoke test
   (app)/admin/costs/page.tsx   # creator-only AI spend over ai_runs
@@ -153,10 +153,91 @@ the durable source of truth across devices.
   wins, clean rows follow the server, tombstones are honored, and an
   account switch on a shared browser resets the local cache instead of
   leaking the previous user's workspace.
-- Triage results are applied server-side by the triage route itself
-  (respecting `editedFields`), so an enrichment survives even if the tab
-  closes mid-run. Tasks left `pending`/`running` by an interrupted session
-  auto-resume (bounded) on the next load.
+- Sifting runs server-side in the `siftTask` workflow (see "Background
+  jobs"): `POST /api/tasks` enqueues it, every stage writes the task with
+  `editedFields` protection, and the browser only polls `GET /api/tasks/:id`
+  to show "Enriching → Prioritizing → Triaging → Breaking down → Planning".
+  Closing the tab changes nothing. Tasks still `pending`/`running` after a
+  pull are watched again (bounded) on the next load.
+
+## Background jobs (Vercel Workflow)
+
+Durable, multi-step work runs on [Vercel Workflow](https://vercel.com/docs/workflows)
+(`workflow` v5, on Vercel Queues). Workflow and step functions live in
+`lib/workflows/`; routes enqueue through `startWorkflow()` in
+`lib/workflows/dispatch.ts`, the single seam tests swap out.
+
+How it is wired:
+
+- `next.config.ts` is wrapped with `withWorkflow()`, which compiles the
+  `"use workflow"` / `"use step"` directives and generates the queue-triggered
+  flow route under `app/.well-known/workflow/` at build time (gitignored).
+- **On Vercel** the managed "Vercel World" is selected from
+  `VERCEL_DEPLOYMENT_ID`: storage, queues, and OIDC auth are provisioned by
+  the platform, runs are pinned to the deployment that started them, and
+  every run shows up under the project's **Workflows** tab. Two project
+  settings must stay on: *Enable access to System Environment Variables*
+  and Fluid Compute (both default on for new projects). Workflow is
+  available on the Hobby plan with an included monthly allotment of events.
+- **Locally** (`pnpm dev`, `pnpm start`, Playwright) the bundled Local World
+  runs inside the Next.js process and stores runs as JSON under
+  `.next/workflow-data/`. No extra service, no env var. `pnpm dev` uses
+  webpack: Turbopack on Next 15.1 cannot bundle the Workflow runtime
+  (`assert/strict` resolution in `@vercel/queue`), and `pnpm dev:turbo`
+  stays available for UI-only work that never enqueues.
+- `SIFTY_AI_OFFLINE=1` keeps every step deterministic (same heuristic as the
+  synchronous triage), so the full pipeline runs in CI and demos without a
+  provider key.
+
+Operating it:
+
+```bash
+pnpm workflow:web               # local dashboard: runs, steps, inputs/outputs
+pnpm workflow:runs              # list local runs in the terminal
+npx workflow inspect runs --backend vercel --project sifty-app --team santiagogarzas-projects
+```
+
+Smoke test a deployment as the creator: `POST /api/admin/workflow-ping`
+(button at `/admin/costs`) starts a one-step workflow and waits for it.
+`completed` means the queue trigger, flow route, and storage all work.
+
+Concurrency: Workflow has no built-in per-user concurrency key, so
+`lib/workflows/user-lock.ts` turns hook tokens into slots: a run claims one
+of N `scope:userId:slot` tokens before its first step and holds it until the
+run ends; when all slots are busy it suspends on the owners' results.
+
+Cost accounting: every step writes an `ai_runs` row with `stage`,
+`prompt_version`, `sift_id`, and `workflow_run_id`. Caps count sifts, not
+steps (`sift_id IS NULL OR stage = 'sift'`). The creator-only `/admin/costs`
+page rolls the table up by day, stage, model, and account.
+
+### The `siftTask` pipeline
+
+`lib/workflows/sift-task.ts` runs five steps on every new capture (and on
+"re-sift now"), each backed by `lib/ai/sift/`:
+
+| Stage | Model class | Writes | Prompt version |
+| --- | --- | --- | --- |
+| `enrich` | fast | title, description, next action, due hint, labels | `enrich.v1` |
+| `prioritize` | fast | urgency, importance, effort, rationale — **list-aware**: the prompt sees the user's other open tasks | `prioritize.v1` |
+| `triage` | fast | routing (inbox task → `waiting` / `someday` only), delegation candidate, confidence, clarifying question | `triage.v2` |
+| `subtasks` | fast | up to five subtasks when the work has distinct steps | `subtasks.v1` |
+| `plan` | deep | `task.plan`: executor (`ai_agent` / `cursor_agent` / `person` / `self` / `none`), approach, connectors, readiness, blockers | `plan.v1` |
+
+Rules that hold at every step:
+
+- The step re-reads the task; if `task.siftId` changed (a re-sift) or the
+  task is gone, the run stops. A re-sift never races an older run.
+- `editedFields` are never overwritten; the patch is narrow, so a user edit
+  that lands between steps survives.
+- One `sift` accounting row is written when the sift is accepted (before
+  `start()`), so the tier cap sees it immediately; a sift that fails to
+  start or dies flips that row to `failed` and is not billed.
+- Transient model errors retry (Workflow default, 3 retries); a missing
+  key or a bad `AI_TRANSPORT` is fatal and surfaces as `aiStatus: failed`
+  with a retryable message.
+- With `SIFTY_AI_OFFLINE=1` (or `?offline=1` off production) every stage
+  uses the deterministic heuristic through the same steps.
 
 ## Background jobs (Vercel Workflow)
 

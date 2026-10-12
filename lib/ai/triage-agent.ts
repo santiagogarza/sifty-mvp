@@ -215,7 +215,7 @@ function detectDate(text: string, now: Date): { iso: string | null; daysFromNow:
   return { iso: null, daysFromNow: null };
 }
 
-function heuristicTriage(input: TriageInput): TriageOutput {
+export function heuristicTriage(input: TriageInput): TriageOutput {
   const text = `${input.sourceText}\n${input.sourceContext ?? ""}`.trim();
   const preferences = input.preferences ?? [];
   const now = new Date();

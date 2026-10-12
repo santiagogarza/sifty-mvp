@@ -253,6 +253,27 @@ describe("sendDueDigests", () => {
     expect(next).toMatchObject({ users: 4, sent: 4, truncated: false });
   });
 
+  it("on a daily cron a truncated run means that day is missed, not backfilled", async () => {
+    const user = await seedUser("daily@example.com");
+    setErrorSink(() => undefined);
+    const cut = await sendDueDigests(getTestRepos(), {
+      now: SEVEN_LJU,
+      appUrl: APP,
+      timeBudgetMs: -1,
+    });
+    expect(cut).toMatchObject({ sent: 0, truncated: true });
+
+    // The next daily tick is 24 h later: outside the 12th's late window,
+    // so only the 13th goes out and the 12th is never claimed.
+    const nextDay = await sendDueDigests(getTestRepos(), {
+      now: new Date(SEVEN_LJU.getTime() + 24 * 60 * 60 * 1000),
+      appUrl: APP,
+    });
+    expect(nextDay).toMatchObject({ sent: 1, truncated: false });
+    const ledger = await getTestRepos().notificationSends.listForUser(user.id);
+    expect(ledger.map((l) => l.periodKey)).toEqual(["2026-10-13"]);
+  });
+
   it("walks users in pages", async () => {
     for (let i = 0; i < 7; i += 1) await seedUser(`u${i}@example.com`);
     const result = await sendDueDigests(getTestRepos(), {

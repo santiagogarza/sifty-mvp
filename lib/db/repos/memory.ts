@@ -226,10 +226,13 @@ export function createMemoryRepos(): MemoryReposHandle {
   };
 
   const tasks: TaskRepo = {
-    async list(userId) {
+    async list(userId, opts = {}) {
       return Array.from(state.tasks.values())
-        .filter((t) => t.userId === userId)
+        .filter(
+          (t) => t.userId === userId && (!opts.lifecycles || opts.lifecycles.includes(t.lifecycle)),
+        )
         .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+        .slice(0, opts.limit)
         .map(stripUserId);
     },
     async get(userId, taskId) {
@@ -270,6 +273,9 @@ export function createMemoryRepos(): MemoryReposHandle {
         clarifyingQuestion: null,
         rationale: null,
         agentBrief: null,
+        siftId: null,
+        siftStage: null,
+        plan: null,
         labelIds: [],
         subtasks: [],
         editedFields: [],
@@ -283,6 +289,7 @@ export function createMemoryRepos(): MemoryReposHandle {
     async update(userId, taskId, patch, opts) {
       const existing = state.tasks.get(taskId);
       if (!existing || existing.userId !== userId) return null;
+      if (opts && "ifSiftId" in opts && existing.siftId !== (opts.ifSiftId ?? null)) return null;
       const editedFields = opts?.editedFields
         ? Array.from(new Set([...existing.editedFields, ...opts.editedFields]))
         : existing.editedFields;
@@ -361,9 +368,21 @@ export function createMemoryRepos(): MemoryReposHandle {
   };
 
   const labels: LabelRepo = {
-    async list(userId) {
+    async list(userId, opts = {}) {
       return Array.from(state.labels.values())
         .filter((l) => l.userId === userId)
+        .slice(0, opts.limit)
+        .map(stripUserId);
+    },
+    async listByIds(userId, ids) {
+      return Array.from(state.labels.values())
+        .filter((l) => l.userId === userId && ids.includes(l.id))
+        .map(stripUserId);
+    },
+    async findByNames(userId, names) {
+      const wanted = new Set(names.map((n) => n.toLowerCase()));
+      return Array.from(state.labels.values())
+        .filter((l) => l.userId === userId && wanted.has(l.name.toLowerCase()))
         .map(stripUserId);
     },
     async ensure(userId, input) {
@@ -386,10 +405,13 @@ export function createMemoryRepos(): MemoryReposHandle {
   };
 
   const memories: MemoryRepo = {
-    async list(userId) {
+    async list(userId, opts = {}) {
       return Array.from(state.memories.values())
-        .filter((m) => m.userId === userId)
+        .filter(
+          (m) => m.userId === userId && (opts.pinned === undefined || m.pinned === opts.pinned),
+        )
         .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+        .slice(0, opts.limit)
         .map(({ userId: _u, ...rest }) => rest);
     },
     async create(userId, input: MemoryCreateInput) {

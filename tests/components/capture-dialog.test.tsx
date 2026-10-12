@@ -15,7 +15,7 @@ const openDetail = vi.fn();
 vi.mock("@/components/app-shell/app-frame", () => ({
   useFrame: () => ({ openDetail, openCapture: vi.fn(), openCommand: vi.fn() }),
 }));
-vi.mock("@/lib/ai/run-triage", () => ({ runTriage: vi.fn() }));
+vi.mock("@/lib/ai/run-triage", () => ({ watchSift: vi.fn() }));
 
 const PLACEHOLDER = "What do you need to do?";
 
@@ -105,6 +105,9 @@ describe("CaptureDialog draft", () => {
 
     expect(useStore.getState().tasks).toHaveLength(1);
     expect(useStore.getState().tasks[0]?.sourceText).toBe("Renew passport");
+    // The server sifts on create; the dialog only starts the watcher.
+    const { watchSift } = await import("@/lib/ai/run-triage");
+    await waitFor(() => expect(watchSift).toHaveBeenCalledWith(useStore.getState().tasks[0]!.id));
 
     reopen();
     expect(screen.getByPlaceholderText(PLACEHOLDER)).toHaveValue("");

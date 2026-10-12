@@ -70,6 +70,8 @@ export function NotificationsPanel({
   const [pushBusy, setPushBusy] = React.useState(false);
   const [pushMessage, setPushMessage] = React.useState<string | null>(null);
   const [thisDeviceSubscribed, setThisDeviceSubscribed] = React.useState(false);
+  /** What the server holds; a rejected autosave rolls the controls back to it. */
+  const lastSaved = React.useRef<NotificationPreferencesInput | null>(null);
   const detectedZone = React.useMemo(() => {
     try {
       return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -87,6 +89,7 @@ export function NotificationsPanel({
     setData(json);
     const { saved: wasSaved, updatedAt: _u, ...rest } = json.preferences;
     setSaved(wasSaved);
+    lastSaved.current = wasSaved ? rest : null;
     // A fresh account gets the browser's zone pre-filled, not UTC.
     setPrefs(wasSaved ? rest : { ...rest, timezone: detectedZone });
   }, [detectedZone]);
@@ -111,8 +114,12 @@ export function NotificationsPanel({
       const body = (await res.json().catch(() => ({}))) as { error?: string };
       setSaveState("error");
       setError(body.error ?? "Couldn't save.");
+      // The server kept the last good row; show that instead of the
+      // rejected edit so the controls never disagree with what is stored.
+      if (lastSaved.current) setPrefs(lastSaved.current);
       return false;
     }
+    lastSaved.current = next;
     setSaved(true);
     setSaveState("saved");
     return true;

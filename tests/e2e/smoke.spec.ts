@@ -52,16 +52,71 @@ test("public pages render for anyone", async ({ page, request }) => {
   }
 });
 
-test("offline triage round-trips through the API", async ({ request }) => {
-  const res = await request.post("/api/triage?offline=1", {
-    data: {
-      sourceText: "Draft email to investor by tomorrow",
-    },
+test("a capture is sifted server-side by the Workflow runtime (offline stages)", async ({
+  request,
+}) => {
+  // Creating a task enqueues `siftTask`; with SIFTY_AI_OFFLINE=1 every stage
+  // answers deterministically, so this exercises the real Workflow runtime
+  // (Local World inside the dev server) end to end.
+  const created = await request.post("/api/tasks?offline=1", {
+    data: { sourceText: "Draft the investor update by Friday and send it to the board" },
   });
-  expect(res.status()).toBe(200);
-  const json = await res.json();
-  expect(json.meta.offline).toBe(true);
-  expect(json.output.title).toBeTruthy();
+  expect(created.status()).toBe(201);
+  const { task, sift } = (await created.json()) as {
+    task: { id: string; aiStatus: string; siftId: string | null };
+    sift: { enqueued: boolean; runId?: string };
+  };
+  expect(sift.enqueued).toBe(true);
+  expect(sift.runId).toMatch(/^wrun_/);
+  expect(task.aiStatus).toBe("pending");
+  expect(task.siftId).toBeTruthy();
+
+  let final: Record<string, unknown> | null = null;
+  await expect
+    .poll(
+      async () => {
+        const res = await request.get(`/api/tasks/${task.id}`);
+        if (!res.ok()) return "fetch-failed";
+        const body = (await res.json()) as { task: Record<string, unknown> };
+        final = body.task;
+        return body.task.aiStatus;
+      },
+      { timeout: 30_000, intervals: [300, 500, 1000] },
+    )
+    .toBe("ready");
+
+  const done = final as unknown as {
+    siftStage: string | null;
+    due: string | null;
+    plan: { executor: string } | null;
+    labelIds: string[];
+    priorityBucket: string;
+    rationale: string | null;
+    aiAttempts: number;
+  };
+  expect(done.siftStage).toBeNull();
+  expect(done.due).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(done.plan?.executor).toBe("ai_agent");
+  expect(done.labelIds.length).toBeGreaterThan(0);
+  expect(done.priorityBucket).not.toBe("unset");
+  expect(done.rationale).toContain("Heuristic triage");
+  expect(done.aiAttempts).toBe(1);
+
+  // "Re-sift now" takes the task over and runs the pipeline again.
+  const resift = await request.post("/api/triage?offline=1", { data: { taskId: task.id } });
+  expect(resift.status()).toBe(202);
+  const again = (await resift.json()) as { siftId: string; task: { aiStatus: string } };
+  expect(again.siftId).not.toBe(task.siftId);
+  expect(again.task.aiStatus).toBe("pending");
+  await expect
+    .poll(
+      async () => {
+        const res = await request.get(`/api/tasks/${task.id}`);
+        return res.ok() ? ((await res.json()).task.aiAttempts as number) : -1;
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(2);
 });
 
 test("captured task syncs to the server and survives cleared local state", async ({ page }) => {
