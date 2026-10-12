@@ -79,7 +79,7 @@ export function AuthForm({ mode, next, googleEnabled }: AuthFormProps) {
       const { error } = await authClient.signIn.social({
         provider: "google",
         callbackURL,
-        errorCallbackURL: "/sign-in",
+        errorCallbackURL: `/sign-in?next=${encodeURIComponent(callbackURL)}`,
       });
       if (error) {
         setError(authErrorMessage(error));
@@ -93,7 +93,7 @@ export function AuthForm({ mode, next, googleEnabled }: AuthFormProps) {
   }
 
   if (sent) {
-    return <CheckInbox sent={sent} onBack={() => setSent(null)} />;
+    return <CheckInbox sent={sent} callbackURL={callbackURL} onBack={() => setSent(null)} />;
   }
 
   return (
@@ -199,7 +199,11 @@ export function AuthForm({ mode, next, googleEnabled }: AuthFormProps) {
   );
 }
 
-function CheckInbox({ sent, onBack }: { sent: NonNullable<Sent>; onBack: () => void }) {
+function CheckInbox({
+  sent,
+  callbackURL,
+  onBack,
+}: { sent: NonNullable<Sent>; callbackURL: string; onBack: () => void }) {
   const [resent, setResent] = React.useState(false);
   const [resendError, setResendError] = React.useState<string | null>(null);
   async function resend() {
@@ -207,8 +211,8 @@ function CheckInbox({ sent, onBack }: { sent: NonNullable<Sent>; onBack: () => v
     try {
       const { error } =
         sent.kind === "verify"
-          ? await authClient.sendVerificationEmail({ email: sent.email, callbackURL: "/today" })
-          : await authClient.signIn.magicLink({ email: sent.email, callbackURL: "/today" });
+          ? await authClient.sendVerificationEmail({ email: sent.email, callbackURL })
+          : await authClient.signIn.magicLink({ email: sent.email, callbackURL });
       if (error) return setResendError(authErrorMessage(error));
       setResent(true);
     } catch (err) {

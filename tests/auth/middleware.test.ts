@@ -37,6 +37,14 @@ describe("middleware", () => {
     expect(res.headers.get("x-middleware-request-x-sifty-path")).toBe("/today");
   });
 
+  it("forwards the query string so a stale session can return to /redeem?code=…", async () => {
+    const req = new NextRequest("http://localhost/redeem?code=sifty-abc", {
+      headers: { cookie: "sifty.session_token=tok.sig" },
+    });
+    const res = await middleware(req);
+    expect(res.headers.get("x-middleware-request-x-sifty-path")).toBe("/redeem?code=sifty-abc");
+  });
+
   it("accepts the __Secure- prefixed cookie used on https", async () => {
     const req = new NextRequest("https://sifty.example/today", {
       headers: { cookie: "__Secure-sifty.session_token=tok.sig" },
