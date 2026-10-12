@@ -188,11 +188,13 @@ describe("DELETE /api/account", () => {
     const a = await createUserWithCookie(repos, { email: "gone@example.com" });
     const b = await createUserWithCookie(repos, { email: "stays@example.com" });
     await seedWorkspace(repos, a.user.id, "gone");
+    await repos.users.setStripeCustomerId(a.user.id, "cus_gone");
     const theirs = await seedWorkspace(repos, b.user.id, "stays");
 
     const res = await deleteFor(a.cookie, { confirmEmail: "GONE@example.com" });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, stripeCustomer: "none" });
+    // No Stripe keys in tests, so the linked customer is a logged no-op.
+    expect(await res.json()).toEqual({ ok: true, stripeCustomer: "skipped" });
     expect(res.headers.get("set-cookie")).toMatch(/sifty\.session_token=;.*Max-Age=0/);
 
     expect(await repos.users.getById(a.user.id)).toBeNull();
@@ -202,6 +204,8 @@ describe("DELETE /api/account", () => {
     expect(await repos.labels.list(a.user.id)).toEqual([]);
     expect(await repos.memories.list(a.user.id)).toEqual([]);
     expect(await repos.aiRuns.list(a.user.id)).toEqual([]);
+    expect(await repos.inviteCodes.listRedemptionsForUser(a.user.id)).toEqual([]);
+    expect(await repos.users.findByStripeCustomerId("cus_gone")).toBeNull();
     // The session row is gone too, so the old cookie no longer authenticates.
     expect((await exportFor(a.cookie)).status).toBe(401);
 
@@ -211,6 +215,23 @@ describe("DELETE /api/account", () => {
     expect(await repos.memories.list(b.user.id)).toHaveLength(1);
     expect(await repos.aiRuns.list(b.user.id)).toHaveLength(1);
     expect((await exportFor(b.cookie)).status).toBe(200);
+  });
+
+  it("reports success when the row is gone even if identity cleanup fails", async () => {
+    const repos = getTestRepos();
+    const a = await createUserWithCookie(repos, { email: "cleanup-fail@example.com" });
+    const { getAuth } = await import("@/lib/auth/auth");
+    const ctx = await getAuth().$context;
+    const original = ctx.internalAdapter.deleteUserSessions;
+    ctx.internalAdapter.deleteUserSessions = async () => {
+      throw new Error("adapter down");
+    };
+
+    const res = await deleteFor(a.cookie, { confirmEmail: "cleanup-fail@example.com" });
+    ctx.internalAdapter.deleteUserSessions = original;
+    expect(res.status).toBe(200);
+    expect(res.headers.get("set-cookie")).toMatch(/Max-Age=0/);
+    expect(await repos.users.getById(a.user.id)).toBeNull();
   });
 
   it("purges outstanding reset and magic-link tokens with the identity", async () => {

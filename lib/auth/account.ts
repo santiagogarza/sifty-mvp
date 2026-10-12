@@ -2,6 +2,7 @@ import { type StripeCustomerDeletion, deleteStripeCustomer } from "@/lib/billing
 import type { Repos } from "@/lib/db/repos";
 import type { AiRunRecord, EntitlementSnapshot, TaskEventRecord } from "@/lib/db/repos/types";
 import type { Label, Memory, Task, UserProfile } from "@/lib/domain/types";
+import { reportError } from "@/lib/observability/report-error";
 import { deleteAuthIdentity } from "./auth";
 
 /**
@@ -126,9 +127,17 @@ export async function deleteAccount(repos: Repos, userId: string): Promise<Accou
   }
   try {
     await repos.users.delete(userId);
-    await deleteAuthIdentity(userId, user.email);
   } catch (err) {
     throw new AccountDeletionError("database", stripeCustomer, err);
+  }
+  // The account is gone at this point. On Postgres the identity rows
+  // already cascaded with it; this call matters for the in-memory adapter
+  // and for verification tokens. A failure here must not tell the user
+  // their account still exists.
+  try {
+    await deleteAuthIdentity(userId, user.email);
+  } catch (err) {
+    reportError(err, { area: "account.delete.identity", userId });
   }
   return { stripeCustomer };
 }

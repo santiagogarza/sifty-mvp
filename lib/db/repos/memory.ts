@@ -147,6 +147,8 @@ export function createMemoryRepos(): MemoryReposHandle {
       for (const [id, m] of state.memories) if (m.userId === userId) state.memories.delete(id);
       state.aiRuns = state.aiRuns.filter((r) => r.userId !== userId);
       state.taskEvents = state.taskEvents.filter((e) => e.userId !== userId);
+      state.inviteRedemptions = state.inviteRedemptions.filter((r) => r.userId !== userId);
+      state.stripeCustomers.delete(userId);
       return true;
     },
   };
