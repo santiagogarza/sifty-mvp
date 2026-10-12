@@ -20,6 +20,13 @@ import {
   type LabelRepo,
   type MemoryCreateInput,
   type MemoryRepo,
+  type NotificationChannel,
+  type NotificationPreferencesRecord,
+  type NotificationPreferencesRepo,
+  type NotificationSendRecord,
+  type NotificationSendRepo,
+  type PushSubscriptionRecord,
+  type PushSubscriptionRepo,
   type Repos,
   type StripeEventRepo,
   type TaskCreateInput,
@@ -699,6 +706,127 @@ export function createPostgresRepos(): Repos {
     },
   };
 
+  const notificationPreferences: NotificationPreferencesRepo = {
+    async get(userId) {
+      const db = getDb();
+      const [row] = await db
+        .select()
+        .from(schema.notificationPreferences)
+        .where(eq(schema.notificationPreferences.userId, userId));
+      return row ? rowToPreferences(row) : null;
+    },
+    async upsert(userId, input) {
+      const db = getDb();
+      const columns = { ...input, updatedAt: new Date() };
+      const [row] = await db
+        .insert(schema.notificationPreferences)
+        .values({ userId, ...columns })
+        .onConflictDoUpdate({ target: schema.notificationPreferences.userId, set: columns })
+        .returning();
+      return rowToPreferences(row!);
+    },
+    async list(limit, afterUserId) {
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.notificationPreferences)
+        .where(afterUserId ? gt(schema.notificationPreferences.userId, afterUserId) : undefined)
+        .orderBy(schema.notificationPreferences.userId)
+        .limit(limit);
+      return rows.map(rowToPreferences);
+    },
+  };
+
+  const pushSubscriptions: PushSubscriptionRepo = {
+    async listForUser(userId) {
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.pushSubscriptions)
+        .where(eq(schema.pushSubscriptions.userId, userId))
+        .orderBy(schema.pushSubscriptions.createdAt);
+      return rows.map(rowToPushSubscription);
+    },
+    async upsert(userId, input) {
+      const db = getDb();
+      const [row] = await db
+        .insert(schema.pushSubscriptions)
+        .values({ id: makeId("push"), userId, ...input })
+        .onConflictDoUpdate({
+          target: schema.pushSubscriptions.endpoint,
+          set: {
+            userId,
+            p256dh: input.p256dh,
+            auth: input.auth,
+            userAgent: input.userAgent,
+            // A browser that changed accounts starts a fresh delivery history.
+            lastUsedAt: sql`CASE WHEN ${schema.pushSubscriptions.userId} = ${userId} THEN ${schema.pushSubscriptions.lastUsedAt} ELSE NULL END`,
+          },
+        })
+        .returning();
+      return rowToPushSubscription(row!);
+    },
+    async deleteByEndpoint(userId, endpoint) {
+      const db = getDb();
+      const deleted = await db
+        .delete(schema.pushSubscriptions)
+        .where(
+          and(
+            eq(schema.pushSubscriptions.userId, userId),
+            eq(schema.pushSubscriptions.endpoint, endpoint),
+          ),
+        )
+        .returning({ id: schema.pushSubscriptions.id });
+      return deleted.length > 0;
+    },
+    async remove(id) {
+      const db = getDb();
+      await db.delete(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.id, id));
+    },
+    async touch(id, at) {
+      const db = getDb();
+      await db
+        .update(schema.pushSubscriptions)
+        .set({ lastUsedAt: at })
+        .where(eq(schema.pushSubscriptions.id, id));
+    },
+  };
+
+  const notificationSends: NotificationSendRepo = {
+    async claim(input) {
+      const db = getDb();
+      // The unique (user, kind, channel, period) index is the lock: a
+      // concurrent claimant waits on it and then inserts nothing.
+      const inserted = await db
+        .insert(schema.notificationSends)
+        .values({ id: makeId("send"), ...input, status: "pending" })
+        .onConflictDoNothing()
+        .returning({ id: schema.notificationSends.id });
+      return inserted[0] ?? null;
+    },
+    async finalize(id, outcome) {
+      const db = getDb();
+      await db
+        .update(schema.notificationSends)
+        .set({
+          status: outcome.status,
+          error: outcome.error ?? null,
+          sentAt: outcome.status === "sent" ? new Date() : null,
+        })
+        .where(eq(schema.notificationSends.id, id));
+    },
+    async listForUser(userId, limit) {
+      const db = getDb();
+      const query = db
+        .select()
+        .from(schema.notificationSends)
+        .where(eq(schema.notificationSends.userId, userId))
+        .orderBy(desc(schema.notificationSends.createdAt));
+      const rows = limit === undefined ? await query : await query.limit(limit);
+      return rows.map(rowToNotificationSend);
+    },
+  };
+
   return {
     users,
     entitlements,
@@ -709,6 +837,60 @@ export function createPostgresRepos(): Repos {
     taskEvents,
     stripeEvents,
     inviteCodes,
+    notificationPreferences,
+    pushSubscriptions,
+    notificationSends,
+  };
+}
+
+function rowToPreferences(
+  row: typeof schema.notificationPreferences.$inferSelect,
+): NotificationPreferencesRecord {
+  return {
+    userId: row.userId,
+    timezone: row.timezone,
+    emailEnabled: row.emailEnabled,
+    pushEnabled: row.pushEnabled,
+    morningPlanEnabled: row.morningPlanEnabled,
+    morningPlanHour: row.morningPlanHour,
+    dueRemindersEnabled: row.dueRemindersEnabled,
+    dueReminderHour: row.dueReminderHour,
+    weeklyReviewEnabled: row.weeklyReviewEnabled,
+    weeklyReviewDay: row.weeklyReviewDay,
+    quietHoursStart: row.quietHoursStart,
+    quietHoursEnd: row.quietHoursEnd,
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function rowToPushSubscription(
+  row: typeof schema.pushSubscriptions.$inferSelect,
+): PushSubscriptionRecord {
+  return {
+    id: row.id,
+    userId: row.userId,
+    endpoint: row.endpoint,
+    p256dh: row.p256dh,
+    auth: row.auth,
+    userAgent: row.userAgent,
+    createdAt: row.createdAt.toISOString(),
+    lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
+  };
+}
+
+function rowToNotificationSend(
+  row: typeof schema.notificationSends.$inferSelect,
+): NotificationSendRecord {
+  return {
+    id: row.id,
+    userId: row.userId,
+    kind: row.kind as NotificationSendRecord["kind"],
+    channel: row.channel as NotificationChannel,
+    periodKey: row.periodKey,
+    status: row.status,
+    error: row.error,
+    createdAt: row.createdAt.toISOString(),
+    sentAt: row.sentAt?.toISOString() ?? null,
   };
 }
 

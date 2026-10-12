@@ -411,7 +411,7 @@ async function sendWelcome(user: { id: string; email: string; name: string }): P
   try {
     await sendTemplate("welcome", {
       to: user.email,
-      props: { name: user.name, appUrl, unsubscribeUrl: `${appUrl}/settings#notifications` },
+      props: { name: user.name, appUrl, unsubscribeUrl: `${appUrl}/settings/notifications` },
       idempotencyKey: `welcome:${user.id}`,
     });
   } catch (err) {

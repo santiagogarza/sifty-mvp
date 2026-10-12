@@ -22,6 +22,12 @@ import {
   type LabelRepo,
   type MemoryCreateInput,
   type MemoryRepo,
+  type NotificationPreferencesRecord,
+  type NotificationPreferencesRepo,
+  type NotificationSendRecord,
+  type NotificationSendRepo,
+  type PushSubscriptionRecord,
+  type PushSubscriptionRepo,
   type Repos,
   type StripeEventRepo,
   type TaskCreateInput,
@@ -70,6 +76,9 @@ interface State {
   stripeEvents: Set<string>;
   inviteCodes: Map<string, InviteCode>;
   inviteRedemptions: InviteRedemption[];
+  notificationPreferences: Map<string, NotificationPreferencesRecord>;
+  pushSubscriptions: Map<string, PushSubscriptionRecord>;
+  notificationSends: NotificationSendRecord[];
 }
 
 function emptyState(): State {
@@ -86,6 +95,9 @@ function emptyState(): State {
     stripeEvents: new Set(),
     inviteCodes: new Map(),
     inviteRedemptions: [],
+    notificationPreferences: new Map(),
+    pushSubscriptions: new Map(),
+    notificationSends: [],
   };
 }
 
@@ -149,6 +161,11 @@ export function createMemoryRepos(): MemoryReposHandle {
       state.taskEvents = state.taskEvents.filter((e) => e.userId !== userId);
       state.inviteRedemptions = state.inviteRedemptions.filter((r) => r.userId !== userId);
       state.stripeCustomers.delete(userId);
+      state.notificationPreferences.delete(userId);
+      for (const [id, s] of state.pushSubscriptions) {
+        if (s.userId === userId) state.pushSubscriptions.delete(id);
+      }
+      state.notificationSends = state.notificationSends.filter((s) => s.userId !== userId);
       return true;
     },
   };
@@ -526,6 +543,106 @@ export function createMemoryRepos(): MemoryReposHandle {
     },
   };
 
+  const notificationPreferences: NotificationPreferencesRepo = {
+    async get(userId) {
+      const row = state.notificationPreferences.get(userId);
+      return row ? { ...row } : null;
+    },
+    async upsert(userId, input) {
+      const row: NotificationPreferencesRecord = {
+        ...input,
+        userId,
+        updatedAt: new Date().toISOString(),
+      };
+      state.notificationPreferences.set(userId, row);
+      return { ...row };
+    },
+    async list(limit, afterUserId) {
+      return Array.from(state.notificationPreferences.values())
+        .filter((p) => (afterUserId ? p.userId > afterUserId : true))
+        .sort((a, b) => (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0))
+        .slice(0, limit)
+        .map((p) => ({ ...p }));
+    },
+  };
+
+  const pushSubscriptions: PushSubscriptionRepo = {
+    async listForUser(userId) {
+      return Array.from(state.pushSubscriptions.values())
+        .filter((s) => s.userId === userId)
+        .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+        .map((s) => ({ ...s }));
+    },
+    async upsert(userId, input) {
+      const existing = Array.from(state.pushSubscriptions.values()).find(
+        (s) => s.endpoint === input.endpoint,
+      );
+      const row: PushSubscriptionRecord = {
+        id: existing?.id ?? makeId("push"),
+        userId,
+        ...input,
+        createdAt: existing?.createdAt ?? new Date().toISOString(),
+        lastUsedAt: existing?.userId === userId ? existing.lastUsedAt : null,
+      };
+      state.pushSubscriptions.set(row.id, row);
+      return { ...row };
+    },
+    async deleteByEndpoint(userId, endpoint) {
+      for (const [id, s] of state.pushSubscriptions) {
+        if (s.userId === userId && s.endpoint === endpoint) {
+          state.pushSubscriptions.delete(id);
+          return true;
+        }
+      }
+      return false;
+    },
+    async remove(id) {
+      state.pushSubscriptions.delete(id);
+    },
+    async touch(id, at) {
+      const s = state.pushSubscriptions.get(id);
+      if (s) s.lastUsedAt = at.toISOString();
+    },
+  };
+
+  const notificationSends: NotificationSendRepo = {
+    async claim(input) {
+      const taken = state.notificationSends.some(
+        (s) =>
+          s.userId === input.userId &&
+          s.kind === input.kind &&
+          s.channel === input.channel &&
+          s.periodKey === input.periodKey,
+      );
+      if (taken) return null;
+      const row: NotificationSendRecord = {
+        id: makeId("send"),
+        ...input,
+        status: "pending",
+        error: null,
+        createdAt: new Date().toISOString(),
+        sentAt: null,
+      };
+      state.notificationSends.push(row);
+      return { id: row.id };
+    },
+    async finalize(id, outcome) {
+      const row = state.notificationSends.find((s) => s.id === id);
+      if (!row) return;
+      row.status = outcome.status;
+      row.error = outcome.error ?? null;
+      row.sentAt = outcome.status === "sent" ? new Date().toISOString() : null;
+    },
+    async listForUser(userId, limit) {
+      const mine = state.notificationSends
+        .filter((s) => s.userId === userId)
+        .slice()
+        .reverse()
+        .map((s) => ({ ...s }));
+      return limit === undefined ? mine : mine.slice(0, limit);
+    },
+  };
+
   return {
     users,
     entitlements,
@@ -536,6 +653,9 @@ export function createMemoryRepos(): MemoryReposHandle {
     taskEvents,
     stripeEvents,
     inviteCodes,
+    notificationPreferences,
+    pushSubscriptions,
+    notificationSends,
     __reset: () => {
       state = emptyState();
     },
