@@ -48,6 +48,7 @@ function makeTask(patch: Partial<Task>): Task {
     siftId: null,
     siftStage: null,
     plan: null,
+    siftedWithAssumptions: false,
     labelIds: [],
     subtasks: [],
     editedFields: [],

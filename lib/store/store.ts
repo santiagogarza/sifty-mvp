@@ -251,6 +251,7 @@ export const useStore = create<SiftyState>()(
             siftId: null,
             siftStage: null,
             plan: null,
+            siftedWithAssumptions: false,
             labelIds: [],
             subtasks: [],
             editedFields: due ? ["due"] : [],
@@ -344,6 +345,7 @@ export const useStore = create<SiftyState>()(
             siftId: null,
             siftStage: null,
             plan: null,
+            siftedWithAssumptions: false,
             labelIds: [...source.labelIds],
             subtasks: source.subtasks.map((st) => ({
               id: id("st"),

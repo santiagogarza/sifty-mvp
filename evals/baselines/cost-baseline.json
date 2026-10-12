@@ -36,9 +36,9 @@
       },
       "triage": {
         "model": "anthropic/claude-haiku-4.5",
-        "inputTokens": 275,
-        "outputTokens": 24,
-        "costCents": 0.039723,
+        "inputTokens": 363,
+        "outputTokens": 32,
+        "costCents": 0.052209,
         "samples": 57
       },
       "subtasks": {
@@ -56,7 +56,7 @@
         "samples": 57
       }
     },
-    "pipelineCostCents": 0.317378
+    "pipelineCostCents": 0.329864
   },
   "measured": null
 }

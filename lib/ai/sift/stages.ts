@@ -73,6 +73,11 @@ export const TriageStageOutput = z.object({
   confidence: z.number().min(0).max(1),
   /** Set only when confidence is low and one question would unblock. */
   clarifyingQuestion: z.string().max(200).nullable(),
+  /**
+   * Up to four short answers the user could tap instead of typing. Empty
+   * when the question has no natural shortlist (or there is no question).
+   */
+  clarifyingOptions: z.array(z.string().min(1).max(60)).max(4),
 });
 export type TriageStageOutput = z.infer<typeof TriageStageOutput>;
 
@@ -172,6 +177,19 @@ function offlineBase(ctx: SiftContext) {
 const WAITING_RE =
   /\b(wait(ing)? (for|on|until)|blocked (on|by)|once \w+ (replies|responds|sends))\b/i;
 const SOMEDAY_RE = /\b(someday|some day|one day|maybe|eventually|not urgent at all)\b/i;
+/** How `foldAnswer` records a clarifying-question answer in `sourceContext`. */
+export const ANSWER_RE = /(^|\n)Answer:\s*\S/;
+
+/**
+ * Tappable answers for the heuristic's three canned questions, so the
+ * offline Decisions inbox exercises the same UI the model-backed one does.
+ */
+export function offlineClarifyingOptions(question: string): string[] {
+  if (/deadline/i.test(question)) return ["This week", "This month", "No deadline"];
+  if (/research note/i.test(question)) return ["Yes, a note", "No, it's a task"];
+  if (/outcome/i.test(question)) return ["A decision", "Something sent", "Something built"];
+  return [];
+}
 
 export const STAGE_DEFINITIONS: { [S in keyof StageOutputs]: StageDefinition<S> } = {
   enrich: {
@@ -262,10 +280,11 @@ that mention the comparison when it changed your mind.`,
   },
 
   triage: {
-    promptVersion: "triage.v2",
+    promptVersion: "triage.v3",
     schema: TriageStageOutput,
     schemaName: "TriageStageOutput",
-    schemaDescription: "Routing, delegation candidate, confidence, and clarifying question.",
+    schemaDescription:
+      "Routing, delegation candidate, confidence, and an optional clarifying question with tappable options.",
     temperature: 0.2,
     system: `You triage one task for an AI productivity app called Sifty.
 
@@ -279,7 +298,12 @@ Decide:
   task is well-defined and verifiable. "person" when handing off to a human is
   clearly right. Use "unsure" rather than guessing.
 - confidence in [0,1]. Below 0.55, set one clarifyingQuestion the user can
-  answer in under 10 seconds. Otherwise leave it null.`,
+  answer in under 10 seconds. Otherwise leave it null.
+- clarifyingOptions: when you ask, offer 2-4 short answers (under 6 words
+  each) the user could tap, covering the likely readings. Leave the list
+  empty when only free text makes sense, and always when there is no
+  question. If the input already contains an "Answer:" line, treat it as
+  the user's reply to an earlier question: do not ask again.`,
     user: (ctx) => [taskBlock(ctx), "", currentState(ctx.task)].join("\n"),
     offline: (ctx) => {
       const h = offlineBase(ctx);
@@ -289,11 +313,17 @@ Decide:
         : SOMEDAY_RE.test(text)
           ? "someday"
           : "inbox";
+      // An answered question raises the heuristic's confidence past the
+      // asking threshold, so a dismissed or answered sift never re-asks.
+      const answered = ANSWER_RE.test(ctx.task.sourceContext ?? "");
+      const confidence = answered ? Math.max(h.confidence, 0.7) : h.confidence;
+      const clarifyingQuestion = answered ? null : h.clarifyingQuestion;
       return {
         routing,
         delegationCandidate: h.delegationCandidate,
-        confidence: h.confidence,
-        clarifyingQuestion: h.clarifyingQuestion,
+        confidence,
+        clarifyingQuestion,
+        clarifyingOptions: clarifyingQuestion ? offlineClarifyingOptions(clarifyingQuestion) : [],
       };
     },
   },

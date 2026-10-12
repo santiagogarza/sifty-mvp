@@ -13,16 +13,19 @@ type Owner = { returnValue: Promise<unknown> };
 /** token → owner run, while that token is held. */
 const held = new Map<string, Owner>();
 const created: string[] = [];
+const disposed: string[] = [];
 
 beforeEach(async () => {
   held.clear();
   created.length = 0;
+  disposed.length = 0;
   const { createHook } = await import("workflow");
   vi.mocked(createHook).mockImplementation(((opts: { token: string }) => {
     created.push(opts.token);
     return {
       token: opts.token,
       getConflict: async () => held.get(opts.token) ?? null,
+      dispose: () => disposed.push(opts.token),
     };
   }) as unknown as typeof createHook);
   vi.spyOn(console, "log").mockImplementation(() => {});
@@ -71,8 +74,15 @@ describe("acquireUserSlot", () => {
     held.set("sift:u1:0", { returnValue: Promise.reject(new Error("owner died")) });
     const run = acquireUserSlot("sift", "u1", 1);
     held.delete("sift:u1:0");
-    await expect(run).resolves.toBeUndefined();
+    await expect(run).resolves.toMatchObject({ release: expect.any(Function) });
     expect(created).toEqual(["sift:u1:0", "sift:u1:0"]);
+  });
+
+  it("release() disposes the slot's hook so the token frees before the run ends", async () => {
+    const slot = await acquireUserSlot("sift", "u1", 1);
+    expect(disposed).toEqual([]);
+    slot.release();
+    expect(disposed).toEqual(["sift:u1:0"]);
   });
 
   it("slots are scoped per user and per scope", async () => {

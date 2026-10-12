@@ -1,0 +1,151 @@
+// @vitest-environment jsdom
+import { DecisionsEmptyState } from "@/components/decisions/decisions-empty-state";
+import { DecisionsInbox } from "@/components/decisions/decisions-inbox";
+import { useDecisionsStore } from "@/lib/decisions/client";
+import type { Decision } from "@/lib/domain/types";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const openDetail = vi.fn();
+vi.mock("@/components/app-shell/app-frame", () => ({
+  useFrame: () => ({ openDetail, openCapture: vi.fn(), openCommand: vi.fn(), serverReady: true }),
+}));
+vi.mock("@/lib/ai/run-triage", () => ({ watchSift: vi.fn() }));
+
+function decision(id: string, question: string, options: string[], taskId: string): Decision {
+  return {
+    id,
+    kind: "clarifying_question",
+    status: "open",
+    taskId,
+    payload: { kind: "clarifying_question", question, options, siftId: "sift_1", confidence: 0.4 },
+    answer: null,
+    resumeToken: `decision:${id}`,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    resolvedAt: null,
+    expiresAt: null,
+  };
+}
+
+const DECISIONS = [
+  decision("dec_new", "Which year?", ["2025", "2026"], "task_a"),
+  decision("dec_old", "Is there a deadline?", [], "task_b"),
+];
+const TASKS = {
+  task_a: { id: "task_a", title: "Taxes", sourceText: "Taxes", lifecycle: "inbox" as const },
+  task_b: { id: "task_b", title: "Call Ana", sourceText: "Call Ana", lifecycle: "inbox" as const },
+};
+
+const answer = vi.fn();
+const dismiss = vi.fn();
+
+beforeEach(() => {
+  answer.mockReset().mockResolvedValue({ ok: true, mode: "resumed" });
+  dismiss.mockReset().mockResolvedValue({ ok: true });
+  useDecisionsStore.setState({ decisions: DECISIONS, tasks: TASKS, count: 2, answer, dismiss });
+});
+
+afterEach(() => {
+  cleanup();
+});
+
+function renderInbox(focusId?: string) {
+  return render(
+    <DecisionsInbox
+      decisions={DECISIONS}
+      tasks={TASKS}
+      focusId={focusId}
+      emptyState={<DecisionsEmptyState />}
+    />,
+  );
+}
+
+describe("DecisionsInbox", () => {
+  it("renders one card per open decision with its task, question, and options", () => {
+    renderInbox();
+    const cards = screen.getAllByTestId("decision-card");
+    expect(cards).toHaveLength(2);
+    expect(cards[0]).toHaveTextContent("Taxes");
+    expect(cards[0]).toHaveTextContent("Which year?");
+    expect(screen.getByRole("button", { name: /^2026/ })).toBeInTheDocument();
+    expect(cards[1]).toHaveTextContent("Is there a deadline?");
+    // The first card is active and focusable; the rest are reachable by key.
+    expect(cards[0]).toHaveAttribute("aria-selected", "true");
+    expect(cards[0]).toHaveAttribute("tabindex", "0");
+    expect(cards[1]).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("tapping an option answers with it", async () => {
+    renderInbox();
+    await userEvent.click(screen.getByRole("button", { name: /^2026/ }));
+    expect(answer).toHaveBeenCalledWith("dec_new", { text: null, option: "2026" });
+  });
+
+  it("typing an answer and pressing Enter submits free text", async () => {
+    renderInbox();
+    const inputs = screen.getAllByLabelText("Your answer");
+    await userEvent.type(inputs[1]!, "Next Friday{enter}");
+    expect(answer).toHaveBeenCalledWith("dec_old", { text: "Next Friday", option: null });
+  });
+
+  it("j/k move the active card, Enter focuses its answer field, Esc returns to the card", async () => {
+    renderInbox();
+    const list = screen.getByRole("listbox", { name: "Decisions" });
+    const cards = screen.getAllByTestId("decision-card");
+    list.focus();
+    fireEvent.keyDown(list, { key: "j" });
+    await waitFor(() => expect(cards[1]).toHaveAttribute("aria-selected", "true"));
+    expect(document.activeElement).toBe(cards[1]);
+    fireEvent.keyDown(list, { key: "k" });
+    await waitFor(() => expect(cards[0]).toHaveAttribute("aria-selected", "true"));
+
+    fireEvent.keyDown(list, { key: "Enter" });
+    const inputs = screen.getAllByLabelText("Your answer");
+    expect(document.activeElement).toBe(inputs[0]);
+    // Keys typed in the field are never navigation.
+    fireEvent.keyDown(inputs[0]!, { key: "j" });
+    expect(cards[0]).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(inputs[0]!, { key: "Escape" });
+    expect(document.activeElement).toBe(cards[0]);
+  });
+
+  it("number keys pick an option and d dismisses the active card", async () => {
+    renderInbox();
+    const list = screen.getByRole("listbox", { name: "Decisions" });
+    list.focus();
+    fireEvent.keyDown(list, { key: "2" });
+    expect(answer).toHaveBeenCalledWith("dec_new", { text: null, option: "2026" });
+    // A number with no option behind it does nothing.
+    fireEvent.keyDown(list, { key: "4" });
+    expect(answer).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(list, { key: "j" });
+    await waitFor(() =>
+      expect(screen.getAllByTestId("decision-card")[1]).toHaveAttribute("aria-selected", "true"),
+    );
+    fireEvent.keyDown(list, { key: "d" });
+    expect(dismiss).toHaveBeenCalledWith("dec_old");
+  });
+
+  it("the task title opens the task's detail sheet", async () => {
+    renderInbox();
+    await userEvent.click(screen.getByRole("button", { name: /Taxes/ }));
+    expect(openDetail).toHaveBeenCalledWith("task_a");
+  });
+
+  it("a deep-linked decision starts active", () => {
+    renderInbox("dec_old");
+    const cards = screen.getAllByTestId("decision-card");
+    expect(cards[1]).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("shows the empty state that explains what lands here", () => {
+    render(<DecisionsInbox decisions={[]} tasks={{}} emptyState={<DecisionsEmptyState />} />);
+    expect(screen.getByTestId("decisions-empty")).toHaveTextContent("Nothing waiting on you.");
+    expect(screen.getByTestId("decisions-empty")).toHaveTextContent("Clarifying questions");
+    expect(screen.getByTestId("decisions-empty")).toHaveTextContent("Memory suggestions");
+    expect(screen.getByTestId("decisions-empty")).toHaveTextContent("Approvals");
+  });
+});

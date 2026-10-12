@@ -52,6 +52,9 @@ export function taskPatchColumns(
   if ("siftId" in patch) columns.siftId = patch.siftId ?? null;
   if ("siftStage" in patch) columns.siftStage = patch.siftStage ?? null;
   if ("plan" in patch) columns.plan = patch.plan ?? null;
+  if (patch.siftedWithAssumptions !== undefined) {
+    columns.siftedWithAssumptions = patch.siftedWithAssumptions;
+  }
   if (patch.subtasks !== undefined) columns.subtasks = patch.subtasks;
 
   if (

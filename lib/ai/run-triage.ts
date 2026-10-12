@@ -1,5 +1,6 @@
 "use client";
 
+import { announceSiftSettled } from "@/lib/decisions/events";
 import type { Label, Task } from "@/lib/domain/types";
 import { getSyncHooks, useStore } from "@/lib/store/store";
 
@@ -93,6 +94,7 @@ export async function watchSift(taskId: string): Promise<void> {
         }
         await adopt(data);
         if (settled(data.task.aiStatus)) {
+          announceSiftSettled(taskId);
           // `adopt` may have awaited a push; a re-sift that started in the
           // meantime must not be wiped by this (now stale) snapshot. Re-arm
           // here as well, so a budget spent on the first run never times

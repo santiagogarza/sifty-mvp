@@ -29,6 +29,7 @@ import { getTestRepos } from "../setup";
 const client = {
   start: vi.fn<WorkflowClient["start"]>(),
   wait: vi.fn<WorkflowClient["wait"]>(),
+  resume: vi.fn<WorkflowClient["resume"]>(),
 };
 
 const FIXED = new Date("2026-10-13T04:00:00.000Z");

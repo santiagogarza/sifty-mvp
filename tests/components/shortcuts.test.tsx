@@ -11,8 +11,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 // AppFrame pulls in Next's router and the sync hook; stub both so the
 // frame mounts in jsdom without a server.
+const push = vi.fn();
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push, replace: vi.fn() }),
   usePathname: () => "/inbox",
   useSearchParams: () => new URLSearchParams(),
 }));
@@ -97,6 +98,30 @@ describe("AppFrame overlays", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Shortcuts" })).toBeNull());
     expect(screen.getByRole("dialog", { name: "Capture" })).toBeInTheDocument();
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  });
+
+  it("the command palette navigates to Decisions", async () => {
+    window.matchMedia ??= ((query: string) =>
+      ({
+        matches: false,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        onchange: null,
+        dispatchEvent: () => false,
+      }) as MediaQueryList) as typeof window.matchMedia;
+    const user = userEvent.setup();
+    render(
+      <AppFrame>
+        <div>page</div>
+      </AppFrame>,
+    );
+    await user.keyboard("/");
+    await user.type(screen.getByPlaceholderText("Search or run a command…"), "decis");
+    await user.click(await screen.findByText("Go to Decisions"));
+    expect(push).toHaveBeenCalledWith("/decisions");
   });
 });
 

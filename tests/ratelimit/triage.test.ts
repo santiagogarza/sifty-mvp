@@ -13,6 +13,7 @@ beforeEach(() => {
   setWorkflowClientForTesting({
     start: async () => ({ runId: "wrun_limit" }),
     wait: async () => ({ status: "pending" }),
+    resume: async () => ({ ok: false, reason: "not_found" }),
   });
 });
 

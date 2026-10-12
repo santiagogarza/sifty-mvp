@@ -19,6 +19,7 @@ import { getTestRepos } from "../setup";
 const client = {
   start: vi.fn<WorkflowClient["start"]>(),
   wait: vi.fn<WorkflowClient["wait"]>(),
+  resume: vi.fn<WorkflowClient["resume"]>(),
 };
 
 beforeEach(() => {
