@@ -17,6 +17,8 @@
     "test:ui": "vitest --ui",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install --with-deps chromium",
+    "eval": "vitest run --config evals/vitest.config.ts",
+    "eval:update": "EVAL_UPDATE_BASELINES=1 vitest run --config evals/vitest.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate.mjs",
     "db:studio": "drizzle-kit studio",

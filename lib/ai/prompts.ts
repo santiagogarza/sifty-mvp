@@ -1,5 +1,35 @@
 /**
- * Triage prompt.
+ * Prompt version bump policy (applies to every prompt in `lib/ai/`):
+ *
+ * Each prompt carries a `promptVersion` ("<stage>.v<n>": `enrich.v1`,
+ * `triage.v2`, `brief.v1`, …) that is written to `ai_runs.prompt_version`
+ * for every call. Any change to what the model sees or must return — the
+ * system prompt, the user prompt template, the output schema (including
+ * field descriptions and bounds), or the temperature — bumps that version.
+ * Wording nits are not exempt: an old `ai_runs` row must always be
+ * interpretable as "produced by exactly this prompt".
+ *
+ * A bump is always accompanied by an eval run:
+ *
+ *   1. Edit the prompt and bump its version in the same change.
+ *   2. `SIFTY_AI_OFFLINE=1 pnpm eval:update` — records the new prompt
+ *      fingerprint in `evals/baselines/prompt-fingerprints.json` (the CI eval
+ *      fails on a prompt whose fingerprint moved without a bump, or a bumped
+ *      version without a recorded fingerprint) and re-records the offline
+ *      rubric baseline.
+ *   3. Run the golden set against real models before merging:
+ *      `AI_TRANSPORT=gateway AI_GATEWAY_API_KEY=… pnpm eval` locally, or
+ *      the "Evals (real models)" workflow by hand. Paste the pass-rate
+ *      table from `evals/.results/online-gateway-summary.md` into the PR.
+ *   4. Commit the baselines with the prompt change. Never edit a baseline
+ *      file by hand.
+ *
+ * Old versions stay in the fingerprint file as history. See `evals/README.md`.
+ *
+ * ---------------------------------------------------------------------------
+ *
+ * Single-shot triage prompt (legacy path kept for the eval harness and
+ * `?offline=1`; the pipeline prompts live in `lib/ai/sift/stages.ts`).
  *
  * Constraints:
  * - Be brief in `title` and `nextAction`. Verbs first.

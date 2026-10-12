@@ -86,6 +86,42 @@ jobs:
       - name: Postgres repo tests
         run: pnpm vitest run tests/db
 
+  evals:
+    name: Prompt evals (offline, production only)
+    # Deterministic: every stage answers with the offline heuristic, so this
+    # needs no key and fails only on schema/rubric regressions or a prompt
+    # edited without a version bump. Cost drift is a warning annotation.
+    # Real-model runs live in evals-nightly.yml.
+    if: github.ref_name == 'production' || github.base_ref == 'production'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SIFTY_AI_OFFLINE: "1"
+      CREATOR_EMAIL: s.gonzalez.garza@gmail.com
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Eval
+        run: pnpm eval
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evals-offline-${{ github.sha }}
+          path: evals/.results/
+          if-no-files-found: ignore
+          retention-days: 14
+
   smoke:
     name: Smoke the production deployment
     # Pushes to production only: wait for Vercel's GitHub Deployment for this
