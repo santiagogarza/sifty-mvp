@@ -54,6 +54,38 @@ test("captured task syncs to the server and survives cleared local state", async
   await expect(page.getByText(marker.slice(0, 30)).first()).toBeVisible({ timeout: 10_000 });
 });
 
+test.describe("mobile detail sheet", () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  // SIF-27: the bottom sheet's body must scroll so the footer (Delete) and
+  // the disclosures above it are reachable on a phone.
+  test("scrolls to the bottom actions", async ({ page }) => {
+    await page.goto("/inbox", { waitUntil: "networkidle" });
+
+    await page.keyboard.press("c");
+    await page.getByPlaceholder("What do you need to do?").fill(`Mobile sheet smoke ${Date.now()}`);
+    await page.keyboard.press("ControlOrMeta+Enter");
+
+    const body = page.getByTestId("task-detail-body");
+    await expect(body).toBeVisible();
+    const deleteButton = page.getByRole("button", { name: "Delete task" });
+
+    // The footer is pinned below the scroller: Delete is reachable before
+    // any scroll, and it must not move when the body scrolls.
+    await expect(deleteButton).toBeInViewport();
+    const footerTopBefore = (await deleteButton.boundingBox())!.y;
+
+    const scrollable = await body.evaluate((el) => el.scrollHeight > el.clientHeight);
+    expect(scrollable).toBe(true);
+    await expect(page.getByText("Original capture")).not.toBeInViewport();
+
+    await body.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+    await expect(page.getByText("Original capture")).toBeInViewport();
+    await expect(deleteButton).toBeInViewport();
+    expect((await deleteButton.boundingBox())!.y).toBe(footerTopBefore);
+  });
+});
+
 test("rate limit returns 429 with Retry-After when bursting the triage route", async ({
   request,
 }) => {

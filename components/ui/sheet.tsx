@@ -49,7 +49,10 @@ export const SheetContent = React.forwardRef<
           "bg-[var(--bg-elevated)]",
           "shadow-[-40px_0_80px_-30px_oklch(0%_0_0/0.4)]",
           "data-[state=open]:animate-rise",
-          "flex flex-col",
+          // overflow-hidden keeps the bottom sheet's rounded corners honest
+          // and makes the body region (not the panel) the thing that scrolls
+          // when content exceeds the max height on mobile.
+          "flex flex-col overflow-hidden",
           className,
         )}
         {...props}

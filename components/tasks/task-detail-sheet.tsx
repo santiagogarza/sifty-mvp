@@ -129,7 +129,10 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
   });
 
   return (
-    <div className="flex h-full flex-col">
+    // min-h-0 + flex-1 (not h-full): the mobile sheet has only a max-height,
+    // so a percentage height resolves to auto and the column grows past the
+    // panel instead of letting the body scroll.
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-elevated)]/95 backdrop-blur px-4 sm:px-5 py-3">
         <div className="flex items-center gap-2 text-[12px] text-[var(--fg-subtle)]">
           {organizing && task.priorityBucket === "unset" ? (
@@ -164,7 +167,10 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-5">
+      <div
+        data-testid="task-detail-body"
+        className="min-h-0 flex-1 overflow-y-auto px-4 sm:px-5 py-5"
+      >
         <div className="flex items-start gap-3">
           <button
             type="button"
