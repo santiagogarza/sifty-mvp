@@ -37,10 +37,12 @@ import { GRACE_PERIOD_DAYS, withResolvedTier } from "@/lib/entitlements/entitlem
 export interface StripeSubscriptionLike {
   id: string;
   status: string;
-  current_period_end: number;
+  /** On webhook endpoints pinned to API versions before 2025-03-31. */
+  current_period_end?: number;
   cancel_at_period_end?: boolean;
   customer?: string | { id: string };
-  items?: { data: Array<{ price?: { id: string } }> };
+  /** Items carry `current_period_end` on current API versions (basil and later). */
+  items?: { data: Array<{ price?: { id: string }; current_period_end?: number }> };
 }
 
 export interface StripeInvoiceLike {
@@ -62,6 +64,12 @@ export function invoiceSubscriptionId(invoice: StripeInvoiceLike): string | null
   const raw = invoice.parent?.subscription_details?.subscription ?? invoice.subscription ?? null;
   if (!raw) return null;
   return typeof raw === "string" ? raw : raw.id;
+}
+
+/** The subscription's period end, whichever API-version shape delivered it. */
+export function subscriptionPeriodEnd(sub: StripeSubscriptionLike): string | null {
+  const seconds = sub.current_period_end ?? sub.items?.data[0]?.current_period_end;
+  return seconds ? new Date(seconds * 1000).toISOString() : null;
 }
 
 interface EventMeta {
@@ -139,6 +147,14 @@ export function applyStripeEvent(
     if (DUNNING_STATUSES.has(current.stripeStatus ?? "")) return null;
     return graceEndFrom(at);
   };
+  // The open grace window was opened by the cycle's first failure at
+  // `graceEndsAt - GRACE_PERIOD_DAYS`. A paying event older than that was
+  // delivered late and must not end the newer dunning cycle.
+  const predatesDunning =
+    !!event.created &&
+    !!current.graceEndsAt &&
+    at.getTime() <
+      new Date(current.graceEndsAt).getTime() - GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000;
 
   /**
    * Subscription events are only authoritative for the subscription we
@@ -163,13 +179,13 @@ export function applyStripeEvent(
     case "customer.subscription.updated": {
       const sub = event.data.object;
       if (isStaleSubscriptionEvent(sub)) return current;
-      const periodEnd = new Date(sub.current_period_end * 1000).toISOString();
       const ids = {
         stripeSubscriptionId: sub.id,
         stripeStatus: sub.status,
-        currentPeriodEnd: periodEnd,
+        currentPeriodEnd: subscriptionPeriodEnd(sub),
       };
       if (PAYING_STATUSES.has(sub.status)) {
+        if (predatesDunning) return current;
         return resolve({ ...ids, subscriptionActive: true, graceEndsAt: null });
       }
       if (DUNNING_STATUSES.has(sub.status)) {
@@ -197,6 +213,7 @@ export function applyStripeEvent(
       if (!current.graceEndsAt && !DUNNING_STATUSES.has(current.stripeStatus ?? "")) {
         return current;
       }
+      if (predatesDunning) return current;
       const subId = invoiceSubscription(event.data.object);
       if (!subId) return current;
       return resolve({
