@@ -30,6 +30,7 @@ export default async function BillingPage() {
         user={{ email: session.user.email, isCreator: session.user.isCreator }}
         entitlement={entitlement}
         hasSubscription={!!session.entitlement?.stripeSubscriptionId}
+        subscriptionActive={session.entitlement?.subscriptionActive ?? false}
       />
     </PageShell>
   );

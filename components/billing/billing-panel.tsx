@@ -10,11 +10,14 @@ export function BillingPanel({
   user,
   entitlement,
   hasSubscription,
+  subscriptionActive,
 }: {
   user: { email: string; isCreator: boolean };
   entitlement: Entitlement;
   /** A Stripe subscription exists (active or not), so the portal is useful. */
   hasSubscription: boolean;
+  /** Stripe is billing now. A comp can mask this as `comped`, so check it directly. */
+  subscriptionActive: boolean;
 }) {
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -59,6 +62,8 @@ export function BillingPanel({
 
   const { tier } = entitlement;
   const isPro = tier === "pro";
+  // Never offer a second subscription to someone Stripe is already billing.
+  const canCheckout = !isPro && !subscriptionActive;
   const paidTier = tier === "pro" || tier === "comped" || tier === "creator";
   const trialDaysLeft = entitlement.trialEndsAt ? daysUntil(entitlement.trialEndsAt) : null;
 
@@ -95,7 +100,7 @@ export function BillingPanel({
           <p className="text-[13px] text-[var(--fg-muted)] leading-[1.5] max-w-prose">
             {upgradeCopy(entitlement)}
           </p>
-          {!isPro ? (
+          {canCheckout ? (
             <div className="flex gap-2 mt-4">
               <Button variant="primary" disabled={pending} onClick={() => startCheckout("monthly")}>
                 Upgrade — Monthly
