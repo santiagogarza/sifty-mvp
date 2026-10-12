@@ -378,6 +378,20 @@ describe("verify-email as first mailbox proof", () => {
     expect(planted.status).toBe(401);
   });
 
+  it("a second sign-up in the same browser keeps the first binding", async () => {
+    const auth = getAuth();
+    const first = await signUpWithBinding("first@example.com", TEST_PASSWORD);
+    // "Use a different email": the browser presents its existing cookie.
+    const second = await auth.api.signUpEmail({
+      body: { email: "second@example.com", password: TEST_PASSWORD, name: "S" },
+      headers: new Headers({ cookie: first.binding }),
+      asResponse: true,
+    });
+    const both = cookieHeaderFromResponse(second);
+    expect((await openLink(first.url, both)).status).toBe(302);
+    expect(await signInCookie("first@example.com", TEST_PASSWORD)).toBeTruthy();
+  });
+
   it("a wrong-password attempt does not bind the browser", async () => {
     const auth = getAuth();
     await signUpWithBinding("guess@example.com", TEST_PASSWORD);

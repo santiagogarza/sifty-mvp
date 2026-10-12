@@ -21,8 +21,9 @@ import { isCreatorEmail } from "./session-shared";
 import {
   SIGNUP_BINDING_COOKIE,
   SIGNUP_BINDING_MAX_AGE_S,
+  appendSignupBinding,
   hasValidSignupBinding,
-  signupBindingValue,
+  readSignupBindingCookie,
 } from "./signup-binding";
 
 /**
@@ -286,13 +287,16 @@ async function onUserCreated(repos: Repos, user: AuthUser): Promise<void> {
 }
 
 function setSignupBinding(
-  ctx: { setCookie: (name: string, value: string, opts?: Record<string, unknown>) => unknown },
+  ctx: {
+    headers?: Headers;
+    setCookie: (name: string, value: string, opts?: Record<string, unknown>) => unknown;
+  },
   userId: string,
 ): void {
   const secure = getAuthBaseUrl().startsWith("https://");
   ctx.setCookie(
     secure ? `__Secure-${SIGNUP_BINDING_COOKIE}` : SIGNUP_BINDING_COOKIE,
-    signupBindingValue(userId, getAuthSecret()),
+    appendSignupBinding(readSignupBindingCookie(ctx.headers), userId, getAuthSecret()),
     { httpOnly: true, sameSite: "lax", secure, path: "/", maxAge: SIGNUP_BINDING_MAX_AGE_S },
   );
 }

@@ -16,10 +16,31 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 export const SIGNUP_BINDING_COOKIE = "sifty.signup_binding";
 export const SIGNUP_BINDING_MAX_AGE_S = 60 * 60;
+/** A browser may sign up a few accounts in a row ("Use a different email"); keep the newest. */
+const MAX_BINDINGS = 5;
+const SEPARATOR = " ";
 
 export function signupBindingValue(userId: string, secret: string): string {
   const mac = createHmac("sha256", secret).update(`signup-binding:${userId}`).digest("base64url");
   return `${userId}.${mac}`;
+}
+
+/** Cookie value with `userId` added to whatever bindings the browser already holds. */
+export function appendSignupBinding(existing: string | undefined, userId: string, secret: string) {
+  const next = signupBindingValue(userId, secret);
+  const kept = (existing ? decodeURIComponent(existing).split(SEPARATOR) : [])
+    .filter((v) => v && v !== next)
+    .slice(-(MAX_BINDINGS - 1));
+  return [...kept, next].join(SEPARATOR);
+}
+
+export function readSignupBindingCookie(headers: Headers | undefined): string | undefined {
+  const raw = headers?.get("cookie");
+  if (!raw) return undefined;
+  const match = raw.match(
+    new RegExp(`(?:^|;\\s*)(?:__Secure-)?${SIGNUP_BINDING_COOKIE.replace(".", "\\.")}=([^;]+)`),
+  );
+  return match?.[1];
 }
 
 export function hasValidSignupBinding(
@@ -27,13 +48,13 @@ export function hasValidSignupBinding(
   userId: string,
   secret: string,
 ): boolean {
-  const raw = headers?.get("cookie");
-  if (!raw) return false;
-  const match = raw.match(
-    new RegExp(`(?:^|;\\s*)(?:__Secure-)?${SIGNUP_BINDING_COOKIE.replace(".", "\\.")}=([^;]+)`),
-  );
-  if (!match) return false;
-  const presented = Buffer.from(decodeURIComponent(match[1]!));
+  const cookie = readSignupBindingCookie(headers);
+  if (!cookie) return false;
   const expected = Buffer.from(signupBindingValue(userId, secret));
-  return presented.length === expected.length && timingSafeEqual(presented, expected);
+  return decodeURIComponent(cookie)
+    .split(SEPARATOR)
+    .some((v) => {
+      const presented = Buffer.from(v);
+      return presented.length === expected.length && timingSafeEqual(presented, expected);
+    });
 }
