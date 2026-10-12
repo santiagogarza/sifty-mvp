@@ -59,8 +59,16 @@ function AppFrameInner({
 
   const detailTaskId = search.get("task");
 
-  const openCapture = React.useCallback(() => setCaptureOpen(true), []);
-  const openCommand = React.useCallback(() => setCommandOpen(true), []);
+  // Capture and the palette replace the cheat sheet rather than stacking a
+  // second dialog on it: `?` then `c` is "show me, then do it".
+  const openCapture = React.useCallback(() => {
+    setShortcutsOpen(false);
+    setCaptureOpen(true);
+  }, []);
+  const openCommand = React.useCallback(() => {
+    setShortcutsOpen(false);
+    setCommandOpen(true);
+  }, []);
   const openShortcuts = React.useCallback(() => setShortcutsOpen(true), []);
   // `?` toggles: pressing it on the open sheet closes it again.
   const toggleShortcuts = React.useCallback(() => setShortcutsOpen((v) => !v), []);

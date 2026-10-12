@@ -31,7 +31,9 @@ export function ShortcutsSheet({
             Work the list without touching the mouse.
           </DialogDescription>
         </div>
-        <div className="grid grid-cols-1 gap-x-8 gap-y-4 px-5 py-4 sm:grid-cols-2">
+        {/* Short viewports: the groups scroll inside the dialog, since the
+            modal scroll-lock would otherwise strand the lower rows. */}
+        <div className="grid max-h-[70dvh] grid-cols-1 gap-x-8 gap-y-4 overflow-y-auto px-5 py-4 sm:grid-cols-2">
           {SHORTCUT_GROUPS.map((group) => (
             <section key={group.title}>
               <h3 className="text-eyebrow mb-1.5">{group.title}</h3>

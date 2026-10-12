@@ -27,8 +27,12 @@ export function globalShortcutFor(e: {
   metaKey: boolean;
   ctrlKey: boolean;
   altKey: boolean;
+  repeat?: boolean;
   target: EventTarget | null;
 }): GlobalShortcut | null {
+  // Auto-repeat from a held key must not re-fire (a held `?` would flicker
+  // the sheet and leave it in whatever state the release lands on).
+  if (e.repeat) return null;
   if (e.key === "k" && (e.metaKey || e.ctrlKey)) return "command";
   if (isEditableTarget(e.target)) return null;
   if (e.metaKey || e.ctrlKey || e.altKey) return null;

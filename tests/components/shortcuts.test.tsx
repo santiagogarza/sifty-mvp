@@ -1,12 +1,25 @@
 // @vitest-environment jsdom
+import { AppFrame } from "@/components/app-shell/app-frame";
 import { GlobalKeyboard, globalShortcutFor } from "@/components/app-shell/keyboard";
 import { SHORTCUT_GROUPS } from "@/components/app-shell/shortcuts";
 import { ShortcutsSheet } from "@/components/app-shell/shortcuts-sheet";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /** SIF-20: `?` opens the cheat sheet, except while typing. */
+
+// AppFrame pulls in Next's router and the sync hook; stub both so the
+// frame mounts in jsdom without a server.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  usePathname: () => "/inbox",
+  useSearchParams: () => new URLSearchParams(),
+}));
+vi.mock("@/lib/store/sync", () => ({
+  useServerSync: () => ({ hydrated: true, error: null, rejected: 0 }),
+}));
+vi.mock("@/lib/ai/run-triage", () => ({ runTriage: vi.fn(), isTriageInFlight: () => false }));
 
 afterEach(() => {
   cleanup();
@@ -43,6 +56,43 @@ describe("globalShortcutFor", () => {
   it("ignores single keys with a modifier held", () => {
     expect(globalShortcutFor(key("?", document.body, { altKey: true }))).toBeNull();
     expect(globalShortcutFor(key("c", document.body, { ctrlKey: true }))).toBeNull();
+  });
+
+  it("ignores auto-repeat from a held key", () => {
+    expect(globalShortcutFor({ ...key("?"), repeat: true })).toBeNull();
+    expect(globalShortcutFor({ ...key("c"), repeat: true })).toBeNull();
+    expect(globalShortcutFor({ ...key("?"), repeat: false })).toBe("shortcuts");
+  });
+});
+
+describe("AppFrame overlays", () => {
+  it("c from the open cheat sheet replaces it with capture instead of stacking", async () => {
+    // ThemeProvider reads the system scheme; jsdom has no matchMedia.
+    window.matchMedia ??= ((query: string) =>
+      ({
+        matches: false,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        onchange: null,
+        dispatchEvent: () => false,
+      }) as MediaQueryList) as typeof window.matchMedia;
+    const user = userEvent.setup();
+    render(
+      <AppFrame>
+        <div>page</div>
+      </AppFrame>,
+    );
+
+    await user.keyboard("?");
+    expect(screen.getByRole("dialog", { name: "Shortcuts" })).toBeInTheDocument();
+
+    await user.keyboard("c");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Shortcuts" })).toBeNull());
+    expect(screen.getByRole("dialog", { name: "Capture" })).toBeInTheDocument();
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
   });
 });
 
