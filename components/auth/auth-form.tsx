@@ -215,7 +215,7 @@ function CheckInbox({ sent, onBack }: { sent: NonNullable<Sent>; onBack: () => v
       <p className="text-[13.5px] text-[var(--fg-muted)] mt-1.5 leading-[1.5]">
         {sent.kind === "verify"
           ? `We sent a confirmation link to ${sent.email}. Open it to finish setting up your account.`
-          : `We sent a sign-in link to ${sent.email}. It works once and expires in 5 minutes.`}
+          : `We sent a sign-in link to ${sent.email}. It works once and expires in 5 minutes. If you don't have an account yet, it creates one.`}
       </p>
       {resendError ? (
         <div role="alert" className="mt-2 text-[13px] text-[var(--warn)]">

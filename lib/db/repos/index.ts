@@ -18,25 +18,36 @@ import type { Repos } from "./types";
  * header so a developer notices when they have not configured a DB.
  */
 
+type Resolved = { repos: Repos; persistence: "postgres" | "memory" };
+
+/**
+ * The default is pinned on `globalThis`, not a module variable: `next dev`
+ * evaluates this module once per server bundle (route handlers and layouts
+ * are separate), and two in-memory stores would mean a session written by
+ * `/api/auth` is invisible to the `(app)` layout.
+ */
+const globalStore = globalThis as typeof globalThis & { __siftyRepos?: Resolved | null };
+
 let _override: Repos | null = null;
-let _default: { repos: Repos; persistence: "postgres" | "memory" } | null = null;
 
 export function setReposForTesting(repos: Repos | null): void {
   _override = repos;
-  _default = null;
+  globalStore.__siftyRepos = null;
 }
 
 export function getRepos(): Repos {
   if (_override) return _override;
-  if (_default) return _default.repos;
-  _default = resolveDefault();
-  return _default.repos;
+  return resolved().repos;
 }
 
 export function getPersistenceMode(): "postgres" | "memory" {
   if (_override) return "memory";
-  if (!_default) _default = resolveDefault();
-  return _default.persistence;
+  return resolved().persistence;
+}
+
+function resolved(): Resolved {
+  if (!globalStore.__siftyRepos) globalStore.__siftyRepos = resolveDefault();
+  return globalStore.__siftyRepos;
 }
 
 function resolveDefault(): { repos: Repos; persistence: "postgres" | "memory" } {

@@ -19,6 +19,8 @@ import { type NextRequest, NextResponse } from "next/server";
  * `getSession()`).
  */
 
+// Mirrors AUTH_COOKIE_PREFIX in lib/auth/auth.ts; that module pulls in the
+// database layer and cannot be imported from the edge runtime.
 const COOKIE_PREFIX = "sifty";
 
 const PROTECTED_PREFIXES = [

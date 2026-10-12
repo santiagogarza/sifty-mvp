@@ -169,6 +169,38 @@ describe("getSession()", () => {
     expect(session?.sessionId).toBeNull();
     expect(session?.user.isCreator).toBe(true);
   });
+
+  it("the keyless bypass setup works without BETTER_AUTH_SECRET", async () => {
+    vi.stubEnv("SIFTY_DISABLE_AUTH", "1");
+    vi.stubEnv("BETTER_AUTH_SECRET", "");
+    const session = await getSession(new Request("http://localhost/api/tasks"));
+    expect(session?.sessionId).toBeNull();
+    // A stale cookie from a previous configuration must not break it either.
+    const withCookie = await getSession(
+      new Request("http://localhost/api/tasks", {
+        headers: { cookie: "sifty.session_token=old.sig" },
+      }),
+    );
+    expect(withCookie?.sessionId).toBeNull();
+  });
+
+  it("without bypass, a missing BETTER_AUTH_SECRET fails loudly on a cookie-bearing request", async () => {
+    vi.stubEnv("BETTER_AUTH_SECRET", "");
+    const repos = getTestRepos();
+    // New repos instance → new auth instance, so the secret is re-read.
+    const { cookie } = await (async () => {
+      vi.stubEnv("BETTER_AUTH_SECRET", "test-auth-secret-do-not-use-in-production-please-32");
+      const r = await createUserWithCookie(repos, { email: "secret@example.com" });
+      vi.stubEnv("BETTER_AUTH_SECRET", "");
+      return r;
+    })();
+    expect(cookie).toContain("sifty.session_token=");
+    const { setReposForTesting, createMemoryRepos } = await import("@/lib/db/repos");
+    setReposForTesting(createMemoryRepos());
+    await expect(
+      getSession(new Request("http://localhost/api/tasks", { headers: { cookie } })),
+    ).rejects.toThrow(/BETTER_AUTH_SECRET/);
+  });
 });
 
 describe("password reset", () => {

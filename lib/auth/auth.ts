@@ -111,6 +111,9 @@ function createAuth(repos: Repos) {
     trustedOrigins: trustedOrigins(),
     advanced: {
       cookiePrefix: AUTH_COOKIE_PREFIX,
+      // Better Auth skips origin/CSRF checks under NODE_ENV=test by default;
+      // keep them on so the route tests exercise production behavior.
+      disableOriginCheck: false,
       database: {
         generateId: ({ model }) => makeId(ID_PREFIX[model] ?? "id"),
       },
@@ -267,9 +270,16 @@ async function sendWelcome(user: { id: string; email: string; name: string }): P
   }
 }
 
-const instances = new WeakMap<Repos, ReturnType<typeof createAuth>>();
+export type Auth = ReturnType<typeof createAuth>;
 
-export function getAuth(): ReturnType<typeof createAuth> {
+// Keyed by repos instance so `setReposForTesting()` yields a fresh auth, and
+// pinned on `globalThis` so `next dev`'s per-bundle module copies share one
+// instance (and one memory adapter) across route handlers and layouts.
+const globalStore = globalThis as typeof globalThis & { __siftyAuth?: WeakMap<Repos, Auth> };
+if (!globalStore.__siftyAuth) globalStore.__siftyAuth = new WeakMap<Repos, Auth>();
+const instances = globalStore.__siftyAuth;
+
+export function getAuth(): Auth {
   const repos = getRepos();
   let auth = instances.get(repos);
   if (!auth) {
@@ -278,5 +288,3 @@ export function getAuth(): ReturnType<typeof createAuth> {
   }
   return auth;
 }
-
-export type Auth = ReturnType<typeof createAuth>;

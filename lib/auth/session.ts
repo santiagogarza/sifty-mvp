@@ -6,8 +6,9 @@ import {
 } from "@/lib/demo/seed-demo";
 import type { UserProfile } from "@/lib/domain/types";
 import { TRIAL_DAYS } from "@/lib/entitlements/entitlements";
+import { getSessionCookie } from "better-auth/cookies";
 import { headers } from "next/headers";
-import { getAuth } from "./auth";
+import { AUTH_COOKIE_PREFIX, type Auth, getAuth } from "./auth";
 import { CREATOR_EMAIL, isCreatorEmail } from "./session-shared";
 
 /**
@@ -43,11 +44,7 @@ export interface Session {
 
 export async function getSession(req?: Request): Promise<Session | null> {
   const requestHeaders = await resolveHeaders(req);
-  const resolved = requestHeaders
-    ? await getAuth()
-        .api.getSession({ headers: requestHeaders })
-        .catch(() => null)
-    : null;
+  const resolved = requestHeaders ? await resolveAuthSession(requestHeaders) : null;
 
   if (!resolved) {
     if (isAuthBypassMode()) return getBypassSession();
@@ -76,6 +73,25 @@ export async function getSession(req?: Request): Promise<Session | null> {
 
 function isAuthBypassMode(): boolean {
   return process.env.SIFTY_DISABLE_AUTH === "1";
+}
+
+type ResolvedAuthSession = Awaited<ReturnType<Auth["api"]["getSession"]>>;
+
+/**
+ * Only touches Better Auth when a Sifty session cookie is present, so the
+ * keyless `SIFTY_DISABLE_AUTH=1` setup never needs `BETTER_AUTH_SECRET`.
+ * With bypass off, a missing secret still fails loudly.
+ */
+async function resolveAuthSession(requestHeaders: Headers): Promise<ResolvedAuthSession> {
+  if (!getSessionCookie(requestHeaders, { cookiePrefix: AUTH_COOKIE_PREFIX })) return null;
+  let auth: Auth;
+  try {
+    auth = getAuth();
+  } catch (err) {
+    if (isAuthBypassMode()) return null;
+    throw err;
+  }
+  return auth.api.getSession({ headers: requestHeaders }).catch(() => null);
 }
 
 async function resolveHeaders(req?: Request): Promise<Headers | null> {
