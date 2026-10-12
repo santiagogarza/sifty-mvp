@@ -161,7 +161,8 @@ Required for production:
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google sign-in. Optional: the button is hidden until both are set. Redirect URI: `<app url>/api/auth/callback/google`. |
 | `CREATOR_EMAIL` | Email address that gets the permanent unlimited tier. |
 | `INVITE_CODE_PEPPER` | Pepper for invite-code hashes (`openssl rand -hex 32`). |
-| `DATABASE_URL` | Postgres connection (Vercel Postgres / Neon / Supabase). |
+| `DATABASE_URL` | Postgres connection, pooled (Neon via Vercel Marketplace). Production refuses to start without it. |
+| `DATABASE_URL_UNPOOLED` | Direct connection for migrations; falls back to `DATABASE_URL`. |
 | `AI_TRANSPORT` | `gateway` (default) or `direct`. Explicit; never inferred from keys. |
 | `AI_GATEWAY_API_KEY` | Vercel AI Gateway key. Required when `AI_TRANSPORT=gateway`. |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | Required when `AI_TRANSPORT=direct` (every stage has an OpenAI fallback). |
@@ -175,7 +176,7 @@ Optional:
 
 - `EMAIL_REPLY_TO` — Reply-To on outgoing mail (support mailbox).
 - `SIFTY_DISABLE_AUTH=1` — local-dev escape hatch; bypasses auth in the
-  middleware and `getSession`. Off in production.
+  middleware and `getSession`.
 - `SIFTY_DEMO_SEED=1` — populate new accounts with the fully-triaged demo
   workspace (first-run only; never touches existing data).
 - `SIFTY_AI_OFFLINE=1` — keyless dev: AI routes use the deterministic
@@ -186,6 +187,15 @@ Optional:
   The triage cap is enforced twice: an in-process bucket per instance, and
   a persistent sliding window over `ai_runs` that holds across serverless
   instances.
+
+Dev-only switches (`SIFTY_DISABLE_AUTH`, `SIFTY_DEMO_SEED`, `SIFTY_AI_OFFLINE`,
+`SIFTY_USER_EMAIL`) are refused when `VERCEL_ENV=production`: the build
+(`next.config.ts`) and the server (`instrumentation.ts`) throw
+`ProductionEnvError`, and `demoFlagEnabled()` in `lib/env/production-guards.ts`
+ignores them regardless. Same for the in-memory store: production requires
+`DATABASE_URL`. On Vercel the build command is `pnpm build:vercel`, which runs
+`pnpm db:migrate` (skips when no database is configured outside production)
+before `next build`.
 
 ## AI configuration
 

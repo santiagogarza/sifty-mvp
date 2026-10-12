@@ -43,6 +43,7 @@ interface State {
   users: Map<string, UserProfile>;
   emails: Map<string, string>; // lowercased email → user id
   entitlements: Map<string, EntitlementSnapshot>;
+  stripeCustomers: Map<string, string>; // user id → Stripe customer id (lives on `users` in Postgres)
   tasks: Map<string, Task & { userId: string }>;
   labels: Map<string, Label & { userId: string }>;
   memories: Map<string, Memory & { userId: string }>;
@@ -73,6 +74,7 @@ function emptyState(): State {
     users: new Map(),
     emails: new Map(),
     entitlements: new Map(),
+    stripeCustomers: new Map(),
     tasks: new Map(),
     labels: new Map(),
     memories: new Map(),
@@ -117,15 +119,15 @@ export function createMemoryRepos(): MemoryReposHandle {
       return u ? { ...u } : null;
     },
     async setStripeCustomerId(userId, customerId) {
+      state.stripeCustomers.set(userId, customerId);
       const ent = state.entitlements.get(userId);
       if (ent) ent.stripeCustomerId = customerId;
     },
     async findByStripeCustomerId(customerId) {
-      for (const [userId, ent] of state.entitlements) {
-        if (ent.stripeCustomerId === customerId) {
-          const u = state.users.get(userId);
-          if (u) return { ...u };
-        }
+      for (const [userId, cid] of state.stripeCustomers) {
+        if (cid !== customerId) continue;
+        const u = state.users.get(userId);
+        if (u) return { ...u };
       }
       return null;
     },
@@ -133,10 +135,16 @@ export function createMemoryRepos(): MemoryReposHandle {
 
   const entitlements: EntitlementRepo = {
     async get(userId) {
-      return state.entitlements.get(userId) ?? null;
+      const ent = state.entitlements.get(userId);
+      if (!ent) return null;
+      return {
+        ...ent,
+        stripeCustomerId: ent.stripeCustomerId ?? state.stripeCustomers.get(userId) ?? null,
+      };
     },
     async upsert(userId, snapshot) {
       state.entitlements.set(userId, { ...snapshot });
+      if (snapshot.stripeCustomerId) state.stripeCustomers.set(userId, snapshot.stripeCustomerId);
       return { ...snapshot };
     },
     async update(userId, mutate) {
