@@ -222,7 +222,7 @@ page rolls the table up by day, stage, model, and account.
 | --- | --- | --- | --- |
 | `enrich` | fast | title, description, next action, due hint, labels | `enrich.v1` |
 | `prioritize` | fast | urgency, importance, effort, rationale — **list-aware**: the prompt sees the user's other open tasks | `prioritize.v1` |
-| `triage` | fast | routing (inbox task → `waiting` / `someday` only), delegation candidate, confidence, clarifying question | `triage.v2` |
+| `triage` | fast | routing (inbox task → `waiting` / `someday` only), delegation candidate, confidence, clarifying question + up to four tappable options | `triage.v3` |
 | `subtasks` | fast | up to five subtasks when the work has distinct steps | `subtasks.v1` |
 | `plan` | deep | `task.plan`: executor (`ai_agent` / `cursor_agent` / `person` / `self` / `none`), approach, connectors, readiness, blockers | `plan.v1` |
 
@@ -240,6 +240,34 @@ Rules that hold at every step:
   with a retryable message.
 - With `SIFTY_AI_OFFLINE=1` (or `?offline=1` off production) every stage
   uses the deterministic heuristic through the same steps.
+
+### Decisions (clarifying questions)
+
+When `triage` is unsure it asks one question instead of guessing. The
+pipeline still finishes — the task is `ready` with Sifty's best read — then
+the run opens a `clarifying_question` row in `decisions`, registers a
+Workflow hook under `decisions.resume_token`, releases its per-user slot,
+and suspends with no compute for up to seven days.
+
+- `/decisions` is the one inbox for everything waiting on the human
+  (memory proposals in 2.4 and approvals in Phase 3 land in the same
+  list). Answer with a tapped option or a line of text, or "Let Sifty
+  decide". The badge in the sidebar (top bar on phones) is the open count.
+- **Answer** → `POST /api/decisions/:id/answer` resolves the row once
+  (compare-and-set; a second answer is `409`) and resumes the hook. The run
+  folds the answer into the capture as an `Answer:` line and runs every
+  stage again **inside the same sift** — one cap unit, and the second pass
+  never asks another question. If no run is waiting (deploy, deadline), the
+  answer is folded in here and a fresh sift is enqueued instead.
+- **Dismiss** → the task is marked `siftedWithAssumptions` (shown in the
+  sheet with a re-sift link) and the run ends.
+- A re-sift or a delete expires the task's open questions and releases
+  their runs; the 7-day deadline expires an ignored one.
+- One-tap links (`lib/decisions/links.ts`): HS256 JWTs under
+  `BETTER_AUTH_SECRET`, 24 h, scoped to one decision and one action, used
+  by digests and pushes via `GET /api/decisions/link?token=`. Single use
+  follows from the decision's own state machine. The notifications worker
+  reads `listOpen(userId)` from `lib/decisions/service.ts`.
 
 ### The `dailyPlan` workflow
 

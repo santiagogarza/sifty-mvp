@@ -131,6 +131,7 @@ export function dayKeyDelta(toKey: string, fromKey: string): number {
   const [ty, tm, td] = toKey.split("-").map(Number) as [number, number, number];
   const [fy, fm, fd] = fromKey.split("-").map(Number) as [number, number, number];
   return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / dayMs);
+}
 
 /** "just now", "12m ago", "3h ago", then day granularity via `formatRelativeDay`. */
 export function formatTimeAgo(value: string | Date, now = new Date()): string {
