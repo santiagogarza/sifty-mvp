@@ -86,6 +86,40 @@ test.describe("mobile detail sheet", () => {
   });
 });
 
+test.describe("short desktop detail sheet", () => {
+  test.use({ viewport: { width: 1280, height: 520 } });
+
+  // Same contract as mobile for the side panel: the body scrolls, the
+  // footer stays pinned, and opening the sheet focuses the panel itself.
+  test("scrolls inside the side panel and focuses the panel on open", async ({ page }) => {
+    await page.goto("/inbox", { waitUntil: "networkidle" });
+
+    await page.keyboard.press("c");
+    await page
+      .getByPlaceholder("What do you need to do?")
+      .fill(`Desktop sheet smoke ${Date.now()}`);
+    await page.keyboard.press("ControlOrMeta+Enter");
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toBeFocused();
+
+    const body = page.getByTestId("task-detail-body");
+    const deleteButton = page.getByRole("button", { name: "Delete task" });
+    await expect(deleteButton).toBeInViewport();
+    const footerTopBefore = (await deleteButton.boundingBox())!.y;
+
+    expect(await body.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+    await body.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+    await expect(page.getByText("Original capture")).toBeInViewport();
+    expect((await deleteButton.boundingBox())!.y).toBe(footerTopBefore);
+
+    // One Escape closes the sheet: nothing else (a tooltip) took focus.
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+  });
+});
+
 test("rate limit returns 429 with Retry-After when bursting the triage route", async ({
   request,
 }) => {

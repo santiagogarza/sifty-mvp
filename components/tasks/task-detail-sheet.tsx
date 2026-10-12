@@ -84,7 +84,14 @@ export function TaskDetailSheet({
           confidence pill would otherwise take focus and pop its tooltip
           every time a task opens (and swallow the first Escape). Tab still
           reaches every control in order; no keyboard pops on mobile. */}
-      <SheetContent aria-describedby={undefined} onOpenAutoFocus={(e) => e.preventDefault()}>
+      <SheetContent
+        aria-describedby={undefined}
+        tabIndex={-1}
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          (e.currentTarget as HTMLElement | null)?.focus({ preventScroll: true });
+        }}
+      >
         {task ? (
           <>
             <VisuallyHidden>
