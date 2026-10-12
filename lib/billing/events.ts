@@ -151,6 +151,10 @@ export function applyStripeEvent(
       return resolve({ subscriptionActive: true, stripeStatus: "active", graceEndsAt: null });
     }
     case "invoice.payment_failed": {
+      // A failure on an ended or never-started subscription (late or
+      // reordered after `subscription.deleted`) owes nothing; no grace.
+      const status = current.stripeStatus ?? "";
+      if (ENDED_STATUSES.has(status) || status === "incomplete") return current;
       return resolve({
         subscriptionActive: false,
         stripeStatus: "past_due",

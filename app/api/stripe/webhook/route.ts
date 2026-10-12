@@ -7,7 +7,7 @@ import {
 import { StripeNotConfiguredError, verifyAndParseEvent } from "@/lib/billing/stripe";
 import { HANDLED_EVENTS } from "@/lib/billing/webhook-events";
 import { getRepos } from "@/lib/db/repos";
-import { emptySnapshot } from "@/lib/entitlements/entitlements";
+import { emptySnapshot, paymentProblem } from "@/lib/entitlements/entitlements";
 import { reportError } from "@/lib/observability/report-error";
 import { buildRateLimitKey, consumeToken, rateLimitResponseInit } from "@/lib/ratelimit/limiter";
 import { STRIPE_WEBHOOK_POLICY, clientIdFromRequest } from "@/lib/ratelimit/policies";
@@ -120,7 +120,10 @@ async function processEvent(
     return { ...reduced, stripeCustomerId: customerId };
   });
 
-  if (reducible.type === "invoice.payment_failed" && next.tier !== "creator") {
+  if (
+    reducible.type === "invoice.payment_failed" &&
+    paymentProblem(next, next.tier === "creator") !== null
+  ) {
     await sendPaymentFailedEmail({
       user,
       invoice: reducible.data.object as StripeInvoiceLike,
