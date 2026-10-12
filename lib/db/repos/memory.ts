@@ -7,7 +7,7 @@ import type {
   TaskEditableField,
   UserProfile,
 } from "@/lib/domain/types";
-import { trialSnapshot } from "@/lib/entitlements/entitlements";
+import { emptySnapshot, trialSnapshot } from "@/lib/entitlements/entitlements";
 import { id as makeId } from "@/lib/utils/ids";
 import { nanoid } from "nanoid";
 import {
@@ -461,30 +461,41 @@ export function createMemoryRepos(): MemoryReposHandle {
       return { ...c };
     },
     async consume(codeId, userId, input) {
-      // The memory store is single-threaded, so these checks are atomic by
+      // The memory store is single-threaded, so this block is atomic by
       // construction; the Postgres implementation gets the same guarantee
-      // from a conditional UPDATE inside a transaction.
+      // from a row lock and a conditional UPDATE inside one transaction.
       const now = input.now ?? new Date();
       const c = state.inviteCodes.get(codeId);
       if (!c) return { ok: false, reason: "expired" };
+      if (state.inviteRedemptions.some((r) => r.codeId === codeId && r.userId === userId)) {
+        return { ok: false, reason: "already_redeemed" };
+      }
       if (c.revokedAt) return { ok: false, reason: "revoked" };
       if (c.expiresAt && Date.parse(c.expiresAt) <= now.getTime()) {
         return { ok: false, reason: "expired" };
       }
-      if (state.inviteRedemptions.some((r) => r.codeId === codeId && r.userId === userId)) {
-        return { ok: false, reason: "already_redeemed" };
-      }
       if (c.redemptionCount >= c.maxRedemptions) return { ok: false, reason: "exhausted" };
+
+      const current = state.entitlements.get(userId) ?? null;
+      const grant = input.grant(current ? { ...current } : null);
+      const next: EntitlementSnapshot = {
+        ...(current ?? emptySnapshot()),
+        compedAt: grant.compedAt,
+        compedUntil: grant.compedUntil,
+        tier: grant.tier,
+      };
+
       c.redemptionCount += 1;
       const redemption: InviteRedemption = {
         id: makeId("red"),
         codeId,
         userId,
-        compedUntil: input.compedUntil,
+        compedUntil: grant.compedUntil,
         redeemedAt: now.toISOString(),
       };
       state.inviteRedemptions.push(redemption);
-      return { ok: true, redemption: { ...redemption } };
+      state.entitlements.set(userId, next);
+      return { ok: true, redemption: { ...redemption }, entitlement: { ...next } };
     },
     async listRedemptions(codeId) {
       return state.inviteRedemptions.filter((r) => r.codeId === codeId).map((r) => ({ ...r }));

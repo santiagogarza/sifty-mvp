@@ -10,6 +10,7 @@ import { hashInviteCode, isWellFormedInviteCode } from "@/lib/invites/codes";
 import {
   extendComp,
   mintInviteCode,
+  parseExpiresInput,
   redeemInviteCode,
   revokeInviteCode,
 } from "@/lib/invites/service";
@@ -284,5 +285,94 @@ describe("extendComp", () => {
         now,
       ),
     ).toBe("2026-11-12T00:00:00.000Z");
+  });
+});
+
+describe("redeem atomicity and Stripe-fact preservation", () => {
+  it("writes the comp in the same unit as the redemption and keeps Stripe facts", async () => {
+    const repos = getTestRepos();
+    const user = await makeUser("paying@example.com");
+    await repos.entitlements.upsert(user.id, {
+      ...emptySnapshot(),
+      tier: "pro",
+      subscriptionActive: true,
+      stripeCustomerId: "cus_9",
+      stripeSubscriptionId: "sub_9",
+      stripeStatus: "active",
+      currentPeriodEnd: "2027-01-01T00:00:00.000Z",
+    });
+    const { code } = await mintInviteCode(repos, { durationMonths: 1 });
+    const result = await redeemInviteCode(repos, { userId: user.id, isCreator: false, code });
+    expect(result.ok).toBe(true);
+    const snap = await repos.entitlements.get(user.id);
+    expect(snap?.tier).toBe("comped");
+    expect(snap?.subscriptionActive).toBe(true);
+    expect(snap?.stripeSubscriptionId).toBe("sub_9");
+    expect(snap?.currentPeriodEnd).toBe("2027-01-01T00:00:00.000Z");
+  });
+
+  it("derives the grant from the entitlement as seen inside consume, not from a stale read", async () => {
+    const repos = getTestRepos();
+    const user = await makeUser("race@example.com");
+    const { code } = await mintInviteCode(repos, { durationMonths: 1 });
+    // Simulate a Stripe write landing after the service's pre-checks but
+    // before consume: whatever consume sees is what the grant is based on.
+    const original = repos.inviteCodes.consume.bind(repos.inviteCodes);
+    const spy = vi.spyOn(repos.inviteCodes, "consume").mockImplementation(async (c, u, input) => {
+      const ent = (await repos.entitlements.get(u))!;
+      await repos.entitlements.upsert(u, {
+        ...ent,
+        subscriptionActive: false,
+        stripeStatus: "canceled",
+      });
+      return original(c, u, input);
+    });
+    const result = await redeemInviteCode(repos, { userId: user.id, isCreator: false, code });
+    spy.mockRestore();
+    expect(result.ok).toBe(true);
+    const snap = await repos.entitlements.get(user.id);
+    expect(snap?.subscriptionActive).toBe(false);
+    expect(snap?.stripeStatus).toBe("canceled");
+    expect(snap?.tier).toBe("comped");
+  });
+
+  it("creates the entitlement row when the user had none", async () => {
+    const repos = getTestRepos();
+    const user = await repos.users.create({
+      email: "norow@example.com",
+      passwordHash: null,
+      displayName: "N",
+      isCreator: false,
+    });
+    const { code } = await mintInviteCode(repos);
+    const result = await redeemInviteCode(repos, { userId: user.id, isCreator: false, code });
+    expect(result).toEqual({ ok: true, tier: "comped", compedUntil: null });
+    expect((await repos.entitlements.get(user.id))?.compedAt).toBeTruthy();
+  });
+
+  it("a refused consume leaves the entitlement untouched", async () => {
+    const repos = getTestRepos();
+    const u1 = await makeUser("r1@example.com");
+    const u2 = await makeUser("r2@example.com");
+    const { code } = await mintInviteCode(repos, { maxRedemptions: 1 });
+    await redeemInviteCode(repos, { userId: u1.id, isCreator: false, code });
+    const before = await repos.entitlements.get(u2.id);
+    const refused = await redeemInviteCode(repos, { userId: u2.id, isCreator: false, code });
+    expect(refused).toEqual({ ok: false, reason: "exhausted" });
+    expect(await repos.entitlements.get(u2.id)).toEqual(before);
+    expect(await repos.inviteCodes.listRedemptionsForUser(u2.id)).toEqual([]);
+  });
+});
+
+describe("parseExpiresInput", () => {
+  it("a bare date is valid through the end of that day (UTC)", () => {
+    expect(parseExpiresInput("2027-06-30")).toBe("2027-06-30T23:59:59.999Z");
+  });
+  it("a full timestamp is kept; empty is null; garbage throws", () => {
+    expect(parseExpiresInput("2027-06-30T12:00:00Z")).toBe("2027-06-30T12:00:00.000Z");
+    expect(parseExpiresInput(null)).toBeNull();
+    expect(parseExpiresInput("  ")).toBeNull();
+    expect(() => parseExpiresInput("tomorrow-ish")).toThrow(/expiresAt/);
+    expect(() => parseExpiresInput("2027-13-45")).toThrow(/expiresAt/);
   });
 });

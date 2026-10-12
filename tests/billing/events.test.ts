@@ -99,7 +99,8 @@ describe("applyStripeEvent", () => {
   });
 
   it("comped precedence: a Stripe cancellation never strips an invite comp", () => {
-    const paying = applyStripeEvent(comped(), subEvent("customer.subscription.created", "active"));
+    const start = comped();
+    const paying = applyStripeEvent(start, subEvent("customer.subscription.created", "active"));
     expect(paying.tier).toBe("comped");
     expect(paying.subscriptionActive).toBe(true);
 
@@ -109,7 +110,7 @@ describe("applyStripeEvent", () => {
     );
     expect(cancelled.tier).toBe("comped");
     expect(cancelled.subscriptionActive).toBe(false);
-    expect(cancelled.compedAt).toBe(comped().compedAt);
+    expect(cancelled.compedAt).toBe(start.compedAt);
   });
 
   it("creator entitlement is sticky across every event type", () => {

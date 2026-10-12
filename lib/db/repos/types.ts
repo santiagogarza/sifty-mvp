@@ -241,6 +241,13 @@ export interface InviteRedemption {
 /** Why `consume` refused; the order here is the order checks run in. */
 export type InviteConsumeFailure = "revoked" | "expired" | "exhausted" | "already_redeemed";
 
+/** The comp a redemption grants, derived from the user's locked entitlement. */
+export interface CompGrant {
+  compedAt: string;
+  compedUntil: string | null;
+  tier: Tier;
+}
+
 export interface InviteCodeRepo {
   create(input: InviteCodeCreateInput): Promise<InviteCode>;
   findByHash(codeHash: string): Promise<InviteCode | null>;
@@ -248,16 +255,22 @@ export interface InviteCodeRepo {
   list(): Promise<InviteCode[]>;
   revoke(id: string, at?: Date): Promise<InviteCode | null>;
   /**
-   * Atomically check the code is live and under its cap, bump the count,
-   * and record the redemption. Two users racing for the last redemption
-   * must not both succeed; the same user redeeming twice must not count twice.
+   * One atomic unit: lock the user's entitlement, let the caller derive the
+   * grant from it, record the redemption, bump the code's count (refusing
+   * when revoked / expired / exhausted), and write only the comp columns of
+   * the entitlement. Either everything commits or nothing does, so a spent
+   * code always comes with its Pro grant, concurrent Stripe writes to the
+   * same row are never clobbered, two users racing for the last redemption
+   * cannot both succeed, and the same user redeeming twice gets
+   * `already_redeemed` rather than a constraint error.
    */
   consume(
     codeId: string,
     userId: string,
-    input: { compedUntil: string | null; now?: Date },
+    input: { grant: (current: EntitlementSnapshot | null) => CompGrant; now?: Date },
   ): Promise<
-    { ok: true; redemption: InviteRedemption } | { ok: false; reason: InviteConsumeFailure }
+    | { ok: true; redemption: InviteRedemption; entitlement: EntitlementSnapshot }
+    | { ok: false; reason: InviteConsumeFailure }
   >;
   listRedemptions(codeId: string): Promise<InviteRedemption[]>;
   listRedemptionsForUser(userId: string): Promise<InviteRedemption[]>;

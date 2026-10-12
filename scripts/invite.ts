@@ -1,7 +1,7 @@
 import { closeDb } from "@/lib/db/client";
 import { getPersistenceMode, getRepos } from "@/lib/db/repos";
 import { getInvitePepper } from "@/lib/invites/codes";
-import { mintInviteCode, revokeInviteCode } from "@/lib/invites/service";
+import { mintInviteCode, parseExpiresInput, revokeInviteCode } from "@/lib/invites/service";
 
 /**
  * Invite-code admin CLI. Runs against `DATABASE_URL` with the same
@@ -71,14 +71,16 @@ async function main() {
   switch (command) {
     case "mint": {
       requireDatabase();
-      const expiresRaw = typeof flags.expires === "string" ? flags.expires : null;
-      if (expiresRaw && Number.isNaN(Date.parse(expiresRaw))) {
-        fail("--expires must be a date like 2027-01-31");
+      let expiresAt: string | null = null;
+      try {
+        expiresAt = parseExpiresInput(typeof flags.expires === "string" ? flags.expires : null);
+      } catch {
+        fail("--expires must be a date like 2027-01-31 (valid through that day, UTC)");
       }
       const { code, record } = await mintInviteCode(repos, {
         durationMonths: intFlag(flags, "months") ?? null,
         maxRedemptions: intFlag(flags, "max") ?? 1,
-        expiresAt: expiresRaw ? new Date(expiresRaw).toISOString() : null,
+        expiresAt,
         note: typeof flags.note === "string" ? flags.note : null,
       });
       const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";

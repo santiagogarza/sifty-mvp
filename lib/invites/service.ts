@@ -1,12 +1,7 @@
 import type { Repos } from "@/lib/db/repos";
 import type { InviteCode, InviteGrant } from "@/lib/db/repos/types";
 import type { Tier } from "@/lib/domain/types";
-import {
-  emptySnapshot,
-  isCompActive,
-  resolveTier,
-  withResolvedTier,
-} from "@/lib/entitlements/entitlements";
+import { emptySnapshot, isCompActive, resolveTier } from "@/lib/entitlements/entitlements";
 import {
   generateInviteCode,
   hashInviteCode,
@@ -96,19 +91,46 @@ export async function redeemInviteCode(
     return { ok: false, reason: "expired" };
   }
 
-  const current = (await repos.entitlements.get(input.userId)) ?? emptySnapshot();
-  const compedUntil = extendComp(current, code.durationMonths, now);
-
-  const consumed = await repos.inviteCodes.consume(code.id, input.userId, { compedUntil, now });
-  if (!consumed.ok) return { ok: false, reason: consumed.reason };
-
-  const next = withResolvedTier(
-    { ...current, compedAt: now.toISOString(), compedUntil },
-    input.isCreator,
+  // The grant is derived from the entitlement row *as locked inside the
+  // consume transaction*, so a Stripe write landing between our read and
+  // our write cannot be clobbered, and the comp commits with the redemption.
+  const consumed = await repos.inviteCodes.consume(code.id, input.userId, {
     now,
-  );
-  await repos.entitlements.upsert(input.userId, next);
-  return { ok: true, tier: next.tier, compedUntil };
+    grant: (current) => {
+      const base = current ?? emptySnapshot();
+      const compedAt = now.toISOString();
+      const compedUntil = extendComp(base, code.durationMonths, now);
+      return {
+        compedAt,
+        compedUntil,
+        tier: resolveTier({ ...base, compedAt, compedUntil, isCreator: input.isCreator }, now),
+      };
+    },
+  });
+  if (!consumed.ok) return { ok: false, reason: consumed.reason };
+  return {
+    ok: true,
+    tier: consumed.entitlement.tier,
+    compedUntil: consumed.entitlement.compedUntil,
+  };
+}
+
+/**
+ * `--expires` on the CLI: a bare calendar date means "valid through that
+ * day", so it becomes the last instant of the day in UTC; a full timestamp
+ * is taken as given.
+ */
+export function parseExpiresInput(raw: string | null | undefined): string | null {
+  const trimmed = raw?.trim() ?? "";
+  if (!trimmed) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const end = new Date(`${trimmed}T23:59:59.999Z`);
+    if (Number.isNaN(end.getTime())) throw new Error("expiresAt must be a date like 2027-01-31");
+    return end.toISOString();
+  }
+  const ts = Date.parse(trimmed);
+  if (Number.isNaN(ts)) throw new Error("expiresAt must be a date like 2027-01-31");
+  return new Date(ts).toISOString();
 }
 
 /**

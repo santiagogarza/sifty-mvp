@@ -1,6 +1,6 @@
 import { LABEL_TONES, type Label, type LabelTone } from "@/lib/domain/types";
 import type { Memory, Subtask, Task, TaskEditableField } from "@/lib/domain/types";
-import { trialSnapshot } from "@/lib/entitlements/entitlements";
+import { emptySnapshot, trialSnapshot } from "@/lib/entitlements/entitlements";
 import { id as makeId } from "@/lib/utils/ids";
 import { and, count, desc, eq, gt, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
@@ -15,6 +15,7 @@ import {
   IdConflictError,
   type InviteCode,
   type InviteCodeRepo,
+  type InviteConsumeFailure,
   type InviteRedemption,
   type LabelRepo,
   type MemoryCreateInput,
@@ -578,58 +579,109 @@ export function createPostgresRepos(): Repos {
     async consume(codeId, userId, input) {
       const db = getDb();
       const now = input.now ?? new Date();
-      return db.transaction(async (tx) => {
-        const [existing] = await tx
-          .select({ id: schema.inviteRedemptions.id })
-          .from(schema.inviteRedemptions)
-          .where(
-            and(
-              eq(schema.inviteRedemptions.codeId, codeId),
-              eq(schema.inviteRedemptions.userId, userId),
-            ),
-          );
-        if (existing) return { ok: false as const, reason: "already_redeemed" as const };
-
-        // One conditional UPDATE is the atomic check-and-increment: two
-        // racing redeemers serialize on the row lock and only the first
-        // sees `redemption_count < max_redemptions`.
-        const bumped = await tx
-          .update(schema.inviteCodes)
-          .set({ redemptionCount: sql`${schema.inviteCodes.redemptionCount} + 1` })
-          .where(
-            and(
-              eq(schema.inviteCodes.id, codeId),
-              isNull(schema.inviteCodes.revokedAt),
-              or(isNull(schema.inviteCodes.expiresAt), gt(schema.inviteCodes.expiresAt, now)),
-              lt(schema.inviteCodes.redemptionCount, schema.inviteCodes.maxRedemptions),
-            ),
-          )
-          .returning({ id: schema.inviteCodes.id });
-        if (!bumped.length) {
-          const [code] = await tx
-            .select()
-            .from(schema.inviteCodes)
-            .where(eq(schema.inviteCodes.id, codeId));
-          if (!code) return { ok: false as const, reason: "expired" as const };
-          if (code.revokedAt) return { ok: false as const, reason: "revoked" as const };
-          if (code.expiresAt && code.expiresAt.getTime() <= now.getTime()) {
-            return { ok: false as const, reason: "expired" as const };
-          }
-          return { ok: false as const, reason: "exhausted" as const };
+      class Refused extends Error {
+        constructor(readonly reason: InviteConsumeFailure) {
+          super(reason);
         }
+      }
+      try {
+        return await db.transaction(async (tx) => {
+          // Lock the entitlement row first so the grant is derived from the
+          // committed state and a concurrent Stripe webhook serializes
+          // behind us instead of being overwritten.
+          const [entRow] = await tx
+            .select()
+            .from(schema.entitlements)
+            .where(eq(schema.entitlements.userId, userId))
+            .for("update");
+          const [userRow] = await tx.select().from(schema.users).where(eq(schema.users.id, userId));
+          const current: EntitlementSnapshot | null = entRow
+            ? {
+                tier: entRow.tier,
+                trialStartedAt: userRow?.trialStartedAt?.toISOString() ?? null,
+                trialEndsAt: entRow.trialEndsAt?.toISOString() ?? null,
+                subscriptionActive: entRow.subscriptionActive,
+                compedAt: entRow.compedAt?.toISOString() ?? null,
+                compedUntil: entRow.compedUntil?.toISOString() ?? null,
+                stripeCustomerId: userRow?.stripeCustomerId ?? null,
+                stripeSubscriptionId: entRow.stripeSubscriptionId,
+                stripeStatus: entRow.stripeStatus,
+                currentPeriodEnd: entRow.currentPeriodEnd?.toISOString() ?? null,
+              }
+            : null;
+          const grant = input.grant(current);
 
-        const [row] = await tx
-          .insert(schema.inviteRedemptions)
-          .values({
-            id: makeId("red"),
-            codeId,
-            userId,
-            compedUntil: toDate(input.compedUntil),
-            redeemedAt: now,
-          })
-          .returning();
-        return { ok: true as const, redemption: rowToRedemption(row!) };
-      });
+          // The unique (code_id, user_id) index is the once-per-user guard;
+          // a concurrent duplicate waits on it and then sees no row.
+          const inserted = await tx
+            .insert(schema.inviteRedemptions)
+            .values({
+              id: makeId("red"),
+              codeId,
+              userId,
+              compedUntil: toDate(grant.compedUntil),
+              redeemedAt: now,
+            })
+            .onConflictDoNothing()
+            .returning();
+          if (!inserted.length) throw new Refused("already_redeemed");
+
+          // One conditional UPDATE is the atomic check-and-increment: two
+          // racing redeemers serialize on the row lock and only the first
+          // sees `redemption_count < max_redemptions`.
+          const bumped = await tx
+            .update(schema.inviteCodes)
+            .set({ redemptionCount: sql`${schema.inviteCodes.redemptionCount} + 1` })
+            .where(
+              and(
+                eq(schema.inviteCodes.id, codeId),
+                isNull(schema.inviteCodes.revokedAt),
+                or(isNull(schema.inviteCodes.expiresAt), gt(schema.inviteCodes.expiresAt, now)),
+                lt(schema.inviteCodes.redemptionCount, schema.inviteCodes.maxRedemptions),
+              ),
+            )
+            .returning({ id: schema.inviteCodes.id });
+          if (!bumped.length) {
+            const [code] = await tx
+              .select()
+              .from(schema.inviteCodes)
+              .where(eq(schema.inviteCodes.id, codeId));
+            if (!code) throw new Refused("expired");
+            if (code.revokedAt) throw new Refused("revoked");
+            if (code.expiresAt && code.expiresAt.getTime() <= now.getTime()) {
+              throw new Refused("expired");
+            }
+            throw new Refused("exhausted");
+          }
+
+          // Only the comp columns move; Stripe facts on the row stay as the
+          // webhook left them.
+          const compColumns = {
+            tier: grant.tier,
+            compedAt: toDate(grant.compedAt),
+            compedUntil: toDate(grant.compedUntil),
+            updatedAt: now,
+          };
+          if (entRow) {
+            await tx
+              .update(schema.entitlements)
+              .set(compColumns)
+              .where(eq(schema.entitlements.userId, userId));
+          } else {
+            await tx.insert(schema.entitlements).values({ userId, ...compColumns });
+          }
+          const entitlement: EntitlementSnapshot = {
+            ...(current ?? emptySnapshot()),
+            tier: grant.tier,
+            compedAt: grant.compedAt,
+            compedUntil: grant.compedUntil,
+          };
+          return { ok: true as const, redemption: rowToRedemption(inserted[0]!), entitlement };
+        });
+      } catch (err) {
+        if (err instanceof Refused) return { ok: false as const, reason: err.reason };
+        throw err;
+      }
     },
     async listRedemptions(codeId) {
       const db = getDb();

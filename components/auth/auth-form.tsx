@@ -2,18 +2,13 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { safeNextPath } from "@/lib/auth/safe-next";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
 interface AuthFormProps {
   mode: "sign-in" | "sign-up";
   next?: string;
-}
-
-/** Only same-origin paths may be used as a post-login destination. */
-function safeNext(next: string | undefined): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/today";
-  return next;
 }
 
 export function AuthForm({ mode, next }: AuthFormProps) {
@@ -45,7 +40,7 @@ export function AuthForm({ mode, next }: AuthFormProps) {
         setPending(false);
         return;
       }
-      router.push(safeNext(next));
+      router.push(safeNextPath(next, window.location.origin));
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");
