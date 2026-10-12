@@ -482,3 +482,35 @@ describe("legacy bcrypt accounts", () => {
     expect(old.status).toBe(401);
   });
 });
+
+describe("bearer tokens at rest", () => {
+  it("stores reset and magic-link tokens hashed in the verifications table", async () => {
+    const auth = getAuth();
+    await createUserWithCookie(getTestRepos(), { email: "atrest@example.com" });
+    await auth.api.requestPasswordReset({
+      body: { email: "atrest@example.com", redirectTo: "/reset-password" },
+    });
+    const resetUrl = firstUrl(lastEmail().text);
+    const resetToken = resetUrl.split("/reset-password/")[1]!.split("?")[0]!;
+    await auth.api.signInMagicLink({
+      body: { email: "atrest@example.com", callbackURL: "/today" },
+      headers: new Headers(),
+    });
+    const magicToken = new URL(firstUrl(lastEmail().text)).searchParams.get("token")!;
+    expect(resetToken.length).toBeGreaterThan(10);
+    expect(magicToken.length).toBeGreaterThan(10);
+
+    const ctx = await auth.$context;
+    const rows = await ctx.adapter.findMany<{ identifier: string; value: string }>({
+      model: "verification",
+    });
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    const blob = JSON.stringify(rows);
+    expect(blob).not.toContain(resetToken);
+    expect(blob).not.toContain(magicToken);
+
+    // Hashed at rest, still redeemable from the emailed value.
+    const res = await openLink(firstUrl(lastEmail().text));
+    expect(res.status).toBe(302);
+  });
+});
