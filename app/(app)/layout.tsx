@@ -1,5 +1,6 @@
 import { AppFrame } from "@/components/app-shell/app-frame";
 import { getSession } from "@/lib/auth/session";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 /**
@@ -14,6 +15,9 @@ export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
-  if (!session) redirect("/sign-in");
+  if (!session) {
+    const path = (await headers()).get("x-sifty-path");
+    redirect(path ? `/sign-in?next=${encodeURIComponent(path)}` : "/sign-in");
+  }
   return <AppFrame>{children}</AppFrame>;
 }

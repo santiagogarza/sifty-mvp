@@ -234,6 +234,26 @@ describe("magic link", () => {
     const session = await getSession(new Request("http://localhost/x", { headers: { cookie } }));
     expect(session?.user.email).toBe("magic@example.com");
   });
+
+  it("sends an unverified user the verification email so their password survives", async () => {
+    const auth = getAuth();
+    await auth.api.signUpEmail({
+      body: { email: "pending@example.com", password: TEST_PASSWORD, name: "P" },
+    });
+
+    await auth.api.signInMagicLink({
+      body: { email: "pending@example.com", callbackURL: "/today" },
+      headers: new Headers(),
+    });
+    const mail = lastEmail();
+    expect(mail.subject).toBe("Confirm your email for Sifty");
+    const res = await auth.handler(new Request(firstUrl(mail.text), { redirect: "manual" }));
+    const session = await getSession(
+      new Request("http://localhost/x", { headers: { cookie: cookieHeaderFromResponse(res) } }),
+    );
+    expect(session?.user.email).toBe("pending@example.com");
+    expect(await signInCookie("pending@example.com", TEST_PASSWORD)).toBeTruthy();
+  });
 });
 
 describe("session revocation", () => {

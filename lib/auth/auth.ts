@@ -13,6 +13,7 @@ import { id as makeId } from "@/lib/utils/ids";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { memoryAdapter } from "better-auth/adapters/memory";
+import { sendVerificationEmailFn } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { magicLink } from "better-auth/plugins";
 import { verifyPasswordHash } from "./passwords";
@@ -178,7 +179,15 @@ function createAuth(repos: Repos) {
     plugins: [
       magicLink({
         expiresIn: 60 * 5,
-        sendMagicLink: async ({ email, url }) => {
+        sendMagicLink: async ({ email, url }, ctx) => {
+          // Verifying a magic link on an unverified account deletes all of its
+          // linked accounts, including the password chosen at sign-up. Send the
+          // verification email instead: it proves the mailbox and keeps them.
+          const existing = ctx ? await ctx.context.internalAdapter.findUserByEmail(email) : null;
+          if (ctx && existing && !existing.user.emailVerified) {
+            await sendVerificationEmailFn(ctx, existing.user);
+            return;
+          }
           await sendTemplate("magic-link", { to: email, props: { magicLinkUrl: url } });
         },
       }),

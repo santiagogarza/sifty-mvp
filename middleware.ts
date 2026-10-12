@@ -49,7 +49,11 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
   const cookie = getSessionCookie(req, { cookiePrefix: COOKIE_PREFIX });
   if (!cookie) return redirectToSignIn(req);
 
-  return NextResponse.next();
+  // The `(app)` layout can't see the URL; it needs the path to build `next`
+  // when the cookie turns out to be stale.
+  const headers = new Headers(req.headers);
+  headers.set("x-sifty-path", pathname);
+  return NextResponse.next({ request: { headers } });
 }
 
 function redirectToSignIn(req: NextRequest): NextResponse {

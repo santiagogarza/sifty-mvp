@@ -34,6 +34,7 @@ describe("middleware", () => {
     });
     const res = await middleware(req);
     expect(res.status).toBe(200);
+    expect(res.headers.get("x-middleware-request-x-sifty-path")).toBe("/today");
   });
 
   it("accepts the __Secure- prefixed cookie used on https", async () => {
