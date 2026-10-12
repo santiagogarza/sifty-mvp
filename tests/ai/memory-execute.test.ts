@@ -387,6 +387,40 @@ describe("PATCH /api/tasks/:id starts memoryFromEdit on a contradicting edit", (
     expect(await repos.taskEvents.listForTask(user.id, task.id, 10)).toEqual([]);
   });
 
+  it("a marker write that throws releases the reservation; the per-IP AI limit applies too", async () => {
+    const repos = getTestRepos();
+    const { user, cookie } = await createUserWithCookie(repos, { email: "leak@example.com" });
+    const task = await seedSifted(repos, user.id, "Pay the October invoice", "sift_l");
+    const before = await repos.aiRuns.countSucceededToday(user.id);
+    const boom = vi.spyOn(repos.taskEvents, "append").mockRejectedValueOnce(new Error("db down"));
+    expect((await patch(cookie, task.id, { urgency: 0.2, editedFields: ["urgency"] })).status).toBe(
+      200,
+    );
+    boom.mockRestore();
+    expect(client.start).not.toHaveBeenCalled();
+    expect(await repos.aiRuns.countSucceededToday(user.id)).toBe(before);
+    expect(
+      (await repos.aiRuns.list(user.id)).filter(
+        (r) => r.stage === "memory" && r.status === "failed",
+      ),
+    ).toHaveLength(1);
+
+    // The per-IP AI bucket gates the edit path like every other AI route.
+    vi.stubEnv("RATELIMIT_TRIAGE_IP_PER_MIN", "1");
+    __resetRateLimits();
+    const other = await seedSifted(repos, user.id, "Send the newsletter", "sift_ip");
+    expect(
+      (await patch(cookie, other.id, { effort: "quick", editedFields: ["effort"] })).status,
+    ).toBe(200);
+    expect(client.start).toHaveBeenCalledTimes(1);
+    const third = await seedSifted(repos, user.id, "File the expense report", "sift_ip2");
+    expect(
+      (await patch(cookie, third.id, { effort: "quick", editedFields: ["effort"] })).status,
+    ).toBe(200);
+    expect(client.start).toHaveBeenCalledTimes(1);
+    expect(await repos.taskEvents.listForTask(user.id, third.id, 10)).toEqual([]);
+  });
+
   it("two first-time edits racing on the same sift start exactly one run", async () => {
     const repos = getTestRepos();
     const { user, cookie } = await createUserWithCookie(repos, { email: "race-edit@example.com" });
