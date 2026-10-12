@@ -47,8 +47,17 @@ export default function OpenGraphImage() {
         </div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-        <div style={{ fontSize: 84, lineHeight: 1.02, letterSpacing: -2 }}>
-          Write it down. Sifty does the rest.
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            fontSize: 84,
+            lineHeight: 1.02,
+            letterSpacing: -2,
+          }}
+        >
+          <span>Write it down.</span>
+          <span>Sifty does the rest.</span>
         </div>
         <div
           style={{

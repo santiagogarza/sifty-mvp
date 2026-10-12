@@ -9,7 +9,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
-  title: "Sifty — write it down, Sifty does the rest",
+  title: { absolute: "Sifty — write it down, Sifty does the rest" },
   alternates: { canonical: "/" },
 };
 
