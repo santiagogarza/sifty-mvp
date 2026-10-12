@@ -131,9 +131,10 @@ describe("completing a recurring task over the API", () => {
       spawned: { id: string; due: string; lifecycle: string; seriesId: string } | null;
     };
     expect(created.task.lifecycle).toBe("done");
+    // A capture lives in the Inbox until it is filed; so does its successor.
     expect(created.spawned).toMatchObject({
       due: "2026-10-13",
-      lifecycle: "active",
+      lifecycle: "inbox",
       seriesId: "task_offline1",
     });
     // The replayed create returns the same successor.
@@ -188,6 +189,64 @@ describe("completing a recurring task over the API", () => {
       const runs = await repos.aiRuns.list(user.id);
       expect(runs).toHaveLength(1);
       expect(runs[0]!.taskId).toBe(body.spawned.id);
+    } finally {
+      setWorkflowClientForTesting(null);
+    }
+  });
+
+  it("completing while a sift is in flight supersedes it on the parent and sifts the successor", async () => {
+    const { setWorkflowClientForTesting } = await import("@/lib/workflows/dispatch");
+    const start = vi.fn().mockResolvedValue({ runId: "wrun_handoff" });
+    setWorkflowClientForTesting({ start, wait: vi.fn() });
+    vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
+    vi.stubEnv("RATELIMIT_TRIAGE_PER_MIN", "100000");
+    try {
+      const repos = getTestRepos();
+      const { user, cookie } = await createUserWithCookie(repos, { email: "inflight@example.com" });
+      const created = await repos.tasks.create(user.id, {
+        sourceText: "Journal",
+        sourceContext: null,
+      });
+      // Mid-sift: the enrich step is running under sift_old.
+      await repos.tasks.update(user.id, created.id, {
+        lifecycle: "active",
+        aiStatus: "running",
+        siftId: "sift_old",
+        siftStage: "enrich",
+        recurrence: { freq: "daily", mode: "fixed" },
+        seriesId: created.id,
+      });
+
+      const res = await patch(created.id, cookie, { lifecycle: "done", completedOn: "2026-10-12" });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        task: { aiStatus: string; siftId: string | null; siftStage: string | null };
+        spawned: { id: string; aiStatus: string; siftId: string | null; lifecycle: string };
+      };
+      // The old run is superseded: its next step will see a different siftId and stop.
+      expect(body.task).toMatchObject({ aiStatus: "idle", siftId: null, siftStage: null });
+      expect(body.spawned).toMatchObject({ aiStatus: "pending", lifecycle: "active" });
+      expect(body.spawned.siftId).toBeTruthy();
+      expect(body.spawned.siftId).not.toBe("sift_old");
+      expect(start).toHaveBeenCalledTimes(1);
+      expect(start.mock.calls[0]![1][0]).toMatchObject({ taskId: body.spawned.id });
+
+      // The superseded step body stops instead of writing to the finished row.
+      const { executeSiftStage } = await import("@/lib/ai/sift/execute-stage");
+      expect(
+        await executeSiftStage(
+          {
+            userId: user.id,
+            taskId: created.id,
+            siftId: "sift_old",
+            accountingRunId: "run_x",
+            modelPreference: null,
+            offline: true,
+          },
+          "enrich",
+          "wrun_old",
+        ),
+      ).toBe("superseded");
     } finally {
       setWorkflowClientForTesting(null);
     }

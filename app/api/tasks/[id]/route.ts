@@ -2,7 +2,7 @@ import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
 import { TaskPatchSchema } from "@/lib/domain/task-patch-schema";
 import type { Task } from "@/lib/domain/types";
-import { spawnNextInstance } from "@/lib/recurrence/spawn";
+import { completeRecurring } from "@/lib/recurrence/complete";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -48,18 +48,21 @@ export async function PATCH(req: Request, ctx: RouteContext) {
   const userId = session.user.id;
   const completing = patch.lifecycle === "done";
   const before = completing ? await repos.tasks.get(userId, id) : null;
-  const task = await repos.tasks.update(userId, id, patch, { editedFields });
+  let task = await repos.tasks.update(userId, id, patch, { editedFields });
   if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   let spawned: Task | null = null;
   if (completing && task.recurrence) {
-    const next = await spawnNextInstance(repos, userId, {
-      parent: task,
+    const completed = await completeRecurring(repos, {
+      req,
+      session,
+      task,
       previousLifecycle: before?.lifecycle ?? "active",
       completedOn,
       timeZone,
     });
-    spawned = next?.task ?? null;
+    task = completed.task;
+    spawned = completed.spawned;
   }
   return NextResponse.json({ task, spawned });
 }

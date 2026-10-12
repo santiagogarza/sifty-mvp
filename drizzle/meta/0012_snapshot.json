@@ -1,5 +1,5 @@
 {
-  "id": "bfb2cf9b-247c-45db-ba76-918342e3c709",
+  "id": "d4f3e393-9057-44ae-a6b1-3b25922cd516",
   "prevId": "e1f323f9-7bd2-4425-9c35-c3c610161b1d",
   "version": "7",
   "dialect": "postgresql",
@@ -1857,6 +1857,27 @@
             },
             {
               "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tasks_user_series_idx": {
+          "name": "tasks_user_series_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "series_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

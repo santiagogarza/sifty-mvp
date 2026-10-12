@@ -48,6 +48,7 @@ import {
   type PushSubscriptionRecord,
   type PushSubscriptionRepo,
   type Repos,
+  SERIES_LIST_LIMIT,
   SIFT_ACCOUNTING_STAGE,
   type StripeEventRepo,
   type TaskCreateInput,
@@ -381,6 +382,36 @@ export function createPostgresRepos(): Repos {
         row,
         labelRows.map((l) => l.labelId),
       );
+    },
+    async listBySeries(userId, seriesId, opts = {}) {
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.tasks)
+        .where(
+          and(
+            eq(schema.tasks.userId, userId),
+            eq(schema.tasks.seriesId, seriesId),
+            opts.lifecycles ? inArray(schema.tasks.lifecycle, [...opts.lifecycles]) : undefined,
+          ),
+        )
+        .orderBy(desc(schema.tasks.createdAt))
+        .limit(opts.limit ?? SERIES_LIST_LIMIT);
+      if (!rows.length) return [];
+      const labelRows = await db
+        .select()
+        .from(schema.taskLabels)
+        .where(
+          and(
+            eq(schema.taskLabels.userId, userId),
+            inArray(
+              schema.taskLabels.taskId,
+              rows.map((r) => r.id),
+            ),
+          ),
+        );
+      const byTask = groupLabelIds(labelRows);
+      return rows.map((row) => rowToTask(row, byTask.get(row.id) ?? []));
     },
     async create(userId, input: TaskCreateInput) {
       const db = getDb();

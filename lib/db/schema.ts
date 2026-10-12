@@ -179,6 +179,8 @@ export const tasks = pgTable(
   (t) => [
     index("tasks_user_lifecycle_idx").on(t.userId, t.lifecycle),
     index("tasks_user_updated_idx").on(t.userId, t.updatedAt),
+    // Completing a recurring task looks up its series' open instance.
+    index("tasks_user_series_idx").on(t.userId, t.seriesId),
   ],
 );
 

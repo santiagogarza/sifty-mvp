@@ -193,6 +193,9 @@ export interface LabelRepo {
   ensure(userId: string, input: LabelEnsureInput): Promise<Label>;
 }
 
+/** A series is one open instance plus history; this is plenty for either read. */
+export const SERIES_LIST_LIMIT = 50;
+
 export interface TaskListOptions {
   /** Keep only these lifecycles. */
   lifecycles?: readonly Task["lifecycle"][];
@@ -207,6 +210,16 @@ export interface TaskListOptions {
 export interface TaskRepo {
   list(userId: string, opts?: TaskListOptions): Promise<Task[]>;
   get(userId: string, taskId: string): Promise<Task | null>;
+  /**
+   * Instances of one recurring series (`seriesId`), newest-created first,
+   * bounded by `limit` (default `SERIES_LIST_LIMIT`). Optional lifecycle
+   * filter, same semantics as `list`.
+   */
+  listBySeries(
+    userId: string,
+    seriesId: string,
+    opts?: { lifecycles?: readonly Task["lifecycle"][]; limit?: number },
+  ): Promise<Task[]>;
   create(userId: string, input: TaskCreateInput): Promise<Task>;
   /**
    * Narrow update. With `ifSiftId` the write is conditional on the row's

@@ -6,7 +6,7 @@ import { IdConflictError } from "@/lib/db/repos/types";
 import { TASK_LIMITS } from "@/lib/domain/limits";
 import { ClientId, TaskPatchSchema } from "@/lib/domain/task-patch-schema";
 import { TASK_EDITABLE_FIELDS, type Task } from "@/lib/domain/types";
-import { spawnNextInstance } from "@/lib/recurrence/spawn";
+import { type SiftSummary, completeRecurring, summarizeEnqueue } from "@/lib/recurrence/complete";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -111,57 +111,41 @@ export async function POST(req: Request) {
       task = (await repos.tasks.update(userId, task.id, patch, { editedFields })) ?? task;
     }
 
-    const sift_ = async (target: Task): Promise<{ task: Task; sift: SiftSummary }> => {
+    let sift: SiftSummary = { enqueued: false, reason: "not_wanted" };
+    let spawned: Task | null = null;
+
+    if (task.lifecycle === "done" && task.recurrence) {
+      // Captured and completed offline, or a PATCH that 404'd and fell back
+      // to create: the series still gets its next instance, and any owed
+      // sift goes to that live successor. A capture lives in the Inbox
+      // until it is filed, so that is where the successor lands.
+      const completed = await completeRecurring(repos, {
+        req,
+        session,
+        task,
+        previousLifecycle: "inbox",
+        completedOn,
+        timeZone,
+        modelPreference,
+      });
+      task = completed.task;
+      spawned = completed.spawned;
+      if (completed.sift) sift = completed.sift;
+    } else if (!task.siftId && wantsSift(task)) {
+      // `task.siftId` is read after create/update; a concurrent duplicate
+      // that also sees null loses the atomic claim inside `enqueueSift`.
       const result = await enqueueSift({
         req,
         session,
-        task: target,
+        task,
         modelPreference: modelPreference ?? null,
         offline: resolveOfflineMode(req),
         // /api/triage applies the per-IP limit before parsing; capture is
         // the default sifting path, so it applies the same limit here.
         checkIp: true,
       });
-      const summary: SiftSummary = result.ok
-        ? { enqueued: true, siftId: result.siftId, runId: result.runId }
-        : result.reason === "denied"
-          ? { enqueued: false, reason: "denied", code: String(result.admission.body.code ?? "") }
-          : { enqueued: false, reason: result.reason };
-      return { task: result.task, sift: summary };
-    };
-
-    let sift: SiftSummary = { enqueued: false, reason: "not_wanted" };
-    let spawned: Task | null = null;
-
-    // A recurring task that arrives already completed (captured and done
-    // offline, or a PATCH that 404'd and fell back to create) still owes
-    // its series the next instance. Idempotent, like the PATCH path. The
-    // sift, if one is still owed, goes to the live successor: spending it
-    // on the finished row would organize nothing the user will look at.
-    const completedRecurring = task.lifecycle === "done" && !!task.recurrence;
-    if (completedRecurring) {
-      const owesSift = !task.siftId && wantsSift(task);
-      if (owesSift) {
-        task = (await repos.tasks.update(userId, task.id, { aiStatus: "idle" })) ?? task;
-      }
-      const next = await spawnNextInstance(repos, userId, {
-        parent: task,
-        previousLifecycle: "active",
-        completedOn,
-        timeZone,
-      });
-      spawned = next?.task ?? null;
-      if (spawned && next?.created && owesSift && !spawned.siftId) {
-        const sifted = await sift_(spawned);
-        spawned = sifted.task;
-        sift = sifted.sift;
-      }
-    } else if (!task.siftId && wantsSift(task)) {
-      // `task.siftId` is read after create/update; a concurrent duplicate
-      // that also sees null loses the atomic claim inside `enqueueSift`.
-      const sifted = await sift_(task);
-      task = sifted.task;
-      sift = sifted.sift;
+      task = result.task;
+      sift = summarizeEnqueue(result);
     } else if (task.siftId) {
       sift = { enqueued: false, reason: "already_sifting" };
     }
@@ -174,8 +158,3 @@ export async function POST(req: Request) {
     throw err;
   }
 }
-
-type SiftSummary =
-  | { enqueued: true; siftId: string; runId: string }
-  | { enqueued: false; reason: "not_wanted" | "already_sifting" | "not_started" }
-  | { enqueued: false; reason: "denied"; code: string };

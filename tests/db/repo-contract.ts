@@ -278,6 +278,41 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect(cleared?.seriesId).toBe(task.id);
     });
 
+    it("tasks.listBySeries returns the user's series newest first, filtered and bounded", async () => {
+      const repos = getRepos();
+      const u = await createUser(repos, "series@example.com");
+      const other = await createUser(repos, "series-other@example.com");
+      const first = await repos.tasks.create(u.id, {
+        sourceText: "Standup",
+        sourceContext: null,
+        createdAt: "2026-10-01T09:00:00.000Z",
+      });
+      await repos.tasks.update(u.id, first.id, { seriesId: first.id, lifecycle: "done" });
+      const second = await repos.tasks.create(u.id, {
+        sourceText: "Standup",
+        sourceContext: null,
+        createdAt: "2026-10-02T09:00:00.000Z",
+      });
+      await repos.tasks.update(u.id, second.id, { seriesId: first.id, lifecycle: "active" });
+      // Another series, and another tenant with the same series id, stay out.
+      const loner = await repos.tasks.create(u.id, { sourceText: "Other", sourceContext: null });
+      await repos.tasks.update(u.id, loner.id, { seriesId: loner.id });
+      const foreign = await repos.tasks.create(other.id, {
+        sourceText: "Theirs",
+        sourceContext: null,
+      });
+      await repos.tasks.update(other.id, foreign.id, { seriesId: first.id });
+
+      const all = await repos.tasks.listBySeries(u.id, first.id);
+      expect(all.map((t) => t.id)).toEqual([second.id, first.id]);
+      const open = await repos.tasks.listBySeries(u.id, first.id, {
+        lifecycles: ["inbox", "active", "waiting", "someday"],
+      });
+      expect(open.map((t) => t.id)).toEqual([second.id]);
+      expect(await repos.tasks.listBySeries(u.id, first.id, { limit: 1 })).toHaveLength(1);
+      expect(await repos.tasks.listBySeries(other.id, first.id)).toHaveLength(1);
+    });
+
     it("memories: update and delete", async () => {
       const repos = getRepos();
       const u = await createUser(repos, "mem@example.com");

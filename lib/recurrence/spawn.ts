@@ -47,9 +47,9 @@ export async function spawnNextInstance(
   // it is a stub whose copy patch never landed; fall through and apply it.
   if (existing?.seriesId) return { task: existing, created: false };
   if (!existing) {
-    const open = (await repos.tasks.list(userId, { lifecycles: OPEN_LIFECYCLES })).find(
-      (t) => t.id !== parent.id && t.seriesId === seriesId,
-    );
+    const open = (
+      await repos.tasks.listBySeries(userId, seriesId, { lifecycles: OPEN_LIFECYCLES })
+    ).find((t) => t.id !== parent.id);
     if (open) return { task: open, created: false };
   }
 
