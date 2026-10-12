@@ -15,14 +15,16 @@ const ERROR_COPY: Record<string, string> = {
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ next?: string; error?: string; reset?: string }>;
+  searchParams?: Promise<{ next?: string; error?: string; reset?: string; deleted?: string }>;
 }) {
   const params = (await searchParams) ?? {};
   const banner = params.error
     ? (ERROR_COPY[params.error] ?? "Sign-in failed. Try again.")
     : params.reset
       ? "Password updated. Sign in with your new password."
-      : null;
+      : params.deleted === "1"
+        ? "Your account and all of its data have been deleted."
+        : null;
   return (
     <div className="surface-card p-7">
       <h1 className="text-[20px] tracking-[-0.01em] text-[var(--fg)]">Welcome back</h1>

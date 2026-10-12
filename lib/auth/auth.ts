@@ -178,6 +178,16 @@ function createAuth(repos: Repos) {
       // any sessions created before the proof are unproven and removed.
       beforeEmailVerification: async (user, request) => {
         if (user.emailVerified) return;
+        // Verification tokens are stateless JWTs keyed by email, so account
+        // deletion cannot revoke them. A link minted before this account
+        // existed belongs to a previous owner of the address; refuse it
+        // before anything below can touch this account's credentials.
+        if (tokenPredatesAccount(request, user.createdAt)) {
+          throw new APIError("UNAUTHORIZED", {
+            message:
+              "This verification link was issued before this account existed. Request a new one.",
+          });
+        }
         if (hasValidSignupBinding(request?.headers, user.id, getAuthSecret())) return;
         await revokeUnprovenCredentials(user.id);
       },
@@ -297,6 +307,31 @@ function setSignupBinding(
   );
 }
 
+/** `iat` is whole seconds; the sign-up link is minted in the same second the row is created. */
+const TOKEN_IAT_GRACE_MS = 2_000;
+
+function tokenPredatesAccount(request: Request | undefined, createdAt: Date | string): boolean {
+  if (!request) return false;
+  const token = new URL(request.url).searchParams.get("token");
+  if (!token) return false;
+  const iat = jwtIssuedAt(token);
+  if (iat === null) return false;
+  return iat * 1000 + TOKEN_IAT_GRACE_MS < new Date(createdAt).getTime();
+}
+
+/** `iat` from a JWT the route has already signature-checked; null when unreadable. */
+function jwtIssuedAt(token: string): number | null {
+  const payload = token.split(".")[1];
+  if (!payload) return null;
+  try {
+    const json = Buffer.from(payload, "base64url").toString("utf8");
+    const { iat } = JSON.parse(json) as { iat?: unknown };
+    return typeof iat === "number" ? iat : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Delete credential accounts and every session of a user whose address was never proven. */
 async function revokeUnprovenCredentials(userId: string): Promise<void> {
   const ctx = await getAuth().$context;
@@ -305,6 +340,70 @@ async function revokeUnprovenCredentials(userId: string): Promise<void> {
     if (account.providerId === "credential") await ctx.internalAdapter.deleteAccount(account.id);
   }
   await ctx.internalAdapter.deleteUserSessions(userId);
+}
+
+/**
+ * Remove a user's Better Auth identity: sessions, credential and OAuth
+ * accounts, and the user row itself. On Postgres the repos' `users.delete`
+ * already cascaded through these tables, so this is what keeps the
+ * in-memory adapter (tests, keyless dev) in step; both paths end with no
+ * session that can still resolve for the id.
+ */
+export async function deleteAuthIdentity(userId: string, email: string): Promise<void> {
+  const ctx = await getAuth().$context;
+  await ctx.internalAdapter.deleteUser(userId);
+  await ctx.internalAdapter.deleteUserSessions(userId);
+  // Verification tokens are not keyed by user id: a reset token stores the
+  // user id as its value, a magic link stores the address (as typed) inside
+  // a JSON value. Neither would cascade, and either could act on whoever
+  // registers the address next. Magic links are matched by parsing the
+  // JSON, not by LIKE: the address is user input and `_`/`%` are wildcards.
+  await ctx.adapter.deleteMany({
+    model: "verification",
+    where: [{ field: "value", value: userId, operator: "eq" }],
+  });
+  // Identifiers are stored hashed (`storeIdentifier: "hashed"`), so the
+  // purpose prefix cannot be filtered on; bound the read by lifetime and
+  // page size instead. Live rows are short-lived tokens (minutes to an
+  // hour), so this stays a small scan.
+  const wanted = email.toLowerCase();
+  const pageSize = 500;
+  for (let page = 0; page < MAX_VERIFICATION_PAGES; page++) {
+    const rows = await ctx.adapter.findMany<{ id: string; value: string }>({
+      model: "verification",
+      where: [{ field: "expiresAt", value: new Date(), operator: "gt" }],
+      sortBy: { field: "id", direction: "asc" },
+      limit: pageSize,
+      offset: page * pageSize,
+    });
+    for (const row of rows) {
+      if (tokenEmail(row.value) !== wanted) continue;
+      await ctx.adapter.delete({ model: "verification", where: [{ field: "id", value: row.id }] });
+    }
+    if (rows.length < pageSize) break;
+  }
+}
+
+/** 500 rows × 20 pages; far beyond the live tokens short TTLs can accumulate. */
+const MAX_VERIFICATION_PAGES = 20;
+
+/** The address inside a JSON verification value, whatever else it carries. */
+function tokenEmail(value: string): string | null {
+  if (!value.startsWith("{")) return null;
+  try {
+    const parsed = JSON.parse(value) as { email?: unknown };
+    return typeof parsed.email === "string" ? parsed.email.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The session cookies Better Auth sets, so a route can expire them on its own response. */
+export async function sessionCookieNames(): Promise<
+  Array<{ name: string; attributes: { path?: string; secure?: boolean; httpOnly?: boolean } }>
+> {
+  const { sessionToken, sessionData, dontRememberToken } = (await getAuth().$context).authCookies;
+  return [sessionToken, sessionData, dontRememberToken];
 }
 
 async function sendWelcome(user: { id: string; email: string; name: string }): Promise<void> {

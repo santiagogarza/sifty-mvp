@@ -232,6 +232,45 @@ describe("POST /api/stripe/webhook", () => {
     void id;
   });
 
+  it("acknowledges subscription.deleted for a customer whose account is already gone", async () => {
+    // Account deletion removes the Stripe customer first; the cancellation
+    // webhook that follows must not 500 and retry forever.
+    const repos = getTestRepos();
+    const POST = await importRoute();
+    const { id, body } = makeEvent({
+      type: "customer.subscription.deleted",
+      customer: "cus_deleted_account",
+      status: "canceled",
+    });
+    const res = await POST(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": signed(body, WEBHOOK_SECRET) },
+        body,
+      }),
+    );
+    expect(res.status).toBe(200);
+    // Recorded, so a Stripe replay is deduped rather than reprocessed.
+    expect(await repos.stripeEvents.recordIfNew(id, "customer.subscription.deleted")).toBe(false);
+  });
+
+  it("still retries other events for a customer not yet linked to a user", async () => {
+    const POST = await importRoute();
+    const { body } = makeEvent({
+      type: "customer.subscription.created",
+      customer: "cus_not_linked_yet",
+      status: "active",
+    });
+    const res = await POST(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": signed(body, WEBHOOK_SECRET) },
+        body,
+      }),
+    );
+    expect(res.status).toBe(500);
+  });
+
   it("subscription.deleted drops a paying user to free", async () => {
     const repos = getTestRepos();
     const user = await repos.users.create({

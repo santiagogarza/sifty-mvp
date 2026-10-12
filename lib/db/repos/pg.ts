@@ -23,6 +23,7 @@ import {
   type Repos,
   type StripeEventRepo,
   type TaskCreateInput,
+  type TaskEventRepo,
   type TaskRepo,
   type UserCreateInput,
   type UserRepo,
@@ -110,6 +111,15 @@ export function createPostgresRepos(): Repos {
         isCreator: row.isCreator,
         createdAt: row.createdAt.toISOString(),
       };
+    },
+    async delete(userId) {
+      const db = getDb();
+      // Every tenant table references users with ON DELETE CASCADE.
+      const deleted = await db
+        .delete(schema.users)
+        .where(eq(schema.users.id, userId))
+        .returning({ id: schema.users.id });
+      return deleted.length > 0;
     },
   };
 
@@ -474,14 +484,14 @@ export function createPostgresRepos(): Repos {
         .where(and(eq(schema.aiRuns.userId, userId), gte(schema.aiRuns.createdAt, since)));
       return row?.value ?? 0;
     },
-    async list(userId, limit = 50) {
+    async list(userId, limit) {
       const db = getDb();
-      const rows = await db
+      const query = db
         .select()
         .from(schema.aiRuns)
         .where(eq(schema.aiRuns.userId, userId))
-        .orderBy(desc(schema.aiRuns.createdAt))
-        .limit(limit);
+        .orderBy(desc(schema.aiRuns.createdAt));
+      const rows = limit === undefined ? await query : await query.limit(limit);
       return rows.map((r) => ({
         id: r.id,
         taskId: r.taskId,
@@ -495,6 +505,25 @@ export function createPostgresRepos(): Repos {
         costCents: r.costCents,
         offline: r.offline,
         error: r.error,
+        createdAt: r.createdAt.toISOString(),
+      }));
+    },
+  };
+
+  const taskEvents: TaskEventRepo = {
+    async list(userId, limit) {
+      const db = getDb();
+      const query = db
+        .select()
+        .from(schema.taskEvents)
+        .where(eq(schema.taskEvents.userId, userId))
+        .orderBy(schema.taskEvents.createdAt);
+      const rows = limit === undefined ? await query : await query.limit(limit);
+      return rows.map((r) => ({
+        id: r.id,
+        taskId: r.taskId,
+        kind: r.kind,
+        payload: r.payload ?? {},
         createdAt: r.createdAt.toISOString(),
       }));
     },
@@ -677,6 +706,7 @@ export function createPostgresRepos(): Repos {
     labels,
     memories,
     aiRuns,
+    taskEvents,
     stripeEvents,
     inviteCodes,
   };
