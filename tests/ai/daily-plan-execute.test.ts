@@ -424,6 +424,42 @@ describe("dailyPlan steps (model)", () => {
     expect((await repos.dailyPlans.get(user.id, plan.id))!.moves).toEqual([]);
   });
 
+  it("a retried apply counts the promotions it already made toward the cap", async () => {
+    const repos = getTestRepos();
+    const user = await seedUser(repos);
+    const undated: Task[] = [];
+    for (let i = 0; i < MAX_TODAY_PROMOTIONS + 2; i += 1) {
+      undated.push(await seedTask(repos, user.id, `Undated ${i}`));
+    }
+    const ctx = await buildPlanContext(repos, user.id, PLAN_DATE, "UTC");
+    const alias = (id: string) => ctx.candidates.find((c) => c.task.id === id)!.alias;
+    await mockModel({
+      summary: "Everything in.",
+      decisions: undated.map((t) => ({
+        alias: alias(t.id),
+        urgency: 0.8,
+        importance: 0.7,
+        reason: "important, no deadline",
+      })),
+    });
+    const { input } = await claim(repos, user.id, false);
+    expect(await beginDailyPlan(input, null)).toBe("applied");
+    const decided = await decideDailyPlan(input, null);
+    if ("skipped" in decided) throw new Error("unexpected skip");
+    expect(await applyDailyPlanStep(input, decided)).toEqual({
+      outcome: "completed",
+      moves: MAX_TODAY_PROMOTIONS,
+    });
+    // Second pass: the first eight are recovered from their events and still
+    // fill the cap, so the two leftovers stay out.
+    expect(await applyDailyPlanStep(input, decided)).toEqual({
+      outcome: "completed",
+      moves: MAX_TODAY_PROMOTIONS,
+    });
+    const promoted = (await repos.tasks.list(user.id)).filter((t) => t.priorityBucket === "do_now");
+    expect(promoted).toHaveLength(MAX_TODAY_PROMOTIONS);
+  });
+
   it("a promotion that is skipped at write time does not spend a promotion slot", async () => {
     const repos = getTestRepos();
     const user = await seedUser(repos);

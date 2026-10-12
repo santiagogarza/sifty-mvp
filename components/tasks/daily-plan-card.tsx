@@ -54,7 +54,9 @@ export function DailyPlanCard() {
     };
   }, []);
 
-  const running = !!state?.running || state?.plan?.status === "running";
+  // Only the server's lease-aware `running` flag counts: a plan row left
+  // `running` by a lost workflow must not disable Re-plan forever.
+  const running = !!state?.running;
   React.useEffect(() => {
     if (!running) return;
     let cancelled = false;
@@ -63,10 +65,13 @@ export function DailyPlanCard() {
       const next = await fetchPlan();
       if (cancelled) return;
       if (next) setState(next);
-      const stillRunning = !!next?.running || next?.plan?.status === "running";
+      const stillRunning = !!next?.running;
       if (stillRunning && Date.now() - startedAt < POLL_TIMEOUT_MS) {
         timer = setTimeout(tick, POLL_MS);
-      } else if (!stillRunning) {
+      } else if (stillRunning) {
+        // Give up polling but hand the button back; the next visit re-reads.
+        setState((s) => (s ? { ...s, running: false } : s));
+      } else {
         void syncFromServer();
       }
     };
@@ -135,9 +140,11 @@ export function DailyPlanCard() {
           >
             {running
               ? "Sifty is planning your day…"
-              : plan?.status === "failed"
-                ? (plan.error ?? "Planning failed — try again.")
-                : (plan?.summary ?? "Sifty can re-rank Today against everything on your list.")}
+              : plan?.status === "running"
+                ? "The last plan did not finish. Re-plan to try again."
+                : plan?.status === "failed"
+                  ? (plan.error ?? "Planning failed — try again.")
+                  : (plan?.summary ?? "Sifty can re-rank Today against everything on your list.")}
           </h2>
         </div>
         {canReplan ? (
@@ -188,7 +195,7 @@ export function DailyPlanCard() {
         </ul>
       ) : null}
 
-      {plan && !running ? (
+      {plan && !running && plan.status !== "running" ? (
         <p className="mt-3 text-[12px] text-[var(--fg-subtle)]">
           {plan.status === "completed"
             ? `Planned ${formatExactTime(plan.finishedAt ?? plan.createdAt)} · ${

@@ -190,6 +190,29 @@ describe("DailyPlanCard", () => {
     expect(screen.getByText(/nothing moved/)).toBeInTheDocument();
   });
 
+  it("a plan row stuck in running past its lease does not disable Re-plan", async () => {
+    responses = [{ plan: plan({ status: "running", moves: [] }), running: false, canReplan: true }];
+    render(<DailyPlanCard />);
+    expect(
+      await screen.findByText("The last plan did not finish. Re-plan to try again."),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("replan-today")).toBeEnabled();
+  });
+
+  it("gives the button back when polling times out", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    responses = [
+      { plan: plan({ id: "plan_2", status: "running" }), running: true, canReplan: true },
+    ];
+    render(<DailyPlanCard />);
+    expect(await screen.findByText("Sifty is planning your day…")).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(125_000);
+    });
+    await waitFor(() => expect(screen.getByTestId("replan-today")).toBeEnabled());
+    expect(syncFromServer).not.toHaveBeenCalled();
+  });
+
   it("a refused re-plan surfaces the server's message", async () => {
     responses = [{ plan: null, running: false, canReplan: true }];
     fetchMock.mockImplementation(async (url: string) => {

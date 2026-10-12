@@ -98,8 +98,13 @@ export async function applyDailyPlan(
       // Already at these scores: either the model asked for no change, or
       // an earlier attempt of this step applied it. Report the latter.
       const earlier = await findOwnEvent(repos, userId, taskId, eventId);
-      if (earlier) moves.push(earlier);
-      else skipped.push({ alias: decision.alias, why: "no change (or user-set)" });
+      if (earlier) {
+        moves.push(earlier);
+        // A promotion the first attempt already made still counts toward the cap.
+        if (earlier.kind === "moved_in") promotions += 1;
+      } else {
+        skipped.push({ alias: decision.alias, why: "no change (or user-set)" });
+      }
       continue;
     }
 
