@@ -101,6 +101,8 @@ lib/
                                # ai_runs accessor
   auth/                        # jwt, passwords (bcryptjs), service, session
   billing/                     # Stripe SDK singleton, pure event reducer
+  email/                       # EmailProvider seam (Resend | console),
+                               # React Email templates, sendTemplate()
   db/
     schema.ts                  # Drizzle schema for users, entitlements,
                                # tasks, labels, task_labels, memories,
@@ -157,9 +159,11 @@ Required for production:
 | `STRIPE_WEBHOOK_SECRET` | HMAC verifier for the webhook endpoint. |
 | `STRIPE_PRICE_MONTHLY` / `STRIPE_PRICE_YEARLY` | Pro recurring price ids. |
 | `NEXT_PUBLIC_APP_URL` | Public URL for Stripe success/cancel redirects. |
+| `RESEND_API_KEY` / `EMAIL_FROM` | Transactional email via Resend. `EMAIL_FROM` must be on a domain verified in Resend; `onboarding@resend.dev` works for testing and reaches the account owner only. Unset both and every email is printed to the server log instead (links included). |
 
 Optional:
 
+- `EMAIL_REPLY_TO` — Reply-To on outgoing mail (support mailbox).
 - `SIFTY_DISABLE_AUTH=1` — local-dev escape hatch; bypasses auth in the
   middleware and `getSession`. Off in production.
 - `SIFTY_DEMO_SEED=1` — populate new accounts with the fully-triaged demo
