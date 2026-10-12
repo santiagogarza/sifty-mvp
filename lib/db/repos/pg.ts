@@ -1299,6 +1299,21 @@ export function createPostgresRepos(): Repos {
         await tx.execute(
           sql`select pg_advisory_xact_lock(hashtext(${`execution_task:${userId}:${input.taskId}`}))`,
         );
+        const [existing] = await tx
+          .select()
+          .from(schema.executions)
+          .where(
+            and(
+              eq(schema.executions.userId, userId),
+              eq(schema.executions.idempotencyKey, input.idempotencyKey),
+            ),
+          );
+        if (existing)
+          return {
+            created: false as const,
+            reason: "replay" as const,
+            execution: rowToExecution(existing),
+          };
         const [live] = await tx
           .select()
           .from(schema.executions)
@@ -1311,13 +1326,6 @@ export function createPostgresRepos(): Repos {
           )
           .orderBy(desc(schema.executions.createdAt))
           .limit(1);
-        if (live && live.idempotencyKey === input.idempotencyKey) {
-          return {
-            created: false as const,
-            reason: "replay" as const,
-            execution: rowToExecution(live),
-          };
-        }
         if (live)
           return {
             created: false as const,
