@@ -21,7 +21,7 @@ export function policyDescription(policy: ExecutionPolicy): string {
   }
 }
 
-export function executorLabel(kind: ExecutorKind): string {
+export function executorLabel(kind: ExecutorKind | string): string {
   switch (kind) {
     case "research":
       return "Research";
@@ -29,6 +29,8 @@ export function executorLabel(kind: ExecutorKind): string {
       return "AI agent";
     case "cursor_agent":
       return "Cursor agent";
+    default:
+      return kind ? `${kind.charAt(0).toUpperCase()}${kind.slice(1)}` : "Sifty";
   }
 }
 

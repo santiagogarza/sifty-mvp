@@ -1,8 +1,14 @@
 import { type Repos, getRepos } from "@/lib/db/repos";
 import type { DecisionResolution } from "@/lib/db/repos/types";
-import type { ClarifyingQuestionPayload, Decision, DecisionAnswer } from "@/lib/domain/types";
+import type {
+  ClarifyingQuestionPayload,
+  Decision,
+  DecisionAnswer,
+  DecisionKind,
+} from "@/lib/domain/types";
 import { reportError } from "@/lib/observability/report-error";
 import { resumeWorkflowHook } from "@/lib/workflows/dispatch";
+import { countByKind } from "./copy";
 import { DECISION_TTL_MS, type DecisionResolutionPayload, decisionHookToken } from "./hook";
 
 /**
@@ -15,7 +21,7 @@ import { DECISION_TTL_MS, type DecisionResolutionPayload, decisionHookToken } fr
  * caller gets `resumed: false` so it can fall back to re-running the work.
  */
 
-export { DECISION_TTL_MS, decisionHookToken };
+export { DECISION_TTL_MS, decisionHookToken, countByKind };
 export type { DecisionResolutionPayload };
 
 /** Default bound for `listOpen`; the inbox shows at most this many. */
@@ -30,6 +36,50 @@ const OPEN_PER_TASK_LIMIT = 10;
  */
 export async function listOpen(userId: string, opts: { limit?: number } = {}): Promise<Decision[]> {
   return getRepos().decisions.listOpen(userId, { limit: opts.limit ?? OPEN_DECISIONS_LIMIT });
+}
+
+/**
+ * "While you were away": what is waiting on the user and what executions
+ * did since `since`. Stable export for the digest (3.7) and the in-app
+ * summary; one bounded read of the inbox plus one grouped count.
+ */
+export interface AwaySummary {
+  since: string;
+  waiting: Record<DecisionKind, number> & { total: number };
+  executions: {
+    done: number;
+    drafted: number;
+    needsApproval: number;
+    needsDecision: number;
+    failed: number;
+    cancelled: number;
+    running: number;
+  };
+}
+
+export async function awaySummary(
+  userId: string,
+  opts: { since: Date; limit?: number },
+  repos: Repos = getRepos(),
+): Promise<AwaySummary> {
+  const [open, counts] = await Promise.all([
+    repos.decisions.listOpen(userId, { limit: opts.limit ?? OPEN_DECISIONS_LIMIT }),
+    repos.executions.countByStatus(userId, { since: opts.since }),
+  ]);
+  const byKind = countByKind(open);
+  return {
+    since: opts.since.toISOString(),
+    waiting: { ...byKind, total: open.length },
+    executions: {
+      done: counts.done,
+      drafted: counts.drafted,
+      needsApproval: counts.needs_approval,
+      needsDecision: counts.needs_decision,
+      failed: counts.failed,
+      cancelled: counts.cancelled,
+      running: counts.running + counts.queued,
+    },
+  };
 }
 
 export async function openClarifyingQuestion(

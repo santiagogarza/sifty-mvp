@@ -53,6 +53,7 @@ import Link from "next/link";
 import * as React from "react";
 import { AiThinking } from "./ai-status";
 import { ConfidencePill } from "./confidence-pill";
+import { ExecutionSection } from "./execution-section";
 import { PriorityGlyph } from "./priority-glyph";
 import { StatusIcon } from "./status-icon";
 
@@ -372,6 +373,8 @@ function DetailBody({
             onAdd={(title) => addSubtask(task.id, title)}
           />
         </section>
+
+        <ExecutionSection task={task} />
 
         <AgentBriefSection task={task} />
 

@@ -1,4 +1,5 @@
 import { isVercelProduction } from "@/lib/env/production-guards";
+import { APPROVE_OPTION } from "@/lib/executions/copy";
 import { id as makeId } from "@/lib/utils/ids";
 import { SignJWT, errors as joseErrors, jwtVerify } from "jose";
 
@@ -106,6 +107,20 @@ export async function verifyDecisionLinkToken(
     if (err instanceof joseErrors.JOSEError) return { ok: false, reason: "invalid" };
     return { ok: false, reason: "malformed" };
   }
+}
+
+/**
+ * The links a notification about an approval or a draft review needs:
+ * open it, approve it as is, reject it. Edit-then-approve is app-only
+ * (the `open` link lands on the card). Same tokens as v1: `approve` is an
+ * `answer` with the `Approve` option, `reject` is a `dismiss`.
+ */
+export async function executionDecisionLinks(
+  appUrl: string,
+  input: { userId: string; decisionId: string },
+): Promise<{ open: string; approve: string; reject: string }> {
+  const links = await decisionLinks(appUrl, { ...input, options: [APPROVE_OPTION] });
+  return { open: links.open, approve: links.answers[0]!.url, reject: links.dismiss };
 }
 
 /** Absolute URL for a one-tap link; `appUrl` has no trailing slash. */
