@@ -178,6 +178,8 @@ export const ApprovalBody = React.forwardRef<
 export interface DraftReviewHandle {
   /** Enter edit mode (the `e` / `Enter` key). */
   edit(): void;
+  /** The edited draft when the editor has changes, else null. */
+  pendingDraft(): ExecutionDraft | null;
 }
 
 export const DraftReviewBody = React.forwardRef<
@@ -198,17 +200,6 @@ export const DraftReviewBody = React.forwardRef<
   const [body, setBody] = React.useState(payload.draft.body);
   const bodyRef = React.useRef<HTMLTextAreaElement>(null);
 
-  React.useImperativeHandle(
-    ref,
-    () => ({
-      edit: () => {
-        setEditing(true);
-        setTimeout(() => bodyRef.current?.focus(), 0);
-      },
-    }),
-    [],
-  );
-
   const lines = payload.draft.body.split("\n");
   const long = lines.length > PREVIEW_LINES;
   const preview = expanded || !long ? payload.draft.body : lines.slice(0, PREVIEW_LINES).join("\n");
@@ -221,6 +212,21 @@ export const DraftReviewBody = React.forwardRef<
   const changed =
     body.trim() !== payload.draft.body.trim() ||
     (title.trim() || null) !== (payload.draft.title ?? null);
+
+  React.useImperativeHandle(
+    ref,
+    () => ({
+      edit: () => {
+        setEditing(true);
+        setTimeout(() => bodyRef.current?.focus(), 0);
+      },
+      pendingDraft: () =>
+        editing && changed
+          ? { title: title.trim() || null, body, format: payload.draft.format }
+          : null,
+    }),
+    [editing, changed, title, body, payload.draft.format],
+  );
   const diff = React.useMemo(
     () => (editing && changed ? diffLines(payload.draft.body, body) : []),
     [editing, changed, payload.draft.body, body],

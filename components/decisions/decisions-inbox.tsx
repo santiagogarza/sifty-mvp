@@ -446,6 +446,8 @@ const DecisionCard = React.forwardRef<
         const option = options[index];
         if (!option) return false;
         if (option === REJECT_OPTION) void runDismiss();
+        else if (review && option === APPROVE_OPTION)
+          void submit({ option, draft: draftRef.current?.pendingDraft() ?? null });
         else void submit({ option });
         return true;
       },

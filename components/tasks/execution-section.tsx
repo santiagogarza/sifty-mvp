@@ -102,7 +102,9 @@ export function ExecutionSection({ task }: { task: Task }) {
     toast(
       policy === "ask_first"
         ? "Sifty will ask before it starts — check Decisions."
-        : "Sifty is on it. You'll find the draft in Decisions.",
+        : policy === "draft_then_approve"
+          ? "Sifty is on it. You'll find the draft in Decisions."
+          : "Sifty is on it.",
     );
   };
 
