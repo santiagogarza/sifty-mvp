@@ -1,3 +1,5 @@
+import { resolveOfflineMode } from "@/lib/ai/ai-gate";
+import { editTouchesSignalField, maybeExtractFromEdit } from "@/lib/ai/memory/edit-trigger";
 import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
 import { expireOpenDecisionsForTask } from "@/lib/decisions/service";
@@ -48,9 +50,23 @@ export async function PATCH(req: Request, ctx: RouteContext) {
   const repos = getRepos();
   const userId = session.user.id;
   const completing = patch.lifecycle === "done";
-  const before = completing ? await repos.tasks.get(userId, id) : null;
+  // The pre-write row is needed to place a recurring successor, and when an
+  // edit to a priority/effort/date/delegation/label field may contradict the
+  // sift (memory extraction); everything else skips the extra read.
+  const before =
+    completing || editTouchesSignalField(editedFields) ? await repos.tasks.get(userId, id) : null;
   let task = await repos.tasks.update(userId, id, patch, { editedFields });
   if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (before && editTouchesSignalField(editedFields)) {
+    await maybeExtractFromEdit(repos, {
+      req,
+      session,
+      before,
+      patch,
+      editedFields,
+      offline: resolveOfflineMode(req),
+    });
+  }
 
   let spawned: Task | null = null;
   if (completing && task.recurrence) {

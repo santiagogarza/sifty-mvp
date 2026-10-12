@@ -24,6 +24,11 @@ vi.mock("@/lib/workflows/dispatch", () => ({
   waitForRun: async () => ({ status: "pending" }),
   setWorkflowClientForTesting: () => {},
 }));
+// Same for the PATCH route's memory-extraction trigger (also a workflow start).
+vi.mock("@/lib/ai/memory/edit-trigger", () => ({
+  editTouchesSignalField: () => false,
+  maybeExtractFromEdit: async () => ({ started: false, reason: "stubbed" }),
+}));
 
 /**
  * Client sync behavior, end to end: store mutation → `lib/store/sync` →

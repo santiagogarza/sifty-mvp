@@ -313,6 +313,39 @@ today** on the Today page (Pro and creator; `caps.dailyPlan`). Backed by
 - Offline (`SIFTY_AI_OFFLINE=1`) the deterministic variant applies the same
   rules the prompt describes, so the whole flow runs in CI and demos.
 
+### Memory extraction
+
+`lib/ai/memory/` proposes durable facts and preferences — "Ana =
+accountant", "prefers mornings for deep work" — and asks before remembering
+them. Backed by the Decisions inbox (`memory_proposal` decisions):
+
+- **When it runs.** As a best-effort tail step of `siftTask` once the task
+  is `ready` (never fails a sift), gated by a cheap regex prefilter
+  (`prefilter.ts`) so mundane captures cost no model call; and as the
+  one-step `memoryFromEdit` workflow when `PATCH /api/tasks/:id` reverses
+  the sift on a signal field (urgency, importance, effort, due, delegation,
+  labels) for the first time — once per task and sift, tracked by a
+  `memory.extracted` task event.
+- **One call, `memory.v1`** on the `memory` route (fast class). The prompt
+  sees the capture, how Sifty organized it, the *pinned* memories (the same
+  gate sift, plan, and brief apply; unpinned notes stay local and only
+  dedupe), and the user's edit; it answers with at most three proposals (text, kind,
+  quoted evidence, confidence) and is told that an empty list is the usual
+  answer. A sift-triggered run's `ai_runs` row carries the task's `siftId`
+  (a detail row of that sift, one cap unit for the whole pipeline); an
+  edit-triggered run passes `admitAiRun` like every AI route and is billed
+  as its own unit.
+- **Dedupe and negatives** (`propose.ts`). Proposals below 0.6 confidence
+  or matching an existing memory (normalized text) are dropped. The sink
+  then checks the user's past `memory_proposal` decisions in any status:
+  an open row, a confirmed one, or a dismissed one all block the same idea,
+  so a dismissal is the durable "don't ask again".
+- **Confirm / dismiss.** In the inbox a proposal reads "Remember this?" with
+  **Remember** (writes a pinned memory the next sift and the daily plan use)
+  and **Not this** (resolves the row as `dismissed`; nothing is written).
+- Offline, a regex variant (`offlineMemoryExtraction`) covers "Name, my
+  role", first-person habits, and a lowered urgency on a recurring category.
+
 ## Configuration
 
 Every environment variable lives in `.env.example` with descriptions.

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { DecisionsEmptyState } from "@/components/decisions/decisions-empty-state";
 import { DecisionsInbox } from "@/components/decisions/decisions-inbox";
+import { useToastStore } from "@/components/ui/toast";
 import { useDecisionsStore } from "@/lib/decisions/client";
 import type { Decision } from "@/lib/domain/types";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -139,6 +140,84 @@ describe("DecisionsInbox", () => {
     renderInbox("dec_old");
     const cards = screen.getAllByTestId("decision-card");
     expect(cards[1]).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("a memory proposal renders as 'Remember this?' with Remember / Not this, and 1 confirms it", async () => {
+    const proposal: Decision = {
+      id: "dec_mem",
+      kind: "memory_proposal",
+      status: "open",
+      taskId: "task_a",
+      payload: {
+        kind: "memory_proposal",
+        text: "Ana = accountant",
+        memoryKind: "fact",
+        rationale: "Ana, my accountant",
+      },
+      answer: null,
+      resumeToken: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      resolvedAt: null,
+      expiresAt: null,
+    };
+    answer.mockResolvedValue({ ok: true, mode: "remembered" });
+    useDecisionsStore.setState({ decisions: [proposal], tasks: TASKS, count: 1, answer, dismiss });
+    render(
+      <DecisionsInbox
+        decisions={[proposal]}
+        tasks={TASKS}
+        focusId="dec_mem"
+        emptyState={<DecisionsEmptyState />}
+      />,
+    );
+    const card = screen.getByTestId("decision-card");
+    expect(card).toHaveTextContent("Remember this?");
+    expect(screen.getByTestId("memory-proposal-text")).toHaveTextContent("Ana = accountant");
+    expect(card).toHaveTextContent("From: “Ana, my accountant”");
+    // No free-text answer box for a proposal.
+    expect(screen.queryByLabelText("Your answer")).toBeNull();
+    // Attached to a task here, so the title opens it; detached proposals disable it.
+    expect(screen.getByRole("button", { name: /Taxes/ })).toBeEnabled();
+
+    await userEvent.click(screen.getByTestId("memory-proposal-remember"));
+    expect(answer).toHaveBeenCalledWith("dec_mem", { text: null, option: "Remember" });
+    expect(useToastStore.getState().toasts.map((t) => t.message)).toContain(
+      "Remembered — Sifty will use it from the next sift on.",
+    );
+
+    await userEvent.click(screen.getByTestId("memory-proposal-dismiss"));
+    expect(dismiss).toHaveBeenCalledWith("dec_mem");
+    expect(useToastStore.getState().toasts.map((t) => t.message)).toContain(
+      "Noted — Sifty won't suggest that again.",
+    );
+  });
+
+  it("a proposal without a task has an inert, disabled title", () => {
+    const proposal: Decision = {
+      id: "dec_mem2",
+      kind: "memory_proposal",
+      status: "open",
+      taskId: null,
+      payload: {
+        kind: "memory_proposal",
+        text: "Jure = lawyer",
+        memoryKind: "fact",
+        rationale: null,
+      },
+      answer: null,
+      resumeToken: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      resolvedAt: null,
+      expiresAt: null,
+    };
+    useDecisionsStore.setState({ decisions: [proposal], tasks: {}, count: 1, answer, dismiss });
+    render(
+      <DecisionsInbox decisions={[proposal]} tasks={{}} emptyState={<DecisionsEmptyState />} />,
+    );
+    expect(screen.getByRole("button", { name: /Something Sifty noticed/ })).toBeDisabled();
+    expect(screen.queryByText(/From:/)).toBeNull();
   });
 
   it("shows the empty state that explains what lands here", () => {

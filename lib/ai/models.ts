@@ -128,6 +128,7 @@ export const STAGES = [
   "plan",
   "execute",
   "digest",
+  "memory",
 ] as const;
 export type Stage = (typeof STAGES)[number];
 
@@ -167,6 +168,7 @@ export const STAGE_ROUTES: Record<Stage, StageRoute> = {
   plan: DEEP_CLAUDE,
   execute: DEEP_CLAUDE,
   digest: FAST_CLAUDE,
+  memory: FAST_CLAUDE,
 };
 
 // ---------------------------------------------------------------------------

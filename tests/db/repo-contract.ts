@@ -551,6 +551,52 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect(await repos.memories.list(u.id)).toHaveLength(3);
     });
 
+    it("decisions.listByKind returns one kind in any status, newest first, bounded, per tenant", async () => {
+      const repos = getRepos();
+      const a = await createUser(repos, "kind-a@example.com");
+      const b = await createUser(repos, "kind-b@example.com");
+      const proposal = (text: string) => ({
+        kind: "memory_proposal" as const,
+        taskId: null,
+        payload: {
+          kind: "memory_proposal" as const,
+          text,
+          memoryKind: "fact" as const,
+          rationale: null,
+        },
+        resumeToken: null,
+        expiresAt: null,
+      });
+      const first = await repos.decisions.create(a.id, proposal("Ana = accountant"));
+      const second = await repos.decisions.create(a.id, proposal("Jure = lawyer"));
+      await repos.decisions.create(a.id, {
+        kind: "clarifying_question",
+        taskId: null,
+        payload: {
+          kind: "clarifying_question",
+          question: "Which year?",
+          options: [],
+          siftId: "sift_1",
+          confidence: 0.4,
+        },
+        resumeToken: null,
+        expiresAt: null,
+      });
+      await repos.decisions.create(b.id, proposal("Ana = accountant"));
+      await repos.decisions.resolve(a.id, first.id, { status: "dismissed", answer: null });
+
+      const all = await repos.decisions.listByKind(a.id, "memory_proposal", { limit: 10 });
+      expect(all.map((d) => d.id).sort()).toEqual([first.id, second.id].sort());
+      expect(all.map((d) => d.status).sort()).toEqual(["dismissed", "open"]);
+      expect(await repos.decisions.listByKind(a.id, "memory_proposal", { limit: 1 })).toHaveLength(
+        1,
+      );
+      expect(await repos.decisions.listByKind(b.id, "memory_proposal", { limit: 10 })).toHaveLength(
+        1,
+      );
+      expect(await repos.decisions.listByKind(a.id, "approval", { limit: 10 })).toEqual([]);
+    });
+
     it("decisions: tenancy, newest-first listing, counts, and the open → resolved CAS", async () => {
       const repos = getRepos();
       const a = await createUser(repos, "dec-a@example.com");

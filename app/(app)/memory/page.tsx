@@ -28,7 +28,7 @@ export default function MemoryPage() {
       <PageHeader
         eyebrow="Sifty's memory of you"
         title="What Sifty assumes"
-        description="Pinned notes are included in AI context when triaging. Anything here is editable. Sifty never invents memory — you write it."
+        description="Pinned notes are included in AI context when triaging. Anything here is editable. Sifty never saves a memory on its own — you write it, or confirm what it noticed in Decisions."
       />
       {hydrated ? <MemoryList memories={memories} /> : null}
     </PageShell>
