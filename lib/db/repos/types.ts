@@ -362,7 +362,12 @@ export interface AiRunRepo {
  * Audit trail entries. The daily plan writes one per task it moved, with a
  * human-readable `reason` in the payload.
  */
-export type TaskEventKind = "plan.moved_in" | "plan.moved_out" | "plan.rescored";
+export type TaskEventKind =
+  | "plan.moved_in"
+  | "plan.moved_out"
+  | "plan.rescored"
+  /** A memory extraction ran for this task's sift after a contradicting edit. */
+  | "memory.extracted";
 
 export interface TaskEventRecord {
   id: string;
