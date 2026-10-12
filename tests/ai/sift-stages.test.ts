@@ -252,3 +252,16 @@ describe("stagePatch", () => {
     });
   });
 });
+
+describe("toneForName", () => {
+  it("is deterministic and spreads across the palette", async () => {
+    const { toneForName } = await import("@/lib/ai/ensure-labels");
+    expect(toneForName("Work")).toBe(toneForName("work"));
+    const tones = new Set(
+      ["Work", "Home", "Errand", "Admin", "Writing", "Cursor", "Demo Prep", "Finance"].map(
+        toneForName,
+      ),
+    );
+    expect(tones.size).toBeGreaterThan(2);
+  });
+});
