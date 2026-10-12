@@ -144,7 +144,7 @@ export const TaskRow = React.forwardRef<
           >
             {task.title}
           </span>
-          <AiStatusInline status={task.aiStatus} />
+          <AiStatusInline status={task.aiStatus} stage={task.siftStage} />
           <ConfidencePill task={task} compact />
         </div>
         {task.nextAction && !isDone ? (

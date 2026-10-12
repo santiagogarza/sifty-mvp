@@ -1,6 +1,6 @@
 "use client";
 
-import { isTriageInFlight, runTriage } from "@/lib/ai/run-triage";
+import { isTriageInFlight, watchSift } from "@/lib/ai/run-triage";
 import { normalizeAssigneeName } from "@/lib/domain/assignee";
 import { LABEL_LIMITS, MEMORY_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
 import type { Label, Memory, Task } from "@/lib/domain/types";
@@ -47,7 +47,7 @@ import { type SyncHooks, registerSyncHooks, useStore } from "./store";
 
 const LEDGER_KEY = "sifty-sync-ledger-v1";
 const PATCH_DEBOUNCE_MS = 400;
-const AUTO_RESUME_LIMIT = 3;
+const AUTO_RESUME_LIMIT = 8;
 
 type EntityKind = "tasks" | "memories" | "labels";
 
@@ -420,6 +420,9 @@ function taskCreateBody(task: Task): Record<string, unknown> {
     id: task.id,
     sourceText: clip(task.sourceText, TASK_LIMITS.sourceText),
     createdAt: task.createdAt,
+    // The server enqueues the sift from this request; it needs the model
+    // preference the user picked in Settings.
+    modelPreference: useStore.getState().modelPreference,
     ...taskWireFields(task),
   };
 }
@@ -506,6 +509,14 @@ async function pushTaskCreateJob(id: string): Promise<boolean> {
   if (!res) return false;
   if (res.status === 409) return remintAndRepushTask(id);
   if (!res.ok) return reportRejection(res, "tasks", id, `task create ${id}`);
+  // The server started sifting in response to this create (a replayed
+  // offline capture, say); follow it so the row does not sit on "pending"
+  // until the next pull. Deferred past this job so the watcher's
+  // `waitForTask` sees a settled chain.
+  const created = currentTask(id);
+  if (created && (created.aiStatus === "pending" || created.aiStatus === "running")) {
+    queueMicrotask(() => void watchSift(id));
+  }
   return true;
 }
 
@@ -928,9 +939,10 @@ function flushPending(): void {
 }
 
 /**
- * Tasks left `pending`/`running` by an interrupted session would otherwise
- * show "AI organizing" forever. Resume a bounded number; mark the rest
- * failed so the retry affordance appears.
+ * Tasks still `pending`/`running` after a pull are being sifted server-side
+ * (or were captured offline and are about to be replayed). Watch a bounded
+ * number so their rows advance; the rest settle on the next pull. The
+ * watcher itself turns a sift that never settles into a retryable failure.
  */
 function resumeInterruptedTriage(): void {
   const stale = useStore
@@ -939,9 +951,6 @@ function resumeInterruptedTriage(): void {
       (t) => (t.aiStatus === "pending" || t.aiStatus === "running") && !isTriageInFlight(t.id),
     );
   for (const t of stale.slice(0, AUTO_RESUME_LIMIT)) {
-    void runTriage(t.id);
-  }
-  for (const t of stale.slice(AUTO_RESUME_LIMIT)) {
-    useStore.getState().setAiStatus(t.id, "failed", "Interrupted — run triage again.");
+    void watchSift(t.id);
   }
 }

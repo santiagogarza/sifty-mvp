@@ -84,11 +84,11 @@ app/
     auth/[...all]/route.ts     # Better Auth (sign-in/up, verify, reset,
                                # magic link, Google callback, sessions)
     auth/me/route.ts           # who am I (sync layer)
-    tasks/route.ts             # GET (list), POST (create, client ids ok)
-    tasks/[id]/route.ts        # GET, PATCH, DELETE
+    tasks/route.ts             # GET (list), POST (create → enqueues siftTask)
+    tasks/[id]/route.ts        # GET (task + labels; the sift poller), PATCH, DELETE
     labels/route.ts            # GET, PUT (idempotent ensure-by-name)
     memories/...               # GET, POST, PATCH, DELETE
-    triage/route.ts            # AI triage: gate → model → durable apply
+    triage/route.ts            # "Re-sift now": gate → enqueue siftTask → 202
     agent-brief/route.ts       # "Prepare for agent" handoff brief
     admin/workflow-ping/route.ts # creator-only Workflow runtime smoke test
   (app)/admin/costs/page.tsx   # creator-only AI spend over ai_runs
@@ -153,10 +153,12 @@ the durable source of truth across devices.
   wins, clean rows follow the server, tombstones are honored, and an
   account switch on a shared browser resets the local cache instead of
   leaking the previous user's workspace.
-- Triage results are applied server-side by the triage route itself
-  (respecting `editedFields`), so an enrichment survives even if the tab
-  closes mid-run. Tasks left `pending`/`running` by an interrupted session
-  auto-resume (bounded) on the next load.
+- Sifting runs server-side in the `siftTask` workflow (see "Background
+  jobs"): `POST /api/tasks` enqueues it, every stage writes the task with
+  `editedFields` protection, and the browser only polls `GET /api/tasks/:id`
+  to show "Enriching → Prioritizing → Triaging → Breaking down → Planning".
+  Closing the tab changes nothing. Tasks still `pending`/`running` after a
+  pull are watched again (bounded) on the next load.
 
 ## Background jobs (Vercel Workflow)
 
@@ -208,6 +210,34 @@ Cost accounting: every step writes an `ai_runs` row with `stage`,
 `prompt_version`, `sift_id`, and `workflow_run_id`. Caps count sifts, not
 steps (`sift_id IS NULL OR stage = 'sift'`). The creator-only `/admin/costs`
 page rolls the table up by day, stage, model, and account.
+
+### The `siftTask` pipeline
+
+`lib/workflows/sift-task.ts` runs five steps on every new capture (and on
+"re-sift now"), each backed by `lib/ai/sift/`:
+
+| Stage | Model class | Writes | Prompt version |
+| --- | --- | --- | --- |
+| `enrich` | fast | title, description, next action, due hint, labels | `enrich.v1` |
+| `prioritize` | fast | urgency, importance, effort, rationale — **list-aware**: the prompt sees the user's other open tasks | `prioritize.v1` |
+| `triage` | fast | routing (inbox task → `waiting` / `someday` only), delegation candidate, confidence, clarifying question | `triage.v2` |
+| `subtasks` | fast | up to five subtasks when the work has distinct steps | `subtasks.v1` |
+| `plan` | deep | `task.plan`: executor (`ai_agent` / `cursor_agent` / `person` / `self` / `none`), approach, connectors, readiness, blockers | `plan.v1` |
+
+Rules that hold at every step:
+
+- The step re-reads the task; if `task.siftId` changed (a re-sift) or the
+  task is gone, the run stops. A re-sift never races an older run.
+- `editedFields` are never overwritten; the patch is narrow, so a user edit
+  that lands between steps survives.
+- One `sift` accounting row is written when the sift is accepted (before
+  `start()`), so the tier cap sees it immediately; a sift that fails to
+  start or dies flips that row to `failed` and is not billed.
+- Transient model errors retry (Workflow default, 3 retries); a missing
+  key or a bad `AI_TRANSPORT` is fatal and surfaces as `aiStatus: failed`
+  with a retryable message.
+- With `SIFTY_AI_OFFLINE=1` (or `?offline=1` off production) every stage
+  uses the deterministic heuristic through the same steps.
 
 ## Configuration
 

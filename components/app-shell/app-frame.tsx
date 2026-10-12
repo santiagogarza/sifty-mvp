@@ -57,6 +57,16 @@ function AppFrameInner({
   // no-op when the user isn't authenticated (the hook handles 401s).
   const sync = useServerSync();
 
+  // Marks the shell interactive (keyboard shortcuts attached). The e2e
+  // suite waits for this before pressing keys: `networkidle` can resolve a
+  // few hundred ms before React hydrates under a cold dev server.
+  React.useEffect(() => {
+    document.documentElement.dataset.appReady = "1";
+    return () => {
+      delete document.documentElement.dataset.appReady;
+    };
+  }, []);
+
   const detailTaskId = search.get("task");
 
   // Capture and the palette replace the cheat sheet rather than stacking a
