@@ -3,7 +3,8 @@
 import { focusScore } from "@/lib/domain/priority";
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import { dayDelta, isOverdue } from "@/lib/utils/dates";
-import { useMemo } from "react";
+import { isSnoozed } from "@/lib/utils/snooze";
+import { useEffect, useMemo, useState } from "react";
 import { useStore } from "./store";
 
 /**
@@ -25,8 +26,13 @@ export interface ViewArgs {
   search?: string;
 }
 
-function applyCommonFilters(tasks: Task[], args: ViewArgs): Task[] {
-  let out = tasks;
+/** Snoozed open tasks leave every view until they wake; done/dropped ignore snooze. */
+function isHiddenBySnooze(t: Task, now: Date): boolean {
+  return t.lifecycle !== "done" && t.lifecycle !== "dropped" && isSnoozed(t, now);
+}
+
+function applyCommonFilters(tasks: Task[], args: ViewArgs, now = new Date()): Task[] {
+  let out = tasks.filter((t) => !isHiddenBySnooze(t, now));
   if (args.labelId) {
     out = out.filter((t) => t.labelIds.includes(args.labelId!));
   }
@@ -52,6 +58,7 @@ function applyCommonFilters(tasks: Task[], args: ViewArgs): Task[] {
  *    are out of play.
  */
 export function isTodayTask(t: Task, now = new Date()): boolean {
+  if (isHiddenBySnooze(t, now)) return false;
   const dueForces = isOverdue(t.due, now) || (!!t.due && dayDelta(new Date(t.due), now) === 0);
   if (t.lifecycle === "inbox" || t.lifecycle === "active") {
     return dueForces || t.priorityBucket === "do_now";
@@ -80,7 +87,7 @@ function byFocusScore(now: Date) {
 
 export function selectTodayTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
   const now = new Date();
-  return applyCommonFilters(tasks, args)
+  return applyCommonFilters(tasks, args, now)
     .filter((t) => isTodayTask(t, now))
     .sort(byFocusScore(now));
 }
@@ -94,7 +101,7 @@ export function selectInboxTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
 /** Focus is exactly the "active" status — Inbox stays the review gate. */
 export function selectFocusTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
   const now = new Date();
-  return applyCommonFilters(tasks, args)
+  return applyCommonFilters(tasks, args, now)
     .filter((t) => t.lifecycle === "active")
     .sort(byFocusScore(now));
 }
@@ -151,6 +158,7 @@ export function computeTaskCounts(tasks: Task[], now = new Date()): TaskCounts {
       counts.dropped += 1;
       continue;
     }
+    if (isHiddenBySnooze(t, now)) continue;
     if (t.lifecycle === "inbox") counts.inbox += 1;
     if (t.lifecycle === "active") counts.focus += 1;
     if (t.lifecycle === "waiting") counts.waiting += 1;
@@ -160,7 +168,34 @@ export function computeTaskCounts(tasks: Task[], now = new Date()): TaskCounts {
   return counts;
 }
 
+/** setTimeout overflows past ~24.8 days and would fire immediately. */
+const MAX_TIMEOUT_MS = 2_147_483_647;
+
+/**
+ * Changes value when the next snoozed task wakes, so memoized views
+ * recompute and the task reappears on time without another store change.
+ */
+export function useSnoozeWakeTick(tasks: Task[]): number {
+  const [tick, setTick] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick re-arms the timer after each wake.
+  useEffect(() => {
+    const now = Date.now();
+    let next = Number.POSITIVE_INFINITY;
+    for (const t of tasks) {
+      if (!t.snoozedUntil) continue;
+      const at = new Date(t.snoozedUntil).getTime();
+      if (at > now && at < next) next = at;
+    }
+    if (!Number.isFinite(next)) return;
+    const timer = setTimeout(() => setTick((n) => n + 1), Math.min(next - now, MAX_TIMEOUT_MS));
+    return () => clearTimeout(timer);
+  }, [tasks, tick]);
+  return tick;
+}
+
 export function useTaskCounts(): TaskCounts {
   const tasks = useStore((s) => s.tasks);
-  return useMemo(() => computeTaskCounts(tasks), [tasks]);
+  const wake = useSnoozeWakeTick(tasks);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: wake forces a recompute when a snooze ends.
+  return useMemo(() => computeTaskCounts(tasks), [tasks, wake]);
 }

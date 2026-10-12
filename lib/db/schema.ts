@@ -93,6 +93,7 @@ export const tasks = pgTable(
       .notNull()
       .default("small"),
     due: date("due"),
+    snoozedUntil: timestamp("snoozed_until", { withTimezone: true }),
     delegationCandidate: text("delegation_candidate", {
       enum: ["self", "ai", "person", "unsure"],
     })

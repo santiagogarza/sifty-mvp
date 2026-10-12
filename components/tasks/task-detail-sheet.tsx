@@ -28,8 +28,10 @@ import {
 import { getSyncHooks, useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import { formatExactTime, formatRelativeDay, isOverdue } from "@/lib/utils/dates";
+import { formatSnoozeTime, isSnoozed } from "@/lib/utils/snooze";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import {
+  AlarmClock,
   ArrowRight,
   Bot,
   CalendarDays,
@@ -46,6 +48,7 @@ import {
 import * as React from "react";
 import { AiThinking } from "./ai-status";
 import { PriorityGlyph } from "./priority-glyph";
+import { SnoozePicker } from "./snooze-picker";
 import { StatusIcon } from "./status-icon";
 
 /**
@@ -145,6 +148,17 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
           )}
         </div>
         <div className="flex items-center gap-1.5">
+          <SnoozePicker task={task}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-[12px] font-normal text-[var(--fg-muted)]"
+              title="Snooze"
+            >
+              <AlarmClock size={13} />
+              {isSnoozed(task) ? formatSnoozeTime(new Date(task.snoozedUntil!)) : "Snooze"}
+            </Button>
+          </SnoozePicker>
           <Button
             variant="ghost"
             size="iconSm"

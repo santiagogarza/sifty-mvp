@@ -39,6 +39,7 @@ function makeTask(patch: Partial<Task>): Task {
     priorityBucket: "schedule",
     effort: "small",
     due: null,
+    snoozedUntil: null,
     delegationCandidate: "self",
     assigneeName: null,
     confidence: 0.8,
@@ -119,5 +120,30 @@ describe("computeTaskCounts", () => {
     // The sidebar badge and the Today list can never disagree.
     expect(counts.today).toBe(selectTodayTasks(tasks).length);
     expect(counts.today).toBe(3);
+  });
+});
+
+describe("snoozed tasks", () => {
+  const FUTURE = "2099-01-05T14:00:00.000Z";
+  const PAST = "2000-01-03T14:00:00.000Z";
+
+  it("leave every open view and count until they wake", () => {
+    const snoozed = makeTask({
+      lifecycle: "active",
+      priorityBucket: "do_now",
+      snoozedUntil: FUTURE,
+    });
+    const woken = makeTask({ lifecycle: "active", priorityBucket: "do_now", snoozedUntil: PAST });
+    const tasks = [snoozed, woken];
+    expect(selectFocusTasks(tasks).map((t) => t.id)).toEqual([woken.id]);
+    expect(selectTodayTasks(tasks).map((t) => t.id)).toEqual([woken.id]);
+    expect(isTodayTask(snoozed)).toBe(false);
+    const counts = computeTaskCounts(tasks);
+    expect(counts).toMatchObject({ focus: 1, today: 1, total: 2 });
+  });
+
+  it("do not hide done or dropped tasks", () => {
+    const done = makeTask({ lifecycle: "done", snoozedUntil: FUTURE });
+    expect(computeTaskCounts([done]).done).toBe(1);
   });
 });
