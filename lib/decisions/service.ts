@@ -162,12 +162,21 @@ async function wakeRun(
 export function normalizeAnswer(input: {
   text?: string | null;
   option?: string | null;
+  draft?: { title?: string | null; body: string } | null;
   via: DecisionAnswer["via"];
 }): DecisionAnswer | null {
   const text = input.text?.trim() || null;
   const option = input.option?.trim() || null;
   if (!text && !option) return null;
-  return { text, option, via: input.via };
+  const answer: DecisionAnswer = { text, option, via: input.via };
+  if (input.draft?.body.trim()) {
+    answer.draft = {
+      title: input.draft.title?.trim() || null,
+      body: input.draft.body,
+      format: "markdown",
+    };
+  }
+  return answer;
 }
 
 /** The answer as one line for prompts and `sourceContext`. */

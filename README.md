@@ -346,6 +346,52 @@ them. Backed by the Decisions inbox (`memory_proposal` decisions):
 - Offline, a regex variant (`offlineMemoryExtraction`) covers "Name, my
   role", first-person habits, and a lowered urgency on a recurring category.
 
+### Autonomous execution (`executeTask`)
+
+`lib/executions/` is the execution model Phase 3 builds on; the real
+workers (model + MCP agent, Cursor Cloud Agents) plug into its seams and
+inherit the state machine, the human gate, the budget, the audit log, and
+cancellation. The modules, in the order a run touches them:
+
+| Module | Owns |
+| --- | --- |
+| `state.ts` | The state machine as data: `queued → running → done \| failed \| cancelled`, with `needs_approval` (policy `ask_first`), `needs_decision` (the executor asked), and `drafted` (policy `draft_then_approve`) as the waiting states. Every status write is a CAS `transition` with a `from` list taken from here. |
+| `policy.ts` | D9. Resolution: request → task (`execution_policies`, scope `task`) → connector (scope `connector`) → default `draft_then_approve`. `auto` is honoured only for `readOnly` executors; otherwise it is downgraded and the caller is told. |
+| `executors.ts` | The `ExecutorDefinition` seam: `readOnly`, `estimateCents`, `describeAction`, `connectorFor`, `run(ctx)`. An executor logs through `ctx.log()` (redacted), calls `ctx.checkCancelled()` between long operations, and returns `done`, `draft`, `needs_decision`, or `failed` — it never touches the status or opens decisions itself. `research` is the v0 no-op that exists so everything around it can be exercised. Real executors call `registerExecutor()`. |
+| `service.ts` | `enqueueExecution` (tier gate → idempotent `create` → budget `reserve` → `startWorkflow`), `cancelExecution`, `applyExecutionDecision` / `resolveExecutionDecision` (what the Decisions actions call for `approval` and `draft_review`), settlement, and the decision openers. |
+| `run.ts` | The bodies of the workflow steps, unit-tested without the runtime. |
+| `redact.ts` | `redactSecrets`: secret-looking keys and values (bearer headers, JWTs, `sk-…`, GitHub / Slack / AWS key shapes, PEM blocks) are replaced before any step input or output is stored; payloads are bounded. |
+| `events.ts` | One `task_events` row per status change (`execution.*`), ids derived from the execution so retries append once. |
+
+`lib/workflows/execute-task.ts` is status-driven rather than a fixed
+sequence: every round reads the row and acts on it, so a user action that
+landed between steps (cancel, approve from another tab) wins. Waiting on a
+human costs nothing: the run registers a hook under `decision:<id>` before
+the decision row exists, releases its per-user slot (one execution at a
+time per account), and suspends for up to seven days. The Decisions
+service moves the execution **before** it wakes the run — approve → `running`,
+accept a draft → `done`, reject → `cancelled` — and if no run is waiting
+(deploy, deadline, crash) and work remains, it starts a new one. The run's
+`reconcile` step covers a wake whose write did not land.
+
+Budget: `caps.executionBudgetCentsMonth` per tier (free 0, Pro $10,
+creator unlimited). The executor's estimate is reserved against the UTC
+calendar month before `start()` (`executions.reserve`, atomic per user via
+an advisory lock), refused with a `failed` row and an
+`execution.budget_refused` event when it would pass the cap, and settled
+to the sum of the step log's `costCents` once the run is terminal.
+
+Routes: `POST /api/tasks/:id/execute` (202; 402 `execution_pro` /
+`execution_budget`; 409 while another execution of the task is live; 200
+`created: false` on an idempotent replay), `GET /api/tasks/:id/executions`,
+`GET /api/executions/:id` (execution + steps), `POST /api/executions/:id/cancel`,
+`GET/PUT/DELETE /api/execution-policies`.
+
+Secrets other workers must store (a user's Cursor API key, connector
+material) go through `lib/crypto/secretbox.ts`: AES-256-GCM under
+`DATA_ENCRYPTION_KEY`, versioned ciphertext, optional associated data to
+bind a value to its row, and no development fallback key.
+
 ## Configuration
 
 Every environment variable lives in `.env.example` with descriptions.

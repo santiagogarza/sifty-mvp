@@ -255,6 +255,43 @@ export function canUseConnectors(ent: Entitlement): boolean {
   return ent.caps.connectorsAllowed;
 }
 
+export type ExecutionDenialCode = "execution_pro" | "execution_budget";
+
+export type ExecutionAdmission =
+  | { ok: true; capCents: number }
+  | { ok: false; code: ExecutionDenialCode; reason: string };
+
+export const EXECUTION_PRO_MESSAGE =
+  "Letting Sifty work on tasks for you is part of Pro. Upgrade, or redeem an invite code, to turn it on.";
+
+/**
+ * Autonomous execution gate, driven by `caps.executionBudgetCentsMonth`:
+ * a zero budget means the tier has no execution at all (free), a finite
+ * one is enforced per calendar month by the reservation in
+ * `lib/executions/service.ts`, and `Infinity` (creator) never refuses.
+ * `usedCents` is what the month already committed plus holds in flight.
+ */
+export function canStartExecution(
+  ent: Entitlement,
+  input: { usedCents: number; estimateCents: number },
+): ExecutionAdmission {
+  const cap = ent.caps.executionBudgetCentsMonth;
+  if (cap <= 0) return { ok: false, code: "execution_pro", reason: EXECUTION_PRO_MESSAGE };
+  if (input.usedCents + input.estimateCents > cap) {
+    return { ok: false, code: "execution_budget", reason: budgetExhaustedMessage(cap) };
+  }
+  return { ok: true, capCents: cap };
+}
+
+export function budgetExhaustedMessage(capCents: number): string {
+  return `This month's execution budget (${formatCents(capCents)}) is used up. It resets on the 1st.`;
+}
+
+export function formatCents(cents: number): string {
+  if (!Number.isFinite(cents)) return "unlimited";
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
 /** Short label for badges. */
 export function tierLabel(tier: Tier): string {
   switch (tier) {

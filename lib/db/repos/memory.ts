@@ -1,6 +1,9 @@
 import { bucketFromScalars } from "@/lib/domain/priority";
 import type {
   Decision,
+  Execution,
+  ExecutionStatus,
+  ExecutionStep,
   Label,
   Memory,
   Subtask,
@@ -22,6 +25,10 @@ import {
   type DecisionRepo,
   type EntitlementRepo,
   type EntitlementSnapshot,
+  type ExecutionBudgetUsage,
+  type ExecutionPolicyRecord,
+  type ExecutionPolicyRepo,
+  type ExecutionRepo,
   IdConflictError,
   type InviteCode,
   type InviteCodeRepo,
@@ -93,6 +100,9 @@ interface State {
   pushSubscriptions: Map<string, PushSubscriptionRecord>;
   notificationSends: NotificationSendRecord[];
   dailyPlans: Map<string, DailyPlanRecord>;
+  executions: Map<string, Execution & { userId: string }>;
+  executionSteps: Array<ExecutionStep & { userId: string }>;
+  executionPolicies: Map<string, ExecutionPolicyRecord & { userId: string }>;
 }
 
 function emptyState(): State {
@@ -114,7 +124,21 @@ function emptyState(): State {
     pushSubscriptions: new Map(),
     notificationSends: [],
     dailyPlans: new Map(),
+    executions: new Map(),
+    executionSteps: [],
+    executionPolicies: new Map(),
   };
+}
+
+const TERMINAL_EXECUTION_STATUSES: ReadonlySet<ExecutionStatus> = new Set([
+  "done",
+  "failed",
+  "cancelled",
+]);
+
+/** First instant of the UTC calendar month containing `now`. */
+export function monthStartUtc(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 }
 
 /**
@@ -203,6 +227,11 @@ export function createMemoryRepos(): MemoryReposHandle {
       for (const [id, l] of state.labels) if (l.userId === userId) state.labels.delete(id);
       for (const [id, m] of state.memories) if (m.userId === userId) state.memories.delete(id);
       for (const [id, d] of state.decisions) if (d.userId === userId) state.decisions.delete(id);
+      for (const [id, e] of state.executions) if (e.userId === userId) state.executions.delete(id);
+      state.executionSteps = state.executionSteps.filter((s) => s.userId !== userId);
+      for (const [k, p] of state.executionPolicies) {
+        if (p.userId === userId) state.executionPolicies.delete(k);
+      }
       state.aiRuns = state.aiRuns.filter((r) => r.userId !== userId);
       state.taskEvents = state.taskEvents.filter((e) => e.userId !== userId);
       state.inviteRedemptions = state.inviteRedemptions.filter((r) => r.userId !== userId);
@@ -368,8 +397,13 @@ export function createMemoryRepos(): MemoryReposHandle {
       const existing = state.tasks.get(taskId);
       if (!existing || existing.userId !== userId) return false;
       state.tasks.delete(taskId);
-      // Mirrors `decisions.task_id ON DELETE CASCADE`.
+      // Mirrors `decisions.task_id` / `executions.task_id ON DELETE CASCADE`.
       for (const [id, d] of state.decisions) if (d.taskId === taskId) state.decisions.delete(id);
+      for (const [id, e] of state.executions) {
+        if (e.taskId !== taskId) continue;
+        state.executions.delete(id);
+        state.executionSteps = state.executionSteps.filter((s) => s.executionId !== id);
+      }
       return true;
     },
     async addSubtask(userId, taskId, subtask: Subtask) {
@@ -950,6 +984,223 @@ export function createMemoryRepos(): MemoryReposHandle {
     },
   };
 
+  const cloneExecution = (e: Execution & { userId: string }): Execution => {
+    const { userId: _u, ...rest } = e;
+    return {
+      ...rest,
+      answers: [...rest.answers],
+      result: rest.result
+        ? { ...rest.result, draft: rest.result.draft ? { ...rest.result.draft } : null }
+        : null,
+    };
+  };
+
+  const usageFor = (userId: string, now: Date): ExecutionBudgetUsage => {
+    const start = monthStartUtc(now).getTime();
+    const usage: ExecutionBudgetUsage = { committedCents: 0, reservedCents: 0 };
+    for (const e of state.executions.values()) {
+      if (e.userId !== userId || Date.parse(e.createdAt) < start) continue;
+      usage.committedCents += e.costCents;
+      usage.reservedCents += e.reservedCents;
+    }
+    return usage;
+  };
+
+  const executions: ExecutionRepo = {
+    async create(userId, input) {
+      for (const e of state.executions.values()) {
+        if (e.userId === userId && e.idempotencyKey === input.idempotencyKey) {
+          return { created: false, execution: cloneExecution(e) };
+        }
+      }
+      if (input.id) {
+        const existing = state.executions.get(input.id);
+        if (existing && existing.userId !== userId) throw new IdConflictError(input.id);
+        if (existing) return { created: false, execution: cloneExecution(existing) };
+      }
+      const now = new Date().toISOString();
+      const execution: Execution & { userId: string } = {
+        id: input.id ?? makeId("exec"),
+        userId,
+        taskId: input.taskId,
+        status: "queued",
+        executor: input.executor,
+        policy: input.policy,
+        connector: input.connector,
+        idempotencyKey: input.idempotencyKey,
+        workflowRunId: null,
+        decisionId: null,
+        reservedCents: 0,
+        costCents: 0,
+        result: null,
+        answers: [],
+        error: null,
+        cancelReason: null,
+        cancelRequested: false,
+        createdAt: now,
+        startedAt: null,
+        finishedAt: null,
+        updatedAt: now,
+      };
+      state.executions.set(execution.id, execution);
+      return { created: true, execution: cloneExecution(execution) };
+    },
+    async get(userId, id) {
+      const e = state.executions.get(id);
+      return e && e.userId === userId ? cloneExecution(e) : null;
+    },
+    async listForTask(userId, taskId, opts) {
+      return Array.from(state.executions.values())
+        .reverse()
+        .filter((e) => e.userId === userId && e.taskId === taskId)
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+        .slice(0, opts.limit)
+        .map(cloneExecution);
+    },
+    async listActive(userId, opts) {
+      return Array.from(state.executions.values())
+        .reverse()
+        .filter((e) => e.userId === userId && !TERMINAL_EXECUTION_STATUSES.has(e.status))
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+        .slice(0, opts.limit)
+        .map(cloneExecution);
+    },
+    async transition(userId, id, input) {
+      const e = state.executions.get(id);
+      if (!e || e.userId !== userId || !input.from.includes(e.status)) return null;
+      const next = {
+        ...e,
+        ...input.patch,
+        status: input.to,
+        updatedAt: new Date().toISOString(),
+      };
+      state.executions.set(id, next);
+      return cloneExecution(next);
+    },
+    async update(userId, id, patch) {
+      const e = state.executions.get(id);
+      if (!e || e.userId !== userId) return null;
+      const next = { ...e, ...patch, updatedAt: new Date().toISOString() };
+      state.executions.set(id, next);
+      return cloneExecution(next);
+    },
+    async reserve(userId, id, input) {
+      const e = state.executions.get(id);
+      if (!e || e.userId !== userId) return { ok: false, reason: "not_found" };
+      const now = input.now ?? new Date();
+      // No await between the read and the write, so concurrent reservations
+      // serialize on the event loop; Postgres takes a per-user advisory lock
+      // for the same guarantee.
+      const usage = usageFor(userId, now);
+      const cents = Math.ceil(input.cents);
+      const projected = usage.committedCents + usage.reservedCents - e.reservedCents + cents;
+      if (projected > input.capCents) return { ok: false, reason: "budget", usage };
+      const next = { ...e, reservedCents: cents, updatedAt: now.toISOString() };
+      state.executions.set(id, next);
+      return {
+        ok: true,
+        execution: cloneExecution(next),
+        usage: { ...usage, reservedCents: usage.reservedCents - e.reservedCents + cents },
+      };
+    },
+    async settle(userId, id, input) {
+      const e = state.executions.get(id);
+      if (!e || e.userId !== userId) return null;
+      const next = {
+        ...e,
+        reservedCents: 0,
+        costCents: input.costCents,
+        updatedAt: new Date().toISOString(),
+      };
+      state.executions.set(id, next);
+      return cloneExecution(next);
+    },
+    async monthlyUsage(userId, now = new Date()) {
+      return usageFor(userId, now);
+    },
+    async countByStatus(userId, input) {
+      const since = input.since.getTime();
+      const counts = Object.fromEntries(
+        [
+          "queued",
+          "running",
+          "needs_decision",
+          "needs_approval",
+          "drafted",
+          "done",
+          "failed",
+          "cancelled",
+        ].map((s) => [s, 0]),
+      ) as Record<ExecutionStatus, number>;
+      for (const e of state.executions.values()) {
+        if (e.userId !== userId || Date.parse(e.updatedAt) < since) continue;
+        counts[e.status] += 1;
+      }
+      return counts;
+    },
+    async appendStep(userId, input) {
+      if (input.id) {
+        const existing = state.executionSteps.find((s) => s.id === input.id);
+        if (existing && existing.userId !== userId) throw new IdConflictError(input.id);
+        if (existing) return stripUserId(existing);
+      }
+      const bySeq = state.executionSteps.find(
+        (s) => s.executionId === input.executionId && s.seq === input.seq,
+      );
+      if (bySeq) {
+        if (bySeq.userId !== userId) throw new IdConflictError(`${input.executionId}:${input.seq}`);
+        return stripUserId(bySeq);
+      }
+      const step: ExecutionStep & { userId: string } = {
+        id: input.id ?? makeId("estep"),
+        userId,
+        executionId: input.executionId,
+        seq: input.seq,
+        kind: input.kind,
+        name: input.name,
+        status: input.status,
+        input: input.input ? { ...input.input } : null,
+        output: input.output ? { ...input.output } : null,
+        durationMs: input.durationMs,
+        costCents: input.costCents,
+        createdAt: new Date().toISOString(),
+      };
+      state.executionSteps.push(step);
+      return stripUserId(step);
+    },
+    async listSteps(userId, executionId, opts) {
+      return state.executionSteps
+        .filter((s) => s.userId === userId && s.executionId === executionId)
+        .sort((a, b) => a.seq - b.seq)
+        .slice(0, opts.limit)
+        .map(stripUserId);
+    },
+  };
+
+  const policyKey = (userId: string, scope: string, key: string) =>
+    `${userId}\u0000${scope}\u0000${key}`;
+  const executionPolicies: ExecutionPolicyRepo = {
+    async get(userId, scope, key) {
+      const row = state.executionPolicies.get(policyKey(userId, scope, key));
+      return row ? stripUserId(row) : null;
+    },
+    async list(userId, scope, opts) {
+      return Array.from(state.executionPolicies.values())
+        .filter((p) => p.userId === userId && p.scope === scope)
+        .sort((a, b) => a.key.localeCompare(b.key))
+        .slice(0, opts.limit)
+        .map(stripUserId);
+    },
+    async set(userId, scope, key, policy) {
+      const row = { userId, scope, key, policy, updatedAt: new Date().toISOString() };
+      state.executionPolicies.set(policyKey(userId, scope, key), row);
+      return stripUserId(row);
+    },
+    async clear(userId, scope, key) {
+      return state.executionPolicies.delete(policyKey(userId, scope, key));
+    },
+  };
+
   return {
     users,
     entitlements,
@@ -965,6 +1216,8 @@ export function createMemoryRepos(): MemoryReposHandle {
     pushSubscriptions,
     notificationSends,
     dailyPlans,
+    executions,
+    executionPolicies,
     __reset: () => {
       state = emptyState();
     },

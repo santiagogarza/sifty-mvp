@@ -27,5 +27,9 @@ export async function POST(req: Request, ctx: RouteContext) {
       { status: 409 },
     );
   }
-  return NextResponse.json({ decision: result.decision, task: result.task });
+  return NextResponse.json({
+    decision: result.decision,
+    task: result.task,
+    execution: result.execution ?? null,
+  });
 }

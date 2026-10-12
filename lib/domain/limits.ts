@@ -32,6 +32,13 @@ export const MEMORY_LIMITS = {
 export const DECISION_LIMITS = {
   answerText: 1000,
   option: 60,
+  /** Edit-then-approve on a draft review. */
+  draftTitle: 280,
+  draftBody: 20000,
+} as const;
+
+export const EXECUTION_LIMITS = {
+  idempotencyKey: 120,
 } as const;
 
 /** Bounded context passed to AI routes (triage, brief). */

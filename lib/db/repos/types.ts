@@ -4,6 +4,13 @@ import type {
   DecisionKind,
   DecisionPayload,
   DecisionStatus,
+  Execution,
+  ExecutionPolicy,
+  ExecutionPolicyScope,
+  ExecutionResult,
+  ExecutionStatus,
+  ExecutionStep,
+  ExecutorKind,
   Label,
   LabelTone,
   Memory,
@@ -373,7 +380,20 @@ export type TaskEventKind =
   | "plan.moved_out"
   | "plan.rescored"
   /** A memory extraction ran for this task's sift after a contradicting edit. */
-  | "memory.extracted";
+  | "memory.extracted"
+  /** Execution audit trail (`lib/executions/events.ts`); payload names the execution. */
+  | "execution.queued"
+  | "execution.budget_refused"
+  | "execution.started"
+  | "execution.needs_approval"
+  | "execution.needs_decision"
+  | "execution.drafted"
+  | "execution.approved"
+  | "execution.edited"
+  | "execution.rejected"
+  | "execution.done"
+  | "execution.failed"
+  | "execution.cancelled";
 
 export interface TaskEventRecord {
   id: string;
@@ -674,6 +694,151 @@ export interface NotificationSendRepo {
   listForUser(userId: string, limit?: number): Promise<NotificationSendRecord[]>;
 }
 
+export interface ExecutionCreateInput {
+  /** Caller-fixed id (a workflow step retry must not mint a second row). */
+  id?: string;
+  taskId: string;
+  executor: ExecutorKind;
+  policy: ExecutionPolicy;
+  connector: string | null;
+  idempotencyKey: string;
+}
+
+export type ExecutionCreateResult =
+  | { created: true; execution: Execution }
+  /** `(userId, idempotencyKey)` already exists: the earlier row, untouched. */
+  | { created: false; execution: Execution };
+
+/** The columns a transition may set alongside `status`. */
+export type ExecutionTransitionPatch = Partial<
+  Pick<
+    Execution,
+    | "workflowRunId"
+    | "decisionId"
+    | "result"
+    | "answers"
+    | "error"
+    | "cancelReason"
+    | "cancelRequested"
+    | "startedAt"
+    | "finishedAt"
+  >
+>;
+
+/** What the user has spent and reserved this calendar month, in cents. */
+export interface ExecutionBudgetUsage {
+  /** Settled cost of terminal executions. */
+  committedCents: number;
+  /** Reservations still held by in-flight executions. */
+  reservedCents: number;
+}
+
+export type ExecutionReserveResult =
+  | { ok: true; execution: Execution; usage: ExecutionBudgetUsage }
+  /** `usage + cents` would exceed `capCents`; nothing was written. */
+  | { ok: false; reason: "budget"; usage: ExecutionBudgetUsage }
+  | { ok: false; reason: "not_found" };
+
+/** Counts for "while you were away"; keyed by status, over a window. */
+export type ExecutionStatusCounts = Record<ExecutionStatus, number>;
+
+export interface ExecutionStepAppendInput {
+  /** Caller-fixed id makes the append idempotent across a step retry. */
+  id?: string;
+  executionId: string;
+  seq: number;
+  kind: ExecutionStep["kind"];
+  name: string;
+  status: ExecutionStep["status"];
+  /** Already redacted (`lib/executions/redact.ts`); the repo stores it as is. */
+  input: Record<string, unknown> | null;
+  output: Record<string, unknown> | null;
+  durationMs: number | null;
+  costCents: number;
+}
+
+export interface ExecutionRepo {
+  /**
+   * Idempotent on `(userId, idempotencyKey)`: a replayed enqueue (double
+   * click, retried request, workflow retry) gets the existing row with
+   * `created: false` and starts nothing.
+   */
+  create(userId: string, input: ExecutionCreateInput): Promise<ExecutionCreateResult>;
+  get(userId: string, id: string): Promise<Execution | null>;
+  /** Newest first, one task, at most `limit`. */
+  listForTask(userId: string, taskId: string, opts: { limit: number }): Promise<Execution[]>;
+  /** Executions not yet terminal, newest first, at most `limit`. */
+  listActive(userId: string, opts: { limit: number }): Promise<Execution[]>;
+  /**
+   * Compare-and-set: moves the row from one of `from` to `to` and applies
+   * `patch`; returns null when the row is missing or not in `from`, so two
+   * writers (the run and the user's cancel) cannot both win.
+   */
+  transition(
+    userId: string,
+    id: string,
+    input: {
+      from: readonly ExecutionStatus[];
+      to: ExecutionStatus;
+      patch?: ExecutionTransitionPatch;
+    },
+  ): Promise<Execution | null>;
+  /** Narrow write of bookkeeping columns, any status. */
+  update(userId: string, id: string, patch: ExecutionTransitionPatch): Promise<Execution | null>;
+  /**
+   * Hold `cents` against the month's budget, atomically with respect to
+   * other reservations for the same user: refused when committed +
+   * reserved + `cents` would pass `capCents`. `Infinity` never refuses.
+   */
+  reserve(
+    userId: string,
+    id: string,
+    input: { cents: number; capCents: number; now?: Date },
+  ): Promise<ExecutionReserveResult>;
+  /** Replace the reservation with the settled cost. */
+  settle(userId: string, id: string, input: { costCents: number }): Promise<Execution | null>;
+  /** Committed and reserved cents for the calendar month (UTC) containing `now`. */
+  monthlyUsage(userId: string, now?: Date): Promise<ExecutionBudgetUsage>;
+  /**
+   * Executions whose status last changed at or after `since`, counted by
+   * status. Backs "while you were away".
+   */
+  countByStatus(userId: string, input: { since: Date }): Promise<ExecutionStatusCounts>;
+  /** Idempotent on `id`: an existing row is returned untouched. */
+  appendStep(userId: string, input: ExecutionStepAppendInput): Promise<ExecutionStep>;
+  /** Oldest first (`seq`), at most `limit`. */
+  listSteps(userId: string, executionId: string, opts: { limit: number }): Promise<ExecutionStep[]>;
+}
+
+export interface ExecutionPolicyRecord {
+  scope: ExecutionPolicyScope;
+  key: string;
+  policy: ExecutionPolicy;
+  updatedAt: string;
+}
+
+export interface ExecutionPolicyRepo {
+  get(
+    userId: string,
+    scope: ExecutionPolicyScope,
+    key: string,
+  ): Promise<ExecutionPolicyRecord | null>;
+  /** Every saved policy of one scope, at most `limit`. */
+  list(
+    userId: string,
+    scope: ExecutionPolicyScope,
+    opts: { limit: number },
+  ): Promise<ExecutionPolicyRecord[]>;
+  set(
+    userId: string,
+    scope: ExecutionPolicyScope,
+    key: string,
+    policy: ExecutionPolicy,
+  ): Promise<ExecutionPolicyRecord>;
+  /** Back to the default; false when nothing was saved. */
+  clear(userId: string, scope: ExecutionPolicyScope, key: string): Promise<boolean>;
+}
+
 export interface Repos {
   users: UserRepo;
   entitlements: EntitlementRepo;
@@ -689,4 +854,6 @@ export interface Repos {
   pushSubscriptions: PushSubscriptionRepo;
   notificationSends: NotificationSendRepo;
   dailyPlans: DailyPlanRepo;
+  executions: ExecutionRepo;
+  executionPolicies: ExecutionPolicyRepo;
 }

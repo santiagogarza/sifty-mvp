@@ -16,6 +16,14 @@ const Body = z
   .object({
     text: z.string().max(DECISION_LIMITS.answerText).optional(),
     option: z.string().max(DECISION_LIMITS.option).optional(),
+    /** Edit-then-approve on a draft review: the draft as changed. */
+    draft: z
+      .object({
+        title: z.string().max(DECISION_LIMITS.draftTitle).nullable().optional(),
+        body: z.string().max(DECISION_LIMITS.draftBody),
+      })
+      .strict()
+      .optional(),
     modelPreference: z.string().min(1).max(64).optional(),
   })
   .strict();
@@ -54,7 +62,7 @@ export async function POST(req: Request, ctx: RouteContext) {
     }
     if (result.reason === "invalid_answer") {
       return NextResponse.json(
-        { error: "A memory proposal is confirmed with Remember or dismissed." },
+        { error: invalidAnswerMessage(result.decision.payload.kind) },
         { status: 400 },
       );
     }
@@ -69,5 +77,19 @@ export async function POST(req: Request, ctx: RouteContext) {
     mode: result.mode,
     sift: result.sift?.ok ? { runId: result.sift.runId } : null,
     memory: result.memory ?? null,
+    execution: result.execution ?? null,
   });
+}
+
+function invalidAnswerMessage(kind: string): string {
+  switch (kind) {
+    case "memory_proposal":
+      return "A memory proposal is confirmed with Remember or dismissed.";
+    case "draft_review":
+      return "A draft is approved (with or without edits) or rejected.";
+    case "approval":
+      return "Approve, reject, or pick one of the offered answers.";
+    default:
+      return "That answer does not fit this decision.";
+  }
 }
