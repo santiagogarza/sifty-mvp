@@ -43,7 +43,6 @@ async function userWith(email: string, snapshot: EntitlementSnapshot, isCreator 
   const repos = getTestRepos();
   const user = await repos.users.create({
     email,
-    passwordHash: null,
     displayName: email,
     isCreator,
   });

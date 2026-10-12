@@ -35,7 +35,6 @@ describe("GET /api/cron/expire-grace-periods", () => {
     const repos = getTestRepos();
     const user = await repos.users.create({
       email: "cron@example.com",
-      passwordHash: null,
       displayName: "Cron",
       isCreator: false,
     });

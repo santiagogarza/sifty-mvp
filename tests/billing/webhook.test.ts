@@ -81,7 +81,6 @@ async function payingUser(email: string, customer: string, subscription: string)
   const repos = getTestRepos();
   const user = await repos.users.create({
     email,
-    passwordHash: null,
     displayName: email.split("@")[0]!,
     isCreator: false,
   });
@@ -423,7 +422,6 @@ describe("POST /api/stripe/webhook", () => {
       const repos = getTestRepos();
       const creator = await repos.users.create({
         email: process.env.CREATOR_EMAIL!,
-        passwordHash: null,
         displayName: "Santi",
         isCreator: true,
       });
@@ -446,7 +444,6 @@ describe("POST /api/stripe/webhook", () => {
       const repos = getTestRepos();
       const user = await repos.users.create({
         email: "link@example.com",
-        passwordHash: null,
         displayName: "Link",
         isCreator: false,
       });
