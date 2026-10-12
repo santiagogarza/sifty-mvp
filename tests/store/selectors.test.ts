@@ -120,4 +120,47 @@ describe("computeTaskCounts", () => {
     expect(counts.today).toBe(selectTodayTasks(tasks).length);
     expect(counts.today).toBe(3);
   });
+
+  it("is all zeros for an empty workspace", () => {
+    expect(computeTaskCounts([], NOW)).toEqual({
+      today: 0,
+      inbox: 0,
+      focus: 0,
+      waiting: 0,
+      someday: 0,
+      done: 0,
+      dropped: 0,
+      total: 0,
+    });
+  });
+
+  it("keeps done and dropped out of the five view counts, even when urgent and overdue", () => {
+    const tasks = (["done", "dropped"] as const).map((lifecycle) =>
+      makeTask({ lifecycle, due: iso(-1), priorityBucket: "do_now" }),
+    );
+    expect(computeTaskCounts(tasks, NOW)).toMatchObject({
+      today: 0,
+      inbox: 0,
+      focus: 0,
+      waiting: 0,
+      someday: 0,
+      done: 1,
+      dropped: 1,
+    });
+  });
+
+  it("moves one count from Inbox to Focus when a task is filed", () => {
+    const filed = makeTask({ lifecycle: "inbox" });
+    const before = [filed, makeTask({ lifecycle: "inbox" })];
+    const after = before.map((t) =>
+      t.id === filed.id ? { ...t, lifecycle: "active" as const } : t,
+    );
+    expect(computeTaskCounts(before, NOW)).toMatchObject({ inbox: 2, focus: 0 });
+    expect(computeTaskCounts(after, NOW)).toMatchObject({ inbox: 1, focus: 1 });
+  });
+
+  it("counts a Today task in its status view too", () => {
+    const counts = computeTaskCounts([makeTask({ lifecycle: "active", due: iso(0) })], NOW);
+    expect(counts).toMatchObject({ today: 1, focus: 1 });
+  });
 });
