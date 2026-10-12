@@ -30,6 +30,7 @@ export function TaskView({
   emptyTitle,
   emptyDescription,
   rightSlot,
+  aboveList,
 }: {
   eyebrow?: string;
   title: string;
@@ -38,6 +39,8 @@ export function TaskView({
   emptyTitle: string;
   emptyDescription?: string;
   rightSlot?: React.ReactNode;
+  /** Rendered between the welcome card and the list, in list mode only. */
+  aboveList?: React.ReactNode;
 }) {
   const { openDetail, serverReady } = useFrame();
   const tasks = useStore((s) => s.tasks);
@@ -78,6 +81,7 @@ export function TaskView({
         header
       )}
       {ready ? <WelcomeCard /> : null}
+      {ready && !board ? aboveList : null}
       {!ready ? (
         <TaskListSkeleton />
       ) : board ? (

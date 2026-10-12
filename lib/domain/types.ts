@@ -292,6 +292,8 @@ export interface FeatureCaps {
   siftsPerDay: number;
   executionBudgetCentsMonth: number;
   connectorsAllowed: boolean;
+  /** Nightly re-planning of Today/Focus and the manual "Re-plan today" action. */
+  dailyPlan: boolean;
 }
 
 export interface Entitlement {

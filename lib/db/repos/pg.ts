@@ -2,7 +2,22 @@ import { LABEL_TONES, type Label, type LabelTone } from "@/lib/domain/types";
 import type { Memory, Subtask, Task, TaskEditableField } from "@/lib/domain/types";
 import { emptySnapshot, trialSnapshot } from "@/lib/entitlements/entitlements";
 import { id as makeId } from "@/lib/utils/ids";
-import { and, count, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "../client";
 import * as schema from "../schema";
@@ -10,6 +25,9 @@ import { taskPatchColumns } from "./task-columns";
 import {
   type AiRunRepo,
   type AiRunWriteInput,
+  DAILY_PLAN_LEASE_MS,
+  type DailyPlanRecord,
+  type DailyPlanRepo,
   type EntitlementRepo,
   type EntitlementSnapshot,
   IdConflictError,
@@ -113,6 +131,22 @@ export function createPostgresRepos(): Repos {
         .update(schema.users)
         .set({ stripeCustomerId: customerId, updatedAt: new Date() })
         .where(eq(schema.users.id, userId));
+    },
+    async list(limit, afterId) {
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.users)
+        .where(afterId === undefined ? undefined : gt(schema.users.id, afterId))
+        .orderBy(asc(schema.users.id))
+        .limit(limit);
+      return rows.map((row) => ({
+        id: row.id,
+        email: row.email,
+        displayName: row.displayName,
+        isCreator: row.isCreator,
+        createdAt: row.createdAt.toISOString(),
+      }));
     },
     async findByStripeCustomerId(customerId) {
       const db = getDb();
@@ -290,6 +324,8 @@ export function createPostgresRepos(): Repos {
   const tasks: TaskRepo = {
     async list(userId, opts = {}) {
       const db = getDb();
+      const byDue = opts.orderBy === "due";
+      const filtered = !!opts.lifecycles || opts.dueOnOrBefore !== undefined || byDue;
       const rowsQuery = db
         .select()
         .from(schema.tasks)
@@ -297,9 +333,18 @@ export function createPostgresRepos(): Repos {
           and(
             eq(schema.tasks.userId, userId),
             opts.lifecycles ? inArray(schema.tasks.lifecycle, [...opts.lifecycles]) : undefined,
+            opts.dueOnOrBefore !== undefined
+              ? lte(schema.tasks.due, opts.dueOnOrBefore)
+              : byDue
+                ? isNotNull(schema.tasks.due)
+                : undefined,
           ),
         )
-        .orderBy(desc(schema.tasks.updatedAt));
+        .orderBy(
+          ...(byDue
+            ? [asc(schema.tasks.due), desc(schema.tasks.updatedAt)]
+            : [desc(schema.tasks.updatedAt)]),
+        );
       const rows = opts.limit === undefined ? await rowsQuery : await rowsQuery.limit(opts.limit);
       if (!rows.length) return [];
       // Unbounded list: one query for every link. Bounded: only the links
@@ -310,7 +355,7 @@ export function createPostgresRepos(): Repos {
         .where(
           and(
             eq(schema.taskLabels.userId, userId),
-            opts.limit === undefined && !opts.lifecycles
+            opts.limit === undefined && !filtered
               ? undefined
               : inArray(
                   schema.taskLabels.taskId,
@@ -560,6 +605,25 @@ export function createPostgresRepos(): Repos {
         .set({ status, ...(error !== undefined ? { error } : {}) })
         .where(and(eq(schema.aiRuns.id, id), eq(schema.aiRuns.userId, userId)));
     },
+    async complete(userId, id, patch) {
+      const db = getDb();
+      await db
+        .update(schema.aiRuns)
+        .set({
+          model: patch.model,
+          transport: patch.transport,
+          status: patch.status,
+          durationMs: patch.durationMs,
+          inputTokens: patch.inputTokens,
+          outputTokens: patch.outputTokens,
+          costCents: patch.costCents,
+          ...(patch.promptVersion !== undefined ? { promptVersion: patch.promptVersion } : {}),
+          ...(patch.workflowRunId !== undefined ? { workflowRunId: patch.workflowRunId } : {}),
+          ...(patch.error !== undefined ? { error: patch.error } : {}),
+          ...(patch.offline !== undefined ? { offline: patch.offline } : {}),
+        })
+        .where(and(eq(schema.aiRuns.id, id), eq(schema.aiRuns.userId, userId)));
+    },
     async countSucceededToday(userId, now = new Date()) {
       const db = getDb();
       const dayStart = new Date(now);
@@ -661,13 +725,127 @@ export function createPostgresRepos(): Repos {
         .where(eq(schema.taskEvents.userId, userId))
         .orderBy(schema.taskEvents.createdAt);
       const rows = limit === undefined ? await query : await query.limit(limit);
-      return rows.map((r) => ({
-        id: r.id,
-        taskId: r.taskId,
-        kind: r.kind,
-        payload: r.payload ?? {},
-        createdAt: r.createdAt.toISOString(),
-      }));
+      return rows.map(rowToTaskEvent);
+    },
+    async listForTask(userId, taskId, limit) {
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.taskEvents)
+        .where(and(eq(schema.taskEvents.userId, userId), eq(schema.taskEvents.taskId, taskId)))
+        .orderBy(desc(schema.taskEvents.createdAt))
+        .limit(limit);
+      return rows.map(rowToTaskEvent);
+    },
+    async append(userId, input) {
+      const db = getDb();
+      const id = input.id ?? makeId("evt");
+      const inserted = await db
+        .insert(schema.taskEvents)
+        .values({ id, userId, taskId: input.taskId, kind: input.kind, payload: input.payload })
+        .onConflictDoNothing()
+        .returning();
+      if (inserted.length) return rowToTaskEvent(inserted[0]!);
+      const [existing] = await db
+        .select()
+        .from(schema.taskEvents)
+        .where(eq(schema.taskEvents.id, id));
+      if (existing && existing.userId === userId) return rowToTaskEvent(existing);
+      throw new IdConflictError(id);
+    },
+  };
+
+  const dailyPlans: DailyPlanRepo = {
+    async claim(input, now = new Date()) {
+      const db = getDb();
+      const since = new Date(now.getTime() - DAILY_PLAN_LEASE_MS);
+      return db.transaction(async (tx) => {
+        // Serialize claims per user so two overlapping "Re-plan today"
+        // requests cannot both pass the running check. Transaction-scoped:
+        // released on commit or rollback.
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext(${`daily_plan:${input.userId}`}))`,
+        );
+        const [running] = await tx
+          .select()
+          .from(schema.dailyPlans)
+          .where(
+            and(
+              eq(schema.dailyPlans.userId, input.userId),
+              eq(schema.dailyPlans.status, "running"),
+              gt(schema.dailyPlans.createdAt, since),
+            ),
+          )
+          .orderBy(desc(schema.dailyPlans.createdAt))
+          .limit(1);
+        if (running) return { ok: false, reason: "running", plan: rowToDailyPlan(running) };
+        // The partial unique index (user, plan_date) WHERE trigger = 'cron'
+        // is the per-day claim: a losing insert returns no row.
+        const inserted = await tx
+          .insert(schema.dailyPlans)
+          .values({
+            id: makeId("plan"),
+            userId: input.userId,
+            planDate: input.planDate,
+            timezone: input.timezone,
+            trigger: input.trigger,
+            status: "running",
+            aiRunId: input.aiRunId,
+            createdAt: now,
+          })
+          .onConflictDoNothing()
+          .returning();
+        if (!inserted.length) return { ok: false, reason: "planned" };
+        return { ok: true, plan: rowToDailyPlan(inserted[0]!) };
+      });
+    },
+    async get(userId, id) {
+      const db = getDb();
+      const [row] = await db
+        .select()
+        .from(schema.dailyPlans)
+        .where(and(eq(schema.dailyPlans.id, id), eq(schema.dailyPlans.userId, userId)));
+      return row ? rowToDailyPlan(row) : null;
+    },
+    async latest(userId) {
+      const db = getDb();
+      const [row] = await db
+        .select()
+        .from(schema.dailyPlans)
+        .where(eq(schema.dailyPlans.userId, userId))
+        .orderBy(desc(schema.dailyPlans.createdAt))
+        .limit(1);
+      return row ? rowToDailyPlan(row) : null;
+    },
+    async runningFor(userId, now = new Date()) {
+      const db = getDb();
+      const since = new Date(now.getTime() - DAILY_PLAN_LEASE_MS);
+      const [row] = await db
+        .select()
+        .from(schema.dailyPlans)
+        .where(
+          and(
+            eq(schema.dailyPlans.userId, userId),
+            eq(schema.dailyPlans.status, "running"),
+            gt(schema.dailyPlans.createdAt, since),
+          ),
+        )
+        .orderBy(desc(schema.dailyPlans.createdAt))
+        .limit(1);
+      return row ? rowToDailyPlan(row) : null;
+    },
+    async update(userId, id, patch) {
+      const db = getDb();
+      const { finishedAt, ...rest } = patch;
+      const [row] = await db
+        .update(schema.dailyPlans)
+        .set({
+          ...rest,
+          ...(finishedAt !== undefined ? { finishedAt: toDate(finishedAt) } : {}),
+        })
+        .where(and(eq(schema.dailyPlans.id, id), eq(schema.dailyPlans.userId, userId)))
+        .returning();
+      return row ? rowToDailyPlan(row) : null;
     },
   };
 
@@ -990,6 +1168,7 @@ export function createPostgresRepos(): Repos {
     notificationPreferences,
     pushSubscriptions,
     notificationSends,
+    dailyPlans,
   };
 }
 
@@ -1041,6 +1220,35 @@ function rowToNotificationSend(
     error: row.error,
     createdAt: row.createdAt.toISOString(),
     sentAt: row.sentAt?.toISOString() ?? null,
+  };
+}
+
+function rowToTaskEvent(row: typeof schema.taskEvents.$inferSelect) {
+  return {
+    id: row.id,
+    taskId: row.taskId,
+    kind: row.kind,
+    payload: row.payload ?? {},
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function rowToDailyPlan(row: typeof schema.dailyPlans.$inferSelect): DailyPlanRecord {
+  return {
+    id: row.id,
+    userId: row.userId,
+    planDate: row.planDate,
+    timezone: row.timezone,
+    trigger: row.trigger,
+    status: row.status,
+    workflowRunId: row.workflowRunId,
+    aiRunId: row.aiRunId,
+    summary: row.summary,
+    moves: row.moves ?? [],
+    considered: row.considered,
+    error: row.error,
+    createdAt: row.createdAt.toISOString(),
+    finishedAt: row.finishedAt?.toISOString() ?? null,
   };
 }
 

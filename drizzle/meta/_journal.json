@@ -82,8 +82,15 @@
     {
       "idx": 11,
       "version": "7",
-      "when": 1791809462623,
-      "tag": "0011_recurring_tasks",
+      "when": 1791810247613,
+      "tag": "0011_daily_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791817886580,
+      "tag": "0012_recurring_tasks",
       "breakpoints": true
     }
   ]

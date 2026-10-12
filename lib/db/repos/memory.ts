@@ -14,6 +14,9 @@ import {
   type AiRunRepo,
   type AiRunRollupRow,
   type AiRunWriteInput,
+  DAILY_PLAN_LEASE_MS,
+  type DailyPlanRecord,
+  type DailyPlanRepo,
   type EntitlementRepo,
   type EntitlementSnapshot,
   IdConflictError,
@@ -85,6 +88,7 @@ interface State {
   notificationPreferences: Map<string, NotificationPreferencesRecord>;
   pushSubscriptions: Map<string, PushSubscriptionRecord>;
   notificationSends: NotificationSendRecord[];
+  dailyPlans: Map<string, DailyPlanRecord>;
 }
 
 function emptyState(): State {
@@ -104,6 +108,7 @@ function emptyState(): State {
     notificationPreferences: new Map(),
     pushSubscriptions: new Map(),
     notificationSends: [],
+    dailyPlans: new Map(),
   };
 }
 
@@ -165,6 +170,13 @@ export function createMemoryRepos(): MemoryReposHandle {
       }
       return null;
     },
+    async list(limit, afterId) {
+      return Array.from(state.users.values())
+        .filter((u) => afterId === undefined || u.id > afterId)
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+        .slice(0, limit)
+        .map((u) => ({ ...u }));
+    },
     async delete(userId) {
       const user = state.users.get(userId);
       if (!user) return false;
@@ -172,6 +184,7 @@ export function createMemoryRepos(): MemoryReposHandle {
       state.users.delete(userId);
       state.emails.delete(user.email.toLowerCase());
       state.entitlements.delete(userId);
+      for (const [id, p] of state.dailyPlans) if (p.userId === userId) state.dailyPlans.delete(id);
       for (const [id, t] of state.tasks) if (t.userId === userId) state.tasks.delete(id);
       for (const [id, l] of state.labels) if (l.userId === userId) state.labels.delete(id);
       for (const [id, m] of state.memories) if (m.userId === userId) state.memories.delete(id);
@@ -227,11 +240,20 @@ export function createMemoryRepos(): MemoryReposHandle {
 
   const tasks: TaskRepo = {
     async list(userId, opts = {}) {
+      const byDue = opts.orderBy === "due";
       return Array.from(state.tasks.values())
         .filter(
-          (t) => t.userId === userId && (!opts.lifecycles || opts.lifecycles.includes(t.lifecycle)),
+          (t) =>
+            t.userId === userId &&
+            (!opts.lifecycles || opts.lifecycles.includes(t.lifecycle)) &&
+            (opts.dueOnOrBefore === undefined || (t.due !== null && t.due <= opts.dueOnOrBefore)) &&
+            (!byDue || t.due !== null),
         )
-        .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+        .sort((a, b) =>
+          byDue
+            ? a.due!.localeCompare(b.due!) || Date.parse(b.updatedAt) - Date.parse(a.updatedAt)
+            : Date.parse(b.updatedAt) - Date.parse(a.updatedAt),
+        )
         .slice(0, opts.limit)
         .map(stripUserId);
     },
@@ -475,6 +497,11 @@ export function createMemoryRepos(): MemoryReposHandle {
       run.status = status;
       if (error !== undefined) run.error = error;
     },
+    async complete(userId, id, patch) {
+      const run = state.aiRuns.find((r) => r.id === id && r.userId === userId);
+      if (!run) return;
+      Object.assign(run, patch);
+    },
     async countSucceededToday(userId, now = new Date()) {
       const dayStart = new Date(now);
       dayStart.setHours(0, 0, 0, 0);
@@ -540,6 +567,99 @@ export function createMemoryRepos(): MemoryReposHandle {
     async list(userId, limit) {
       const mine = state.taskEvents.filter((e) => e.userId === userId);
       return (limit === undefined ? mine : mine.slice(0, limit)).map(stripUserId);
+    },
+    async listForTask(userId, taskId, limit) {
+      return state.taskEvents
+        .filter((e) => e.userId === userId && e.taskId === taskId)
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+        .slice(0, limit)
+        .map(stripUserId);
+    },
+    async append(userId, input) {
+      if (input.id) {
+        const existing = state.taskEvents.find((e) => e.id === input.id);
+        if (existing && existing.userId !== userId) throw new IdConflictError(input.id);
+        if (existing) return stripUserId(existing);
+      }
+      const event = {
+        id: input.id ?? makeId("evt"),
+        userId,
+        taskId: input.taskId,
+        kind: input.kind,
+        payload: { ...input.payload },
+        createdAt: new Date().toISOString(),
+      };
+      state.taskEvents.push(event);
+      return stripUserId(event);
+    },
+  };
+
+  const dailyPlans: DailyPlanRepo = {
+    async claim(input, now = new Date()) {
+      // Single-threaded, so check-then-insert is atomic here; Postgres takes
+      // a per-user advisory lock for the same guarantee.
+      const running = await dailyPlans.runningFor(input.userId, now);
+      if (running) return { ok: false, reason: "running", plan: running };
+      if (input.trigger === "cron") {
+        for (const p of state.dailyPlans.values()) {
+          if (p.userId === input.userId && p.planDate === input.planDate && p.trigger === "cron") {
+            return { ok: false, reason: "planned" };
+          }
+        }
+      }
+      const plan: DailyPlanRecord = {
+        id: makeId("plan"),
+        userId: input.userId,
+        planDate: input.planDate,
+        timezone: input.timezone,
+        trigger: input.trigger,
+        status: "running",
+        workflowRunId: null,
+        aiRunId: input.aiRunId,
+        summary: null,
+        moves: [],
+        considered: 0,
+        error: null,
+        createdAt: now.toISOString(),
+        finishedAt: null,
+      };
+      state.dailyPlans.set(plan.id, plan);
+      return { ok: true, plan: { ...plan, moves: [...plan.moves] } };
+    },
+    async get(userId, id) {
+      const p = state.dailyPlans.get(id);
+      return p && p.userId === userId ? { ...p, moves: [...p.moves] } : null;
+    },
+    async latest(userId) {
+      // Reverse before the (stable) sort so same-millisecond rows come out
+      // newest-inserted first, like Postgres's microsecond timestamps would.
+      const mine = Array.from(state.dailyPlans.values())
+        .reverse()
+        .filter((p) => p.userId === userId)
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+      return mine[0] ? { ...mine[0], moves: [...mine[0].moves] } : null;
+    },
+    async runningFor(userId, now = new Date()) {
+      const since = now.getTime() - DAILY_PLAN_LEASE_MS;
+      const running = Array.from(state.dailyPlans.values())
+        .reverse()
+        .filter(
+          (p) => p.userId === userId && p.status === "running" && Date.parse(p.createdAt) > since,
+        )
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+      return running[0] ? { ...running[0], moves: [...running[0].moves] } : null;
+    },
+    async update(userId, id, patch) {
+      const existing = state.dailyPlans.get(id);
+      if (!existing || existing.userId !== userId) return null;
+      const next: DailyPlanRecord = {
+        ...existing,
+        ...patch,
+        finishedAt: patch.finishedAt === undefined ? existing.finishedAt : patch.finishedAt,
+        moves: patch.moves ? patch.moves.map((m) => ({ ...m })) : existing.moves,
+      };
+      state.dailyPlans.set(id, next);
+      return { ...next, moves: [...next.moves] };
     },
   };
 
@@ -754,6 +874,7 @@ export function createMemoryRepos(): MemoryReposHandle {
     notificationPreferences,
     pushSubscriptions,
     notificationSends,
+    dailyPlans,
     __reset: () => {
       state = emptyState();
     },

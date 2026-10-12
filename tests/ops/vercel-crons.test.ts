@@ -15,11 +15,12 @@ const config = JSON.parse(readFileSync(resolve(ROOT, "vercel.json"), "utf8")) as
 const DAILY_CRON = /^\d{1,2} \d{1,2} \* \* \*$/;
 
 describe("vercel.json crons", () => {
-  it("schedules the grace-period and digest jobs daily", () => {
+  it("schedules the grace-period, digest, and daily-plan jobs daily, the plan before the digest tick", () => {
     const byPath = Object.fromEntries((config.crons ?? []).map((c) => [c.path, c.schedule]));
     expect(byPath).toEqual({
       "/api/cron/expire-grace-periods": "0 6 * * *",
       "/api/cron/send-digests": "0 6 * * *",
+      "/api/cron/daily-plan": "0 4 * * *",
     });
   });
 

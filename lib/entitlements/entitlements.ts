@@ -31,22 +31,27 @@ export const PRO_EXECUTION_BUDGET_CENTS_MONTH = 1_000;
 
 const UNLIMITED = Number.POSITIVE_INFINITY;
 
+// The daily plan is one model call per user per night; on the free tier
+// it would eat one of the five sifts before the day starts, so it is Pro.
 const FREE_CAPS: FeatureCaps = {
   siftsPerDay: FREE_SIFTS_PER_DAY,
   executionBudgetCentsMonth: 0,
   connectorsAllowed: false,
+  dailyPlan: false,
 };
 
 const PRO_CAPS: FeatureCaps = {
   siftsPerDay: PRO_FAIR_USE_SIFTS_PER_DAY,
   executionBudgetCentsMonth: PRO_EXECUTION_BUDGET_CENTS_MONTH,
   connectorsAllowed: true,
+  dailyPlan: true,
 };
 
 const CREATOR_CAPS: FeatureCaps = {
   siftsPerDay: UNLIMITED,
   executionBudgetCentsMonth: UNLIMITED,
   connectorsAllowed: true,
+  dailyPlan: true,
 };
 
 export const CAPS_BY_TIER: Readonly<Record<Tier, FeatureCaps>> = {
