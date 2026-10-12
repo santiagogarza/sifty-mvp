@@ -1,5 +1,6 @@
 "use client";
 
+import { announceSiftSettled } from "@/lib/decisions/events";
 import type { Label, Task } from "@/lib/domain/types";
 import { getSyncHooks, useStore } from "@/lib/store/store";
 
@@ -48,18 +49,6 @@ interface TaskResponse {
 
 function settled(status: Task["aiStatus"]): boolean {
   return status === "ready" || status === "failed" || status === "idle";
-}
-
-/**
- * Fired on `window` when a watched sift settles — the moment a clarifying
- * question can have appeared. The Decisions inbox listens and refreshes;
- * an event keeps this module free of a dependency on that store.
- */
-export const SIFT_SETTLED_EVENT = "sifty:sift-settled";
-
-function announceSiftSettled(taskId: string): void {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent(SIFT_SETTLED_EVENT, { detail: { taskId } }));
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));

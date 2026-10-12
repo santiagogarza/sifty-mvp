@@ -1,10 +1,13 @@
 "use client";
 
+import { useOpenDecisionCount } from "@/components/decisions/decisions-sync";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils/cn";
-import { Plus, Search } from "lucide-react";
+import { MessageCircleQuestion, Plus, Search } from "lucide-react";
+import Link from "next/link";
 import * as React from "react";
+import { DecisionCount } from "./sidebar";
 
 /**
  * Top bar — kept intentionally light. The page content owns its own H1
@@ -46,6 +49,10 @@ export function TopBar({
 
       <div className="flex items-center gap-2">
         {rightSlot}
+        {/* Phones have no sidebar and the bottom nav is full, so the one
+            thing that must stay reachable — what is waiting on you — rides
+            in the top bar. */}
+        <MobileDecisionsLink />
         {/* Visible on phones too: with no sidebar there, the palette is the
             route to Waiting on / Someday / Done. */}
         <button
@@ -75,5 +82,19 @@ export function TopBar({
         </Button>
       </div>
     </header>
+  );
+}
+
+function MobileDecisionsLink() {
+  const count = useOpenDecisionCount();
+  return (
+    <Link
+      href="/decisions"
+      aria-label={count > 0 ? `Decisions, ${count} waiting` : "Decisions"}
+      className="md:hidden relative flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border-strong)] bg-[var(--surface)] text-[var(--fg-muted)] hover:bg-[var(--surface-hover)] transition-colors"
+    >
+      <MessageCircleQuestion size={15} />
+      <DecisionCount value={count} className="absolute -top-1.5 -right-1.5" />
+    </Link>
   );
 }

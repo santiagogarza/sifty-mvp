@@ -1,5 +1,6 @@
 "use client";
 
+import { DecisionsSync } from "@/components/decisions/decisions-sync";
 import { CaptureDialog } from "@/components/tasks/capture-dialog";
 import { TaskDetailSheet } from "@/components/tasks/task-detail-sheet";
 import { Toaster } from "@/components/ui/toast";
@@ -136,6 +137,7 @@ function AppFrameInner({
         onShortcuts={toggleShortcuts}
       />
       <Toaster />
+      <DecisionsSync />
       <SyncNotice error={sync.hydrated ? sync.error : null} rejected={sync.rejected} />
     </FrameContext.Provider>
   );
