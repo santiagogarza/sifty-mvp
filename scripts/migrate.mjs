@@ -12,17 +12,17 @@
  * - Preview deployments skip migrations unless SIFTY_MIGRATE_PREVIEWS=1:
  *   without Neon preview branching they share the production database, and
  *   an unmerged branch must never alter the production schema.
- * - No URL: skip. Outside production that is routine (local dev, CI lint
- *   job). On Vercel production it is logged as an error so the first deploy
- *   can render in memory mode before Neon exists; the app's boot guard and
- *   /api/health flag the same condition.
+ * - No URL on Vercel production: exit 1. A production build must never
+ *   succeed against no database (the app would run in memory and lose data).
+ * - No URL anywhere else (local dev, CI lint job): skip with a notice so the
+ *   in-memory fallback keeps working.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-/** @typedef {{ action: "run", url: string } | { action: "skip", loud: boolean, message: string }} Plan */
+/** @typedef {{ action: "run", url: string } | { action: "skip" | "fail", message: string }} Plan */
 
 /**
  * Pure decision, so tests can cover every branch without a database.
@@ -34,7 +34,6 @@ export function planMigration(env) {
   if (env.VERCEL_ENV === "preview" && env.SIFTY_MIGRATE_PREVIEWS !== "1") {
     return {
       action: "skip",
-      loud: false,
       message:
         "[migrate] preview deployment; skipping migrations (set SIFTY_MIGRATE_PREVIEWS=1 once Neon preview branching is on).",
     };
@@ -42,15 +41,13 @@ export function planMigration(env) {
   if (url) return { action: "run", url };
   if (env.VERCEL_ENV === "production") {
     return {
-      action: "skip",
-      loud: true,
+      action: "fail",
       message:
-        "[migrate] DATABASE_URL is not set on a production build; skipping migrations. The app runs on the in-memory store until Neon (Vercel Marketplace) is provisioned.",
+        "[migrate] DATABASE_URL is not set on a production build. Connect Neon (Vercel Marketplace) and redeploy.",
     };
   }
   return {
     action: "skip",
-    loud: false,
     message: "[migrate] DATABASE_URL is not set; skipping migrations (in-memory mode).",
   };
 }
@@ -66,8 +63,12 @@ export function loadEnvFiles(cwd = process.cwd()) {
 function main() {
   loadEnvFiles();
   const plan = planMigration(process.env);
+  if (plan.action === "fail") {
+    console.error(plan.message);
+    process.exit(1);
+  }
   if (plan.action === "skip") {
-    (plan.loud ? console.error : console.log)(plan.message);
+    console.log(plan.message);
     process.exit(0);
   }
   const result = spawnSync("pnpm", ["exec", "drizzle-kit", "migrate"], {

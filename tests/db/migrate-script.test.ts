@@ -23,7 +23,7 @@ describe("planMigration", () => {
 
   it("never migrates from a preview deployment unless opted in", () => {
     const preview = { VERCEL_ENV: "preview", DATABASE_URL: "postgres://shared-with-prod" };
-    expect(planMigration(preview)).toMatchObject({ action: "skip", loud: false });
+    expect(planMigration(preview)).toMatchObject({ action: "skip" });
     expect(planMigration({ ...preview, SIFTY_MIGRATE_PREVIEWS: "1" })).toEqual({
       action: "run",
       url: "postgres://shared-with-prod",
@@ -36,11 +36,11 @@ describe("planMigration", () => {
     expect(planMigration({ DATABASE_URL: "   " }).action).toBe("skip");
   });
 
-  it("skips loudly without a URL on Vercel production", () => {
+  it("fails without a URL on Vercel production", () => {
     const plan = planMigration({ VERCEL_ENV: "production", DATABASE_URL_UNPOOLED: "" });
-    expect(plan).toMatchObject({ action: "skip", loud: true });
-    expect(plan.message).toContain("in-memory store");
-    expect(planMigration({})).toMatchObject({ action: "skip", loud: false });
+    expect(plan).toMatchObject({ action: "fail" });
+    expect(plan.message).toContain("DATABASE_URL");
+    expect(planMigration({})).toMatchObject({ action: "skip" });
   });
 });
 
@@ -70,11 +70,10 @@ describe("scripts/migrate.mjs process", () => {
     expect(res.stdout).toContain("skipping migrations");
   });
 
-  it("exits 0 on Vercel production without a database and shouts on stderr", () => {
+  it("exits 1 on Vercel production without a database", () => {
     const res = run({ VERCEL_ENV: "production" });
-    expect(res.status).toBe(0);
-    expect(res.stderr).toContain("skipping migrations");
-    expect(res.stderr).toContain("in-memory store");
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("production build");
   });
 
   it("reads DATABASE_URL from .env.local and attempts the migration", () => {

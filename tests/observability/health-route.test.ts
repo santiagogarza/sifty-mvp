@@ -36,22 +36,22 @@ describe("GET /api/health", () => {
     const res = await GET();
     error.mockRestore();
     expect(res.status).toBe(503);
+    // The repo factory refuses memory in production, so the DB check errors.
     const body = await res.json();
-    expect(body).toMatchObject({ ok: false, persistence: "memory", db: "skipped" });
+    expect(body).toMatchObject({ ok: false, db: "error" });
     expect(body.problems.some((p: string) => p.startsWith("SIFTY_DISABLE_AUTH"))).toBe(true);
     expect(body.problems.some((p: string) => p.startsWith("DATABASE_URL"))).toBe(true);
   });
 
-  it("is 503 on Vercel production when running in memory, even with a clean env", async () => {
+  it("is 503 on Vercel production without DATABASE_URL, even with a clean env", async () => {
     vi.stubEnv("VERCEL_ENV", "production");
     vi.stubEnv("DATABASE_URL", "");
     vi.stubEnv("BETTER_AUTH_SECRET", "x".repeat(32));
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     setReposForTesting(null);
     const res = await GET();
-    error.mockRestore();
     expect(res.status).toBe(503);
     const body = await res.json();
+    expect(body.db).toBe("error");
     expect(body.problems).toHaveLength(1);
     expect(body.problems[0]).toMatch(/^DATABASE_URL/);
   });
