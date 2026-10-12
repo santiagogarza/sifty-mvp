@@ -1,6 +1,7 @@
 "use client";
 
 import { useFrame } from "@/components/app-shell/app-frame";
+import { isEditableTarget } from "@/components/app-shell/keyboard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
@@ -454,18 +455,6 @@ function DetailBody({
         </div>
       </div>
     </div>
-  );
-}
-
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  const tag = target.tagName;
-  return (
-    tag === "INPUT" ||
-    tag === "TEXTAREA" ||
-    tag === "SELECT" ||
-    target.isContentEditable ||
-    target.getAttribute("role") === "textbox"
   );
 }
 

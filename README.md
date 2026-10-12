@@ -370,15 +370,24 @@ pnpm test:e2e
 
 ## Keyboard
 
+Press `?` in the app for the same list.
+
 | Key | Action |
 | --- | --- |
 | `c` | Capture |
 | `/` | Open command palette |
 | `⌘K` / `^K` | Open command palette |
-| `⌘↵` | Submit capture |
+| `⌘↵` | Submit capture (Esc keeps the draft) |
 | `↑/↓` (`j`/`k`) | Navigate task list |
 | `Enter` | Open the highlighted task |
-| `Esc` | Close any overlay |
+| `s` then `t` / `w` | Snooze the highlighted task until tomorrow / next week |
+| `Shift+click` | Select a range of tasks (bulk move to Someday) |
+| `Shift+D` | Duplicate the open task |
+| `Esc` | Close any overlay, or clear a selection |
+| `?` | Show or hide the shortcuts sheet |
+
+The sheet is generated from `components/app-shell/shortcuts.ts`; keep that
+file and this table in step.
 
 ## License
 

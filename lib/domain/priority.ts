@@ -1,4 +1,4 @@
-import { parseDay } from "@/lib/utils/dates";
+import { dayDelta, parseDay } from "@/lib/utils/dates";
 import type { PriorityBucket } from "./types";
 
 /**
@@ -73,8 +73,10 @@ export function focusScore(args: {
   };
   let score = bucketWeight[args.bucket] * 1000;
   if (args.due) {
-    const due = parseDay(args.due).getTime();
-    const days = (due - now.getTime()) / (24 * 60 * 60 * 1000);
+    // Whole calendar days, so a task due today is "today" all day long and
+    // only yesterday and earlier count as overdue — the same rule the
+    // Overdue/Today badges use.
+    const days = dayDelta(parseDay(args.due), now);
     if (days < 0)
       score -= 500; // overdue rises
     else score += days;
