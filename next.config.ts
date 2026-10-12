@@ -1,3 +1,4 @@
+import { withBotId } from "botid/next/config";
 import type { NextConfig } from "next";
 import { withWorkflow } from "workflow/next";
 import { assertProductionEnv } from "./lib/env/production-guards";
@@ -11,5 +12,7 @@ const nextConfig: NextConfig = {
 
 // `withWorkflow` compiles the "use workflow" / "use step" directives in
 // `lib/workflows/` and emits the queue-triggered flow route under
-// `app/.well-known/workflow/`. See README → "Background jobs".
-export default withWorkflow(nextConfig);
+// `app/.well-known/workflow/` (see README → "Background jobs"). `withBotId`
+// adds the rewrites that proxy BotID's client script through our origin so
+// ad blockers cannot strip it (which would make every sign-up look like a bot).
+export default withBotId(withWorkflow(nextConfig));
