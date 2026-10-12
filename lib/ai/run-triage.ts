@@ -79,7 +79,7 @@ export async function runTriage(taskId: string): Promise<void> {
           .filter((m) => m.pinned)
           .slice(0, AI_CONTEXT_LIMITS.maxPreferences)
           .map((m) => m.text),
-        modelId: state.preferredModelId,
+        modelPreference: state.modelPreference,
       }),
     });
     if (!res.ok) {
