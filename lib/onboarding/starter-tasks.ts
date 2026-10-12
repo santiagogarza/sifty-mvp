@@ -60,7 +60,10 @@ export function starterTasks(): StarterTask[] {
         urgency: 0.8,
         importance: 0.7,
         effort: "quick",
-        due: isoDaysFromNow(0),
+        // Two days out, never "today": the seed runs on the server, whose
+        // calendar day can differ from the user's. Urgency × importance
+        // (do_now) is what puts this one in Today, not the date.
+        due: isoDaysFromNow(2),
         delegationCandidate: "self",
         confidence: 0.86,
         clarifyingQuestion: null,

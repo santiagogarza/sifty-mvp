@@ -1,5 +1,7 @@
 import { seedStarterWorkspaceIfEmpty } from "@/lib/onboarding/seed";
 import { EXAMPLE_LABEL_NAME, starterTasks } from "@/lib/onboarding/starter-tasks";
+import { isTodayTask } from "@/lib/store/selectors";
+import { isOverdue, isToday } from "@/lib/utils/dates";
 import { describe, expect, it } from "vitest";
 import { getTestRepos } from "../setup";
 
@@ -42,8 +44,14 @@ describe("seedStarterWorkspaceIfEmpty", () => {
       expect(task.confidence).toBeGreaterThan(0);
       expect(task.priorityBucket).not.toBe("unset");
     }
-    // One lands in Today, one has subtasks, one shows the clarifying path.
-    expect(tasks.some((t) => t.lifecycle === "active" && t.due)).toBe(true);
+    // One lands in Today (by priority, not by date — the server's calendar
+    // day may not be the user's), one has subtasks, one asks a question.
+    const dated = tasks.find((t) => t.lifecycle === "active" && t.due)!;
+    expect(dated).toBeTruthy();
+    expect(dated.priorityBucket).toBe("do_now");
+    expect(isTodayTask(dated)).toBe(true);
+    expect(isOverdue(dated.due)).toBe(false);
+    expect(isToday(dated.due)).toBe(false);
     expect(tasks.some((t) => t.subtasks.length === 3)).toBe(true);
     expect(tasks.some((t) => t.clarifyingQuestion && t.confidence < 0.6)).toBe(true);
     expect(tasks.filter((t) => t.lifecycle === "inbox")).toHaveLength(2);

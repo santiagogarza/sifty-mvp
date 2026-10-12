@@ -117,3 +117,13 @@ describe("WelcomeCard", () => {
     expect(useStore.getState().tasks).toHaveLength(3);
   });
 });
+
+describe("welcome dismissal scope", () => {
+  it("is cleared when the local workspace resets for another account", async () => {
+    const { resetLocalWorkspace } = await import("@/lib/store/sync");
+    useStore.setState({ welcomeDismissed: true });
+    resetLocalWorkspace();
+    expect(useStore.getState().welcomeDismissed).toBe(false);
+    expect(useStore.getState().tasks).toHaveLength(0);
+  });
+});
