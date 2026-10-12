@@ -110,6 +110,7 @@ describe("GET /api/account/export", () => {
       "model",
       "offline",
       "outputTokens",
+      "stage",
       "status",
       "taskId",
       "transport",
