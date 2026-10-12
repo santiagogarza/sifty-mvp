@@ -1,12 +1,24 @@
 import {
+  type PendingQuestion,
   type SiftInput,
   type StepOutcome,
+  type TriageStepResult,
   beginSift,
   executeSiftStage,
+  executeTriageStage,
+  expireDecision,
   failSift,
   finishSift,
+  foldAnswer,
+  openDecision,
 } from "@/lib/ai/sift/execute-stage";
-import { getWorkflowMetadata } from "workflow";
+import {
+  DECISION_TTL_MS,
+  type DecisionResolutionPayload,
+  decisionHookToken,
+} from "@/lib/decisions/hook";
+import type { DecisionAnswer } from "@/lib/domain/types";
+import { createHook, getWorkflowMetadata, sleep } from "workflow";
 import { acquireUserSlot } from "./user-lock";
 
 /**
@@ -21,20 +33,30 @@ import { acquireUserSlot } from "./user-lock";
  * misconfiguration is fatal. A re-sift or a delete supersedes the run at
  * the next step boundary.
  *
+ * Clarifying questions: when triage is unsure it asks one question. The
+ * pipeline still finishes (the task is usable, `ready`, with Sifty's best
+ * guess), then the run opens a `clarifying_question` decision and suspends
+ * on its hook with no compute for up to `DECISION_TTL_MS`. An answer wakes
+ * the run, which folds it into the capture and runs every stage again
+ * inside the same sift (one cap unit, no second question). A dismissal or
+ * the deadline ends the run; the Decisions service already marked the
+ * task "sifted with assumptions" or the decision expired.
+ *
  * Per-user concurrency: at most `SIFT_SLOTS_PER_USER` sifts run at once
  * per account, so the prioritize stage sees a settled list and one user
- * cannot monopolize the queue.
+ * cannot monopolize the queue. The slot is released while the run waits
+ * on the human and re-acquired for the second pass.
  */
 export const SIFT_SLOTS_PER_USER = 2;
 
 export type SiftOutcome =
-  | { outcome: "completed" }
+  | { outcome: "completed"; decision?: "answered" | "dismissed" | "expired" }
   | { outcome: "superseded"; at: string }
   | { outcome: "missing"; at: string };
 
 export async function siftTask(input: SiftInput): Promise<SiftOutcome> {
   "use workflow";
-  await acquireUserSlot("sift", input.userId, SIFT_SLOTS_PER_USER);
+  let slot = await acquireUserSlot("sift", input.userId, SIFT_SLOTS_PER_USER);
   const { workflowRunId } = getWorkflowMetadata();
   console.log(`[workflow] sift ${input.siftId}: start task ${input.taskId} (${workflowRunId})`);
 
@@ -42,26 +64,72 @@ export async function siftTask(input: SiftInput): Promise<SiftOutcome> {
     const began = await beginStep(input);
     if (began !== "applied") return { outcome: began, at: "begin" };
 
-    const enriched = await enrichStep(input, workflowRunId);
-    if (enriched !== "applied") return { outcome: enriched, at: "enrich" };
-    const prioritized = await prioritizeStep(input, workflowRunId);
-    if (prioritized !== "applied") return { outcome: prioritized, at: "prioritize" };
-    const triaged = await triageStep(input, workflowRunId);
-    if (triaged !== "applied") return { outcome: triaged, at: "triage" };
-    const split = await subtasksStep(input, workflowRunId);
-    if (split !== "applied") return { outcome: split, at: "subtasks" };
-    const planned = await planStep(input, workflowRunId);
-    if (planned !== "applied") return { outcome: planned, at: "plan" };
+    const first = await runPass(input, workflowRunId, { askQuestions: true });
+    if (first.outcome !== "applied") return first;
+    if (!first.question) return { outcome: "completed" };
 
-    const finished = await finishStep(input);
-    if (finished !== "applied") return { outcome: finished, at: "finish" };
-    return { outcome: "completed" };
+    // Register the hook before the decision exists, so an answer that
+    // lands the instant the inbox shows it already has a run to resume.
+    const hook = createHook<DecisionResolutionPayload>({
+      token: decisionHookToken(first.question.decisionId),
+    });
+    await hook.getConflict();
+    const opened = await openDecisionStep(input, first.question);
+    if (opened !== "applied") return { outcome: opened, at: "decision" };
+
+    slot.release();
+    const resolution = await Promise.race([hook, deadline(DECISION_TTL_MS)]);
+    if (resolution.status !== "answered") {
+      if (resolution.status === "expired") {
+        await expireDecisionStep(input, first.question.decisionId);
+      }
+      return { outcome: "completed", decision: resolution.status };
+    }
+
+    slot = await acquireUserSlot("sift", input.userId, SIFT_SLOTS_PER_USER);
+    const folded = await foldAnswerStep(input, resolution.answer);
+    if (folded !== "applied") return { outcome: folded, at: "fold" };
+    const second = await runPass(input, workflowRunId, { askQuestions: false });
+    if (second.outcome !== "applied") return second;
+    return { outcome: "completed", decision: "answered" };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[workflow] sift ${input.siftId}: failed — ${message}`);
     await failStep(input, message);
     throw err;
   }
+}
+
+type PassResult =
+  | { outcome: "applied"; question: PendingQuestion | null }
+  | { outcome: "superseded"; at: string }
+  | { outcome: "missing"; at: string };
+
+/** One run through every stage, ending with the task `ready`. */
+async function runPass(
+  input: SiftInput,
+  workflowRunId: string,
+  opts: { askQuestions: boolean },
+): Promise<PassResult> {
+  const enriched = await enrichStep(input, workflowRunId);
+  if (enriched !== "applied") return { outcome: enriched, at: "enrich" };
+  const prioritized = await prioritizeStep(input, workflowRunId);
+  if (prioritized !== "applied") return { outcome: prioritized, at: "prioritize" };
+  const triaged = await triageStep(input, workflowRunId, opts);
+  if (triaged.outcome !== "applied") return { outcome: triaged.outcome, at: "triage" };
+  const split = await subtasksStep(input, workflowRunId);
+  if (split !== "applied") return { outcome: split, at: "subtasks" };
+  const planned = await planStep(input, workflowRunId);
+  if (planned !== "applied") return { outcome: planned, at: "plan" };
+  const finished = await finishStep(input);
+  if (finished !== "applied") return { outcome: finished, at: "finish" };
+  return { outcome: "applied", question: triaged.question };
+}
+
+/** Resolves like an expired hook after `ms`, so the wait is bounded. */
+async function deadline(ms: number): Promise<DecisionResolutionPayload> {
+  await sleep(ms);
+  return { status: "expired" };
 }
 
 // One named step per stage so the dashboard reads enrich/prioritize/… instead
@@ -82,9 +150,13 @@ async function prioritizeStep(input: SiftInput, runId: string): Promise<StepOutc
   return executeSiftStage(input, "prioritize", runId);
 }
 
-async function triageStep(input: SiftInput, runId: string): Promise<StepOutcome> {
+async function triageStep(
+  input: SiftInput,
+  runId: string,
+  opts: { askQuestions: boolean },
+): Promise<TriageStepResult> {
   "use step";
-  return executeSiftStage(input, "triage", runId);
+  return executeTriageStage(input, runId, opts);
 }
 
 async function subtasksStep(input: SiftInput, runId: string): Promise<StepOutcome> {
@@ -100,6 +172,21 @@ async function planStep(input: SiftInput, runId: string): Promise<StepOutcome> {
 async function finishStep(input: SiftInput): Promise<StepOutcome> {
   "use step";
   return finishSift(input);
+}
+
+async function openDecisionStep(input: SiftInput, question: PendingQuestion): Promise<StepOutcome> {
+  "use step";
+  return openDecision(input, question);
+}
+
+async function foldAnswerStep(input: SiftInput, answer: DecisionAnswer): Promise<StepOutcome> {
+  "use step";
+  return foldAnswer(input, answer);
+}
+
+async function expireDecisionStep(input: SiftInput, decisionId: string): Promise<StepOutcome> {
+  "use step";
+  return expireDecision(input, decisionId);
 }
 
 async function failStep(input: SiftInput, message: string): Promise<StepOutcome> {

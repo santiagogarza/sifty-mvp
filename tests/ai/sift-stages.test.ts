@@ -37,6 +37,7 @@ function task(overrides: Partial<Task> = {}): Task {
     siftId: "sift_1",
     siftStage: null,
     plan: null,
+    siftedWithAssumptions: false,
     labelIds: [],
     subtasks: [],
     editedFields: [],
@@ -244,6 +245,7 @@ describe("stagePatch", () => {
       delegationCandidate: "ai",
       confidence: 0.5,
       clarifyingQuestion: "Which board?",
+      clarifyingOptions: [],
     });
     expect(patch).toEqual({
       lifecycle: "waiting",

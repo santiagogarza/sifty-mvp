@@ -50,6 +50,18 @@ function settled(status: Task["aiStatus"]): boolean {
   return status === "ready" || status === "failed" || status === "idle";
 }
 
+/**
+ * Fired on `window` when a watched sift settles — the moment a clarifying
+ * question can have appeared. The Decisions inbox listens and refreshes;
+ * an event keeps this module free of a dependency on that store.
+ */
+export const SIFT_SETTLED_EVENT = "sifty:sift-settled";
+
+function announceSiftSettled(taskId: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(SIFT_SETTLED_EVENT, { detail: { taskId } }));
+}
+
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
@@ -93,6 +105,7 @@ export async function watchSift(taskId: string): Promise<void> {
         }
         await adopt(data);
         if (settled(data.task.aiStatus)) {
+          announceSiftSettled(taskId);
           // `adopt` may have awaited a push; a re-sift that started in the
           // meantime must not be wiped by this (now stale) snapshot. Re-arm
           // here as well, so a budget spent on the first run never times

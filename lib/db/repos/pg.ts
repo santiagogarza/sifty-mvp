@@ -1,5 +1,13 @@
 import { LABEL_TONES, type Label, type LabelTone } from "@/lib/domain/types";
-import type { Memory, Subtask, Task, TaskEditableField } from "@/lib/domain/types";
+import type {
+  Decision,
+  DecisionAnswer,
+  DecisionPayload,
+  Memory,
+  Subtask,
+  Task,
+  TaskEditableField,
+} from "@/lib/domain/types";
 import { emptySnapshot, trialSnapshot } from "@/lib/entitlements/entitlements";
 import { id as makeId } from "@/lib/utils/ids";
 import {
@@ -28,6 +36,8 @@ import {
   DAILY_PLAN_LEASE_MS,
   type DailyPlanRecord,
   type DailyPlanRepo,
+  type DecisionCreateInput,
+  type DecisionRepo,
   type EntitlementRepo,
   type EntitlementSnapshot,
   IdConflictError,
@@ -562,6 +572,101 @@ export function createPostgresRepos(): Repos {
         .where(and(eq(schema.memories.id, id), eq(schema.memories.userId, userId)))
         .returning({ id: schema.memories.id });
       return deleted.length > 0;
+    },
+  };
+
+  const decisions: DecisionRepo = {
+    async create(userId, input: DecisionCreateInput) {
+      const db = getDb();
+      const id = input.id ?? makeId("dec");
+      const now = new Date();
+      const inserted = await db
+        .insert(schema.decisions)
+        .values({
+          id,
+          userId,
+          kind: input.kind,
+          status: "open",
+          taskId: input.taskId,
+          payload: input.payload as unknown as Record<string, unknown>,
+          answer: null,
+          resumeToken: input.resumeToken,
+          expiresAt: toDate(input.expiresAt),
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing()
+        .returning();
+      if (inserted.length) return rowToDecision(inserted[0]!);
+      // Conflict on a caller-fixed id: idempotent for the owner (a retried
+      // workflow step), rejected for anyone else.
+      const existing = await decisions.get(userId, id);
+      if (existing) return existing;
+      throw new IdConflictError(id);
+    },
+    async get(userId, id) {
+      const db = getDb();
+      const [row] = await db
+        .select()
+        .from(schema.decisions)
+        .where(and(eq(schema.decisions.id, id), eq(schema.decisions.userId, userId)));
+      return row ? rowToDecision(row) : null;
+    },
+    async listOpen(userId, opts = {}) {
+      const db = getDb();
+      const query = db
+        .select()
+        .from(schema.decisions)
+        .where(and(eq(schema.decisions.userId, userId), eq(schema.decisions.status, "open")))
+        .orderBy(desc(schema.decisions.createdAt), desc(schema.decisions.id));
+      const rows = opts.limit === undefined ? await query : await query.limit(opts.limit);
+      return rows.map(rowToDecision);
+    },
+    async countOpen(userId) {
+      const db = getDb();
+      const [row] = await db
+        .select({ value: count() })
+        .from(schema.decisions)
+        .where(and(eq(schema.decisions.userId, userId), eq(schema.decisions.status, "open")));
+      return row?.value ?? 0;
+    },
+    async listOpenForTask(userId, taskId) {
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.decisions)
+        .where(
+          and(
+            eq(schema.decisions.userId, userId),
+            eq(schema.decisions.taskId, taskId),
+            eq(schema.decisions.status, "open"),
+          ),
+        )
+        .orderBy(desc(schema.decisions.createdAt));
+      return rows.map(rowToDecision);
+    },
+    async resolve(userId, id, input) {
+      const db = getDb();
+      const now = new Date();
+      // `status = 'open'` in the predicate makes the check and the write one
+      // statement: the second of two concurrent answers updates zero rows.
+      const [row] = await db
+        .update(schema.decisions)
+        .set({
+          status: input.status,
+          answer: (input.answer as unknown as Record<string, unknown>) ?? null,
+          resolvedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.decisions.id, id),
+            eq(schema.decisions.userId, userId),
+            eq(schema.decisions.status, "open"),
+          ),
+        )
+        .returning();
+      return row ? rowToDecision(row) : null;
     },
   };
 
@@ -1161,6 +1266,7 @@ export function createPostgresRepos(): Repos {
     tasks,
     labels,
     memories,
+    decisions,
     aiRuns,
     taskEvents,
     stripeEvents,
@@ -1249,6 +1355,22 @@ function rowToDailyPlan(row: typeof schema.dailyPlans.$inferSelect): DailyPlanRe
     error: row.error,
     createdAt: row.createdAt.toISOString(),
     finishedAt: row.finishedAt?.toISOString() ?? null,
+  };
+}
+
+function rowToDecision(row: typeof schema.decisions.$inferSelect): Decision {
+  return {
+    id: row.id,
+    kind: row.kind,
+    status: row.status,
+    taskId: row.taskId,
+    payload: row.payload as unknown as DecisionPayload,
+    answer: (row.answer as unknown as DecisionAnswer | null) ?? null,
+    resumeToken: row.resumeToken,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    resolvedAt: row.resolvedAt?.toISOString() ?? null,
+    expiresAt: row.expiresAt?.toISOString() ?? null,
   };
 }
 
@@ -1360,6 +1482,7 @@ function rowToTask(row: typeof schema.tasks.$inferSelect, labelIds: string[]): T
     siftId: row.siftId,
     siftStage: row.siftStage,
     plan: row.plan ?? null,
+    siftedWithAssumptions: row.siftedWithAssumptions,
     labelIds,
     subtasks: row.subtasks ?? [],
     editedFields: (row.editedFields ?? []) as TaskEditableField[],

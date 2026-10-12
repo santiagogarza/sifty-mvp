@@ -1,7 +1,9 @@
 import { type Repos, getRepos } from "@/lib/db/repos";
-import { AI_CONTEXT_LIMITS } from "@/lib/domain/limits";
-import type { SiftStage, Task } from "@/lib/domain/types";
+import { answerText, openClarifyingQuestion } from "@/lib/decisions/service";
+import { AI_CONTEXT_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
+import type { DecisionAnswer, SiftStage, Task } from "@/lib/domain/types";
 import { reportError } from "@/lib/observability/report-error";
+import { id as makeId } from "@/lib/utils/ids";
 import { FatalError } from "workflow";
 import { recordAiRun } from "../ai-runs";
 import { ensureLabelsByName } from "../ensure-labels";
@@ -33,6 +35,24 @@ export interface SiftInput {
 
 export type StepOutcome = "applied" | "superseded" | "missing";
 
+/**
+ * A clarifying question the triage stage wants to ask. Minted inside the
+ * step (ids are not deterministic, so the workflow body cannot mint them)
+ * and returned so the workflow can register the hook before the decision
+ * becomes visible.
+ */
+export interface PendingQuestion {
+  decisionId: string;
+  question: string;
+  options: string[];
+  confidence: number;
+}
+
+export interface TriageStepResult {
+  outcome: StepOutcome;
+  question: PendingQuestion | null;
+}
+
 /** How many of the user's other open tasks the prioritize prompt sees. */
 export const OPEN_TASKS_IN_CONTEXT = 25;
 const RECENT_LABELS_IN_CONTEXT = 8;
@@ -44,7 +64,9 @@ export async function beginSift(input: SiftInput): Promise<StepOutcome> {
   const began = await repos.tasks.update(
     input.userId,
     input.taskId,
-    { aiStatus: "running", aiError: null, siftStage: "enrich" },
+    // A fresh sift stands on its own: whatever the previous one assumed
+    // after a dismissed question no longer applies.
+    { aiStatus: "running", aiError: null, siftStage: "enrich", siftedWithAssumptions: false },
     { ifSiftId: input.siftId },
   );
   return began ? "applied" : "superseded";
@@ -55,9 +77,44 @@ export async function executeSiftStage(
   stage: SiftStage,
   workflowRunId: string | null,
 ): Promise<StepOutcome> {
+  const { outcome } = await runSiftStage(input, stage, workflowRunId, { askQuestions: true });
+  return outcome;
+}
+
+/**
+ * The triage stage, plus whether it asked a question. With `askQuestions`
+ * off (the pass after the user answered or dismissed) a question the model
+ * still produces is dropped: one question per sift.
+ */
+export async function executeTriageStage(
+  input: SiftInput,
+  workflowRunId: string | null,
+  opts: { askQuestions: boolean },
+): Promise<TriageStepResult> {
+  const { outcome, output } = await runSiftStage(input, "triage", workflowRunId, opts);
+  if (outcome !== "applied" || !output || !opts.askQuestions || !output.clarifyingQuestion) {
+    return { outcome, question: null };
+  }
+  return {
+    outcome,
+    question: {
+      decisionId: makeId("dec"),
+      question: output.clarifyingQuestion,
+      options: output.clarifyingOptions,
+      confidence: output.confidence,
+    },
+  };
+}
+
+async function runSiftStage<S extends SiftStage>(
+  input: SiftInput,
+  stage: S,
+  workflowRunId: string | null,
+  opts: { askQuestions: boolean },
+): Promise<{ outcome: StepOutcome; output: StageOutputs[S] | null }> {
   const repos = getRepos();
   const task = await owned(repos, input);
-  if (typeof task === "string") return task;
+  if (typeof task === "string") return { outcome: task, output: null };
 
   const marked = await repos.tasks.update(
     input.userId,
@@ -65,14 +122,25 @@ export async function executeSiftStage(
     { aiStatus: "running", siftStage: stage },
     { ifSiftId: input.siftId },
   );
-  if (!marked) return "superseded";
+  if (!marked) return { outcome: "superseded", output: null };
   const ctx = await buildSiftContext(repos, input.userId, task);
 
   try {
-    const { output, meta } = await runStage(stage, ctx, {
+    const ran = await runStage(stage, ctx, {
       modelPreference: input.modelPreference,
       offline: input.offline,
     });
+    const meta = ran.meta;
+    let output = ran.output;
+    if (stage === "triage" && !opts.askQuestions) {
+      const triage = output as StageOutputs["triage"];
+      const quiet: StageOutputs["triage"] = {
+        ...triage,
+        clarifyingQuestion: null,
+        clarifyingOptions: [],
+      };
+      output = quiet as unknown as StageOutputs[S];
+    }
 
     let labelIds: string[] | undefined;
     if (stage === "enrich") {
@@ -92,7 +160,7 @@ export async function executeSiftStage(
         siftId: input.siftId,
         workflowRunId,
       });
-      return fresh;
+      return { outcome: fresh, output: null };
     }
 
     const patch = stagePatch(fresh, stage, output, { labelIds });
@@ -109,9 +177,9 @@ export async function executeSiftStage(
       siftId: input.siftId,
       workflowRunId,
     });
-    if (!applied) return "superseded";
+    if (!applied) return { outcome: "superseded", output: null };
     console.log(`[workflow] sift ${input.siftId}: ${stage} applied (${meta.model})`);
-    return "applied";
+    return { outcome: "applied", output };
   } catch (err) {
     const message = err instanceof Error ? err.message : `${stage} failed`;
     reportError(err, {
@@ -167,6 +235,76 @@ export async function failSift(input: SiftInput, message: string): Promise<StepO
 
 /** Provider detail stays in `ai_runs`; the task gets a stable, retryable message. */
 export const SIFT_FAILED_MESSAGE = "Sifting failed — try again.";
+
+/**
+ * Record the question as an open decision. Runs after the workflow has
+ * registered the hook for `question.decisionId`, so an answer that lands
+ * the moment the row appears finds a run to resume. Idempotent on retry:
+ * the id is fixed, and `create` returns the existing row for the owner.
+ */
+export async function openDecision(
+  input: SiftInput,
+  question: PendingQuestion,
+): Promise<StepOutcome> {
+  const repos = getRepos();
+  const task = await owned(repos, input);
+  if (typeof task === "string") return task;
+  await openClarifyingQuestion(repos, input.userId, {
+    id: question.decisionId,
+    taskId: input.taskId,
+    siftId: input.siftId,
+    question: question.question,
+    options: question.options,
+    confidence: question.confidence,
+  });
+  console.log(`[workflow] sift ${input.siftId}: asked "${question.question}"`);
+  return "applied";
+}
+
+/**
+ * Fold the user's answer into the capture so every stage of the second
+ * pass sees it, and put the task back into `running` for the watcher.
+ */
+export async function foldAnswer(input: SiftInput, answer: DecisionAnswer): Promise<StepOutcome> {
+  const repos = getRepos();
+  const task = await owned(repos, input);
+  if (typeof task === "string") return task;
+  const folded = await repos.tasks.update(
+    input.userId,
+    input.taskId,
+    {
+      sourceContext: withAnswer(task.sourceContext, answerText(answer)),
+      clarifyingQuestion: null,
+      aiStatus: "running",
+      aiError: null,
+      siftStage: "enrich",
+      siftedWithAssumptions: false,
+    },
+    { ifSiftId: input.siftId },
+  );
+  return folded ? "applied" : "superseded";
+}
+
+/** `sourceContext` with the answer appended as an `Answer:` line. */
+export function withAnswer(sourceContext: string | null, answer: string): string {
+  const line = `Answer: ${answer.trim()}`;
+  const next = sourceContext?.trim() ? `${sourceContext.trim()}\n\n${line}` : line;
+  return next.length > TASK_LIMITS.sourceContext ? next.slice(-TASK_LIMITS.sourceContext) : next;
+}
+
+/**
+ * The 7-day deadline passed with no answer: close the decision so the
+ * inbox stops showing it. No-op when the user resolved it meanwhile.
+ */
+export async function expireDecision(input: SiftInput, decisionId: string): Promise<StepOutcome> {
+  const repos = getRepos();
+  const resolved = await repos.decisions.resolve(input.userId, decisionId, {
+    status: "expired",
+    answer: null,
+  });
+  if (resolved) console.log(`[workflow] sift ${input.siftId}: question expired unanswered`);
+  return "applied";
+}
 
 async function owned(repos: Repos, input: SiftInput): Promise<Task | "missing" | "superseded"> {
   const task = await repos.tasks.get(input.userId, input.taskId);
