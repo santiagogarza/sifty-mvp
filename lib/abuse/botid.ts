@@ -23,8 +23,15 @@ export { BOTID_PROTECTED_ROUTES } from "./botid-routes";
 export interface BotVerdict {
   isBot: boolean;
   /** Where the verdict came from; useful in logs. */
-  source: "botid" | "inactive" | "error" | "test";
+  source: "botid" | "inactive" | "error" | "timeout" | "test";
 }
+
+/**
+ * Deadline for the classifier round-trip. `checkBotId` takes no abort
+ * signal, so a hung classifier is abandoned (fail open, reported) rather
+ * than holding the sign-up invocation until the platform kills it.
+ */
+export const BOTID_TIMEOUT_MS = 3000;
 
 let testOverride: BotVerdict | null = null;
 
@@ -39,12 +46,24 @@ export function isBotIdActive(): boolean {
 export async function verifyNotBot(area: string): Promise<BotVerdict> {
   if (testOverride) return testOverride;
   if (!isBotIdActive()) return { isBot: false, source: "inactive" };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), BOTID_TIMEOUT_MS);
+  });
   try {
-    const result = await checkBotId();
+    const result = await Promise.race([checkBotId(), deadline]);
+    if (result === "timeout") {
+      reportError(new Error(`BotID check timed out after ${BOTID_TIMEOUT_MS}ms`), {
+        area: `botid.${area}`,
+      });
+      return { isBot: false, source: "timeout" };
+    }
     return { isBot: result.isBot, source: "botid" };
   } catch (err) {
     reportError(err, { area: `botid.${area}` });
     return { isBot: false, source: "error" };
+  } finally {
+    clearTimeout(timer);
   }
 }
 

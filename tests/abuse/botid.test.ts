@@ -1,5 +1,6 @@
 import {
   BOTID_PROTECTED_ROUTES,
+  BOTID_TIMEOUT_MS,
   isBotIdActive,
   setBotVerdictForTesting,
   verifyNotBot,
@@ -69,6 +70,21 @@ describe("verifyNotBot", () => {
     vi.mocked(checkBotId).mockRejectedValue(new Error("x-vercel-oidc-token missing"));
     expect(await verifyNotBot("auth.sign-up")).toEqual({ isBot: false, source: "error" });
     expect(reportError).toHaveBeenCalledWith(expect.any(Error), { area: "botid.auth.sign-up" });
+  });
+
+  it("abandons a hung classifier at the deadline, fails open, and reports", async () => {
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.useFakeTimers();
+    try {
+      vi.mocked(checkBotId).mockReturnValue(new Promise(() => {}));
+      const pending = verifyNotBot("auth.sign-up");
+      await vi.advanceTimersByTimeAsync(BOTID_TIMEOUT_MS + 1);
+      expect(await pending).toEqual({ isBot: false, source: "timeout" });
+      expect(reportError).toHaveBeenCalledWith(expect.any(Error), { area: "botid.auth.sign-up" });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("protects sign-up (both auth layers) and invite redemption on the client", () => {
