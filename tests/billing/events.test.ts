@@ -121,22 +121,21 @@ describe("applyStripeEvent", () => {
     expect(next.currentPeriodEnd).toBeNull();
   });
 
-  it("invoice.payment_failed before any subscription event → adopts the sub, past_due, grace opens", () => {
+  it("invoice.payment_failed with no paying subscription on record grants nothing", () => {
+    // A declined first Checkout invoice can arrive before (or instead of) the
+    // subscription event; the user never paid, so no grace, no past_due.
+    const before = lapsedTrial();
     const next = applyStripeEvent(
-      lapsedTrial(),
+      before,
       {
         type: "invoice.payment_failed",
         data: { object: { customer: "cus_X", subscription: "sub_first" } },
       },
       NOW,
     );
-    // Grace keeps Pro on for the window even when nothing was active before:
-    // Stripe only invoices customers who had a subscription.
-    expect(next.tier).toBe("pro");
-    expect(next.subscriptionActive).toBe(false);
-    expect(next.stripeStatus).toBe("past_due");
-    expect(next.stripeSubscriptionId).toBe("sub_first");
-    expect(next.graceEndsAt).toBe(new Date(NOW.getTime() + GRACE_PERIOD_DAYS * DAY).toISOString());
+    expect(next).toBe(before);
+    expect(next.tier).toBe("free");
+    expect(next.graceEndsAt).toBeNull();
   });
 
   it("invoice events without a subscription (one-off invoices) change nothing", () => {
@@ -547,7 +546,12 @@ describe("applyStripeEvent — dunning grace period", () => {
 
   it("comped precedence: dunning and expiry never touch a comped user's tier", () => {
     const inGrace = applyStripeEvent(
-      { ...comped(), subscriptionActive: true, stripeSubscriptionId: "sub_test" },
+      {
+        ...comped(),
+        subscriptionActive: true,
+        stripeSubscriptionId: "sub_test",
+        stripeStatus: "active",
+      },
       failed(),
       NOW,
     );
