@@ -182,13 +182,12 @@ const RULES: Rule[] = [
     },
   },
   {
-    // "last Friday" is history, not a deadline.
-    re: new RegExp(
-      `(?<!\\blast\\s)\\b${PREP}(?:this\\s+)?(${WEEKDAY_FULL})\\b${NOT_POSSESSIVE}`,
-      "gi",
-    ),
+    // "last Friday" is history, not a deadline: it is matched (so an
+    // attached time is not mistaken for a time alone) and resolves to nothing.
+    re: new RegExp(`\\b${PREP}(?:(last)\\s+|this\\s+)?(${WEEKDAY_FULL})\\b${NOT_POSSESSIVE}`, "gi"),
     resolve: (m, today) => {
-      const weekday = weekdayIndex(m[1]!);
+      if (m[1]) return null;
+      const weekday = weekdayIndex(m[2]!);
       return weekday === null ? null : nextWeekday(today, weekday, { allowToday: true });
     },
   },
@@ -256,7 +255,8 @@ const RULES: Rule[] = [
       if (day < 1 || day > 31) return null;
       const thisMonth = validDate(today.getFullYear(), today.getMonth(), day);
       if (thisMonth && thisMonth.getTime() >= today.getTime()) return thisMonth;
-      return validDate(today.getFullYear(), today.getMonth() + 1, day);
+      const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+      return validDate(nextMonth.getFullYear(), nextMonth.getMonth(), day);
     },
   },
 ];
@@ -270,12 +270,17 @@ const TIME_BEFORE = new RegExp(`(?:^|\\s)${TIME_RE}\\s*,?\\s*$`, "i");
 export function parseNaturalDate(text: string, now: Date = new Date()): NlDateMatch | null {
   const today = startOfDay(now);
   let best: { match: NlDateMatch; prioritized: boolean } | null = null;
+  // A phrase that looked like a date but resolved to nothing ("last
+  // Friday", "by 1/2") still claims any time next to it: that time is not
+  // a deadline for today.
+  let sawDateLike = false;
 
   for (const rule of RULES) {
     rule.re.lastIndex = 0;
     let m: RegExpExecArray | null = rule.re.exec(text);
     while (m) {
       const date = rule.resolve(m, today, text);
+      sawDateLike = true;
       if (date && !Number.isNaN(date.getTime())) {
         const candidate = attachTime(text, m.index, m.index + m[0].length, date);
         const prioritized = /^(by|on|before|until|till|due)\b/i.test(m[0]);
@@ -295,6 +300,7 @@ export function parseNaturalDate(text: string, now: Date = new Date()): NlDateMa
     }
   }
   if (best) return best.match;
+  if (sawDateLike) return null;
 
   const timeOnly = TIME_ONLY.exec(text);
   if (timeOnly) {

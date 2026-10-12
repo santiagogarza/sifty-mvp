@@ -54,7 +54,13 @@ export function CaptureDialog({
   const hasDraft = text.length > 0 || context.length > 0;
 
   const dateMatch = React.useMemo(() => parseNaturalDate(text), [text]);
-  const dueChip = dateMatch && dateMatch.text.toLowerCase() !== dismissedPhrase ? dateMatch : null;
+  // Declined once, a phrase stays declined even as it grows ("tomorrow" →
+  // "tomorrow 3pm"): the chip returns only for a phrase the user has not
+  // yet said no to.
+  const dueChip =
+    dateMatch && !(dismissedPhrase && dateMatch.text.toLowerCase().includes(dismissedPhrase))
+      ? dateMatch
+      : null;
 
   const onTextChange = (next: string) => {
     setText(next);

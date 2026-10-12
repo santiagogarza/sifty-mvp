@@ -135,6 +135,10 @@ describe("parseNaturalDate: weekdays", () => {
 
   it("last <weekday> is history, not a deadline", () => {
     expect(parseNaturalDate("Call Ana about last Friday", now)).toBeNull();
+    expect(parseNaturalDate("Call Ana about last  Friday", now)).toBeNull(); // any whitespace
+    // A time attached to history is not a deadline for today either.
+    expect(parseNaturalDate("Call Ana about last Friday 3pm", now)).toBeNull();
+    expect(parseNaturalDate("Meet by 1/2 at 3pm", now)).toBeNull();
     expect(parseNaturalDate("Finish what we did last month", now)).toBeNull();
     expect(parseNaturalDate("Review last week's notes", now)).toBeNull();
     // …while a later deadline still parses.
@@ -211,6 +215,9 @@ describe("parseNaturalDate: explicit dates", () => {
     expect(due("Rent due on the 15th", now)).toBe("2026-10-15");
     expect(due("Rent due by the 5th", now)).toBe("2026-11-05");
     expect(due("Rent by the 31st", at(2026, 11, 2))).toBe("2026-12-31");
+    // Past the Nth in December: January of next year.
+    expect(due("Rent due on the 15th", at(2026, 12, 20))).toBe("2027-01-15");
+    expect(due("Rent by the 5th", at(2026, 12, 31))).toBe("2027-01-05");
   });
 });
 
