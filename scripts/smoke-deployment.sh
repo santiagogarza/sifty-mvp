@@ -17,20 +17,15 @@ if [[ -n "${SMOKE_BYPASS_SECRET:-}" ]]; then
 fi
 fail=0
 
-# probe PATH EXPECTED_CODE [MUST_CONTAIN] [soft]
-# soft: report but do not fail (for pages that are not on production yet).
+# probe PATH EXPECTED_CODE [MUST_CONTAIN]
 probe() {
-  local path="$1" expect="$2" must_contain="${3:-}" soft="${4:-}"
+  local path="$1" expect="$2" must_contain="${3:-}"
   local code body
   body=$(mktemp)
   code=$(curl -sS -L -o "$body" -w '%{http_code}' --max-time 30 "${extra[@]}" "$base$path" 2>/dev/null || true)
   code="${code:-000}"
   if [[ "$code" != "$expect" ]]; then
-    if [[ "$soft" == "soft" ]]; then
-      echo "warn $path -> $code (expected $expect; soft probe)"
-    else
-      echo "FAIL $path -> $code (expected $expect)"; head -c 400 "$body"; echo; fail=1
-    fi
+    echo "FAIL $path -> $code (expected $expect)"; head -c 400 "$body"; echo; fail=1
   elif [[ -n "$must_contain" ]] && ! grep -q -- "$must_contain" "$body"; then
     echo "FAIL $path -> $code but body lacks '$must_contain'"; head -c 400 "$body"; echo; fail=1
   else
@@ -48,7 +43,7 @@ probe /api/health  200 '"ok":true'
 echo "--- /api/health"
 curl -sS --max-time 30 "${extra[@]}" "$base/api/health" || true
 echo
-echo "--- security headers on /"
+echo "--- security headers on / (set by vercel.json at the edge; absent on next start)"
 curl -sSI --max-time 30 "${extra[@]}" "$base/" | grep -iE '^(strict-transport-security|x-content-type-options|x-frame-options|referrer-policy|permissions-policy):' || true
 
 exit $fail
