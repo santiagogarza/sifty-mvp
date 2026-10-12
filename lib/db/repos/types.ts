@@ -706,7 +706,10 @@ export interface ExecutionCreateInput {
 
 export type ExecutionCreateResult =
   | { created: true; execution: Execution }
-  /** `(userId, idempotencyKey)` already exists: the earlier row, untouched. */
+  /**
+   * `(userId, idempotencyKey)` already exists, or another execution of the
+   * task is not yet terminal: that row, untouched.
+   */
   | { created: false; execution: Execution };
 
 /** The columns a transition may set alongside `status`. */
@@ -761,7 +764,9 @@ export interface ExecutionRepo {
   /**
    * Idempotent on `(userId, idempotencyKey)`: a replayed enqueue (double
    * click, retried request, workflow retry) gets the existing row with
-   * `created: false` and starts nothing.
+   * `created: false` and starts nothing. Atomic per task: while one
+   * execution of the task is live, a create with another key returns that
+   * live row with `created: false`.
    */
   create(userId: string, input: ExecutionCreateInput): Promise<ExecutionCreateResult>;
   get(userId: string, id: string): Promise<Execution | null>;

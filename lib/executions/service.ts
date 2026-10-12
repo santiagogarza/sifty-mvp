@@ -38,7 +38,9 @@ import { TERMINAL_STATUSES, isTerminal, isWaiting } from "./state";
  * 1. Executor and policy are resolved (`getExecutor`, D9 rules).
  * 2. The tier gate: a zero budget (free) refuses before any row exists.
  * 3. `executions.create` — idempotent on `(user, idempotencyKey)`; a replay
- *    returns the earlier row and starts nothing.
+ *    returns the earlier row and starts nothing. Atomic per task: while
+ *    another execution of the task is live, that row comes back instead
+ *    (`already_running`).
  * 4. `executions.reserve` holds the executor's estimate against the
  *    month's budget, atomically per user; refused → the row is `failed`
  *    with the budget message and an `execution.budget_refused` event.
@@ -128,16 +130,7 @@ export async function enqueueExecution(args: {
     };
   }
 
-  // One live execution per task: a second "Run now" while the first is
-  // working (or waiting on the user) would double the work.
-  const active = (
-    await repos.executions.listForTask(userId, args.task.id, { limit: ACTIVE_PER_TASK_LIMIT })
-  ).find((e) => !isTerminal(e.status));
   const idempotencyKey = args.idempotencyKey?.trim() || makeId("run");
-  if (active && active.idempotencyKey !== idempotencyKey) {
-    return { ok: false, reason: "already_running", execution: active };
-  }
-
   const created = await repos.executions.create(userId, {
     taskId: args.task.id,
     executor: def.kind,
@@ -146,6 +139,11 @@ export async function enqueueExecution(args: {
     idempotencyKey,
   });
   if (!created.created) {
+    // One live execution per task: a second "Run now" while the first is
+    // working (or waiting on the user) would double the work.
+    if (created.execution.idempotencyKey !== idempotencyKey) {
+      return { ok: false, reason: "already_running", execution: created.execution };
+    }
     return { ok: true, execution: created.execution, created: false, runId: null, policy };
   }
   let execution = created.execution;

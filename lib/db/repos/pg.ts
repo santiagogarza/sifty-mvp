@@ -1292,37 +1292,57 @@ export function createPostgresRepos(): Repos {
     async create(userId, input) {
       const db = getDb();
       const id = input.id ?? makeId("exec");
-      const now = new Date();
-      // Both unique keys (`id`, `(user_id, idempotency_key)`) are covered by
-      // one `ON CONFLICT DO NOTHING`; a losing insert returns no row and the
-      // caller gets whichever existing row matched.
-      const inserted = await db
-        .insert(schema.executions)
-        .values({
-          id,
-          userId,
-          taskId: input.taskId,
-          status: "queued",
-          executor: input.executor,
-          policy: input.policy,
-          connector: input.connector,
-          idempotencyKey: input.idempotencyKey,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .onConflictDoNothing()
-        .returning();
-      if (inserted.length) return { created: true, execution: rowToExecution(inserted[0]!) };
-      const [byKey] = await db
-        .select()
-        .from(schema.executions)
-        .where(
-          and(
-            eq(schema.executions.userId, userId),
-            eq(schema.executions.idempotencyKey, input.idempotencyKey),
-          ),
+      const byKey = and(
+        eq(schema.executions.userId, userId),
+        eq(schema.executions.idempotencyKey, input.idempotencyKey),
+      );
+      const result = await db.transaction(async (tx) => {
+        // Serialize creates per task so the one-live-execution check and the
+        // insert see the same state. Transaction-scoped lock.
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext(${`execution_task:${userId}:${input.taskId}`}))`,
         );
-      if (byKey) return { created: false, execution: rowToExecution(byKey) };
+        const [replay] = await tx.select().from(schema.executions).where(byKey);
+        if (replay) return { created: false as const, execution: rowToExecution(replay) };
+        const [live] = await tx
+          .select()
+          .from(schema.executions)
+          .where(
+            and(
+              eq(schema.executions.userId, userId),
+              eq(schema.executions.taskId, input.taskId),
+              sql`${schema.executions.status} not in ('done', 'failed', 'cancelled')`,
+            ),
+          )
+          .limit(1);
+        if (live) return { created: false as const, execution: rowToExecution(live) };
+        const now = new Date();
+        // Both unique keys (`id`, `(user_id, idempotency_key)`) are covered by
+        // one `ON CONFLICT DO NOTHING`; a losing insert returns no row and the
+        // caller gets whichever existing row matched.
+        const inserted = await tx
+          .insert(schema.executions)
+          .values({
+            id,
+            userId,
+            taskId: input.taskId,
+            status: "queued",
+            executor: input.executor,
+            policy: input.policy,
+            connector: input.connector,
+            idempotencyKey: input.idempotencyKey,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoNothing()
+          .returning();
+        return inserted.length
+          ? { created: true as const, execution: rowToExecution(inserted[0]!) }
+          : null;
+      });
+      if (result) return result;
+      const [replay] = await db.select().from(schema.executions).where(byKey);
+      if (replay) return { created: false, execution: rowToExecution(replay) };
       const existing = await executions.get(userId, id);
       if (existing) return { created: false, execution: existing };
       throw new IdConflictError(id);

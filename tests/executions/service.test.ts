@@ -150,6 +150,20 @@ describe("enqueueExecution", () => {
     expect(client.start).toHaveBeenCalledTimes(1);
   });
 
+  it("concurrent enqueues with different keys start one execution and reserve once", async () => {
+    const session = await sessionFor("pro");
+    const task = await taskFor(session);
+    const results = await Promise.all(
+      ["a", "b", "c", "d"].map((key) => enqueue(session, task, { idempotencyKey: key })),
+    );
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok && r.reason === "already_running")).toHaveLength(3);
+    expect(
+      await getTestRepos().executions.listForTask(session.user.id, task.id, { limit: 10 }),
+    ).toHaveLength(1);
+    expect(client.start).toHaveBeenCalledTimes(1);
+  });
+
   it("free tier is refused before any row exists", async () => {
     const session = await sessionFor("free");
     const task = await taskFor(session);

@@ -1220,6 +1220,31 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect(await repos.executions.get(b.id, theirs.execution.id)).toBeNull();
     });
 
+    it("create admits one live execution per task, even under concurrent keys", async () => {
+      const repos = getRepos();
+      const a = await createUser(repos, "exec-live@example.com");
+      const task = await repos.tasks.create(a.id, { sourceText: "Lease", sourceContext: null });
+
+      const burst = await Promise.all(
+        Array.from({ length: 6 }, (_, i) =>
+          repos.executions.create(a.id, create(task.id, `live-${i}`)),
+        ),
+      );
+      const winners = burst.filter((r) => r.created);
+      expect(winners).toHaveLength(1);
+      const live = winners[0]!.execution;
+      expect(new Set(burst.map((r) => r.execution.id))).toEqual(new Set([live.id]));
+      expect(await repos.executions.listForTask(a.id, task.id, { limit: 10 })).toHaveLength(1);
+
+      // A replay of the live key is still a replay; once terminal, the task runs again.
+      expect(
+        (await repos.executions.create(a.id, create(task.id, live.idempotencyKey))).created,
+      ).toBe(false);
+      await repos.executions.transition(a.id, live.id, { from: ["queued"], to: "failed" });
+      const next = await repos.executions.create(a.id, create(task.id, "live-next"));
+      expect(next.created).toBe(true);
+    });
+
     it("transition is a compare-and-set over the from list and patches bookkeeping", async () => {
       const repos = getRepos();
       const a = await createUser(repos, "exec-cas@example.com");
@@ -1280,9 +1305,11 @@ export function describeRepoContract(getRepos: () => Repos): void {
       const bTask = await repos.tasks.create(b.id, { sourceText: "Theirs", sourceContext: null });
       const now = new Date();
 
+      const task2 = await repos.tasks.create(a.id, { sourceText: "Lease 2", sourceContext: null });
+      const task3 = await repos.tasks.create(a.id, { sourceText: "Lease 3", sourceContext: null });
       const one = await repos.executions.create(a.id, create(task.id, "b1"));
-      const two = await repos.executions.create(a.id, create(task.id, "b2"));
-      const three = await repos.executions.create(a.id, create(task.id, "b3"));
+      const two = await repos.executions.create(a.id, create(task2.id, "b2"));
+      const three = await repos.executions.create(a.id, create(task3.id, "b3"));
       const theirs = await repos.executions.create(b.id, create(bTask.id, "b1"));
 
       const r1 = await repos.executions.reserve(a.id, one.execution.id, {
@@ -1368,11 +1395,13 @@ export function describeRepoContract(getRepos: () => Repos): void {
 
       // Concurrent reservations never overshoot the cap together.
       const c = await createUser(repos, "exec-race@example.com");
-      const cTask = await repos.tasks.create(c.id, { sourceText: "Race", sourceContext: null });
-      const rows = await Promise.all(
+      const cTasks = await Promise.all(
         Array.from({ length: 6 }, (_, i) =>
-          repos.executions.create(c.id, create(cTask.id, `race-${i}`)),
+          repos.tasks.create(c.id, { sourceText: `Race ${i}`, sourceContext: null }),
         ),
+      );
+      const rows = await Promise.all(
+        cTasks.map((t, i) => repos.executions.create(c.id, create(t.id, `race-${i}`))),
       );
       const results = await Promise.all(
         rows.map((r) =>
@@ -1392,17 +1421,7 @@ export function describeRepoContract(getRepos: () => Repos): void {
       const task = await repos.tasks.create(a.id, { sourceText: "Lease", sourceContext: null });
       const other = await repos.tasks.create(a.id, { sourceText: "Other", sourceContext: null });
       const before = new Date(Date.now() - 60_000);
-      const queued = await repos.executions.create(a.id, create(task.id, "l1"));
-      const parked = await repos.executions.create(a.id, create(other.id, "l2"));
       const finished = await repos.executions.create(a.id, create(task.id, "l3"));
-      await repos.executions.transition(a.id, parked.execution.id, {
-        from: ["queued"],
-        to: "running",
-      });
-      await repos.executions.transition(a.id, parked.execution.id, {
-        from: ["running"],
-        to: "drafted",
-      });
       await repos.executions.transition(a.id, finished.execution.id, {
         from: ["queued"],
         to: "running",
@@ -1410,6 +1429,16 @@ export function describeRepoContract(getRepos: () => Repos): void {
       await repos.executions.transition(a.id, finished.execution.id, {
         from: ["running"],
         to: "done",
+      });
+      const queued = await repos.executions.create(a.id, create(task.id, "l1"));
+      const parked = await repos.executions.create(a.id, create(other.id, "l2"));
+      await repos.executions.transition(a.id, parked.execution.id, {
+        from: ["queued"],
+        to: "running",
+      });
+      await repos.executions.transition(a.id, parked.execution.id, {
+        from: ["running"],
+        to: "drafted",
       });
 
       const active = await repos.executions.listActive(a.id, { limit: 10 });
