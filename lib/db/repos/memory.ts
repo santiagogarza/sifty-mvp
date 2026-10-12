@@ -148,6 +148,12 @@ export function createMemoryRepos(): MemoryReposHandle {
       state.entitlements.set(userId, { ...snapshot });
       return { ...snapshot };
     },
+    async update(userId, mutate) {
+      const current = state.entitlements.get(userId);
+      const next = mutate(current ? { ...current } : null);
+      state.entitlements.set(userId, { ...next });
+      return { ...next };
+    },
     async startTrialIfMissing(userId, days) {
       const existing = state.entitlements.get(userId);
       if (existing) return { ...existing };

@@ -116,56 +116,59 @@ export function createPostgresRepos(): Repos {
     },
   };
 
+  // One executor type covers both the pool and a transaction handle.
+  type Executor = Pick<ReturnType<typeof getDb>, "select" | "insert" | "update">;
+
+  async function readEntitlement(
+    ex: Executor,
+    userId: string,
+    opts: { lock?: boolean } = {},
+  ): Promise<EntitlementSnapshot | null> {
+    const q = ex.select().from(schema.entitlements).where(eq(schema.entitlements.userId, userId));
+    const [ent] = opts.lock ? await q.for("update") : await q;
+    const [user] = await ex.select().from(schema.users).where(eq(schema.users.id, userId));
+    if (!ent || !user) return null;
+    return entitlementRowToSnapshot(ent, user);
+  }
+
+  async function writeEntitlement(
+    ex: Executor,
+    userId: string,
+    snapshot: EntitlementSnapshot,
+  ): Promise<void> {
+    const columns = entitlementColumns(snapshot, new Date());
+    await ex
+      .insert(schema.entitlements)
+      .values({ userId, ...columns })
+      .onConflictDoUpdate({ target: schema.entitlements.userId, set: columns });
+    if (snapshot.trialStartedAt || snapshot.stripeCustomerId) {
+      await ex
+        .update(schema.users)
+        .set({
+          trialStartedAt: snapshot.trialStartedAt ? new Date(snapshot.trialStartedAt) : undefined,
+          stripeCustomerId: snapshot.stripeCustomerId ?? undefined,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.users.id, userId));
+    }
+  }
+
   const entitlements: EntitlementRepo = {
     async get(userId) {
-      const db = getDb();
-      const [ent] = await db
-        .select()
-        .from(schema.entitlements)
-        .where(eq(schema.entitlements.userId, userId));
-      const [user] = await db.select().from(schema.users).where(eq(schema.users.id, userId));
-      if (!ent || !user) return null;
-      return {
-        tier: ent.tier,
-        trialStartedAt: user.trialStartedAt?.toISOString() ?? null,
-        trialEndsAt: ent.trialEndsAt?.toISOString() ?? null,
-        subscriptionActive: ent.subscriptionActive,
-        compedAt: ent.compedAt?.toISOString() ?? null,
-        compedUntil: ent.compedUntil?.toISOString() ?? null,
-        stripeCustomerId: user.stripeCustomerId,
-        stripeSubscriptionId: ent.stripeSubscriptionId,
-        stripeStatus: ent.stripeStatus,
-        currentPeriodEnd: ent.currentPeriodEnd?.toISOString() ?? null,
-      };
+      return readEntitlement(getDb(), userId);
     },
     async upsert(userId, snapshot) {
-      const db = getDb();
-      const columns = {
-        tier: snapshot.tier,
-        trialEndsAt: toDate(snapshot.trialEndsAt),
-        subscriptionActive: snapshot.subscriptionActive,
-        compedAt: toDate(snapshot.compedAt),
-        compedUntil: toDate(snapshot.compedUntil),
-        stripeSubscriptionId: snapshot.stripeSubscriptionId,
-        stripeStatus: snapshot.stripeStatus,
-        currentPeriodEnd: toDate(snapshot.currentPeriodEnd),
-        updatedAt: new Date(),
-      };
-      await db
-        .insert(schema.entitlements)
-        .values({ userId, ...columns })
-        .onConflictDoUpdate({ target: schema.entitlements.userId, set: columns });
-      if (snapshot.trialStartedAt || snapshot.stripeCustomerId) {
-        await db
-          .update(schema.users)
-          .set({
-            trialStartedAt: snapshot.trialStartedAt ? new Date(snapshot.trialStartedAt) : undefined,
-            stripeCustomerId: snapshot.stripeCustomerId ?? undefined,
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.users.id, userId));
-      }
+      await writeEntitlement(getDb(), userId, snapshot);
       return { ...snapshot };
+    },
+    async update(userId, mutate) {
+      const db = getDb();
+      return db.transaction(async (tx) => {
+        const current = await readEntitlement(tx, userId, { lock: true });
+        const next = mutate(current);
+        await writeEntitlement(tx, userId, next);
+        return { ...next };
+      });
     },
     async startTrialIfMissing(userId, days) {
       const existing = await entitlements.get(userId);
@@ -589,26 +592,7 @@ export function createPostgresRepos(): Repos {
           // Lock the entitlement row first so the grant is derived from the
           // committed state and a concurrent Stripe webhook serializes
           // behind us instead of being overwritten.
-          const [entRow] = await tx
-            .select()
-            .from(schema.entitlements)
-            .where(eq(schema.entitlements.userId, userId))
-            .for("update");
-          const [userRow] = await tx.select().from(schema.users).where(eq(schema.users.id, userId));
-          const current: EntitlementSnapshot | null = entRow
-            ? {
-                tier: entRow.tier,
-                trialStartedAt: userRow?.trialStartedAt?.toISOString() ?? null,
-                trialEndsAt: entRow.trialEndsAt?.toISOString() ?? null,
-                subscriptionActive: entRow.subscriptionActive,
-                compedAt: entRow.compedAt?.toISOString() ?? null,
-                compedUntil: entRow.compedUntil?.toISOString() ?? null,
-                stripeCustomerId: userRow?.stripeCustomerId ?? null,
-                stripeSubscriptionId: entRow.stripeSubscriptionId,
-                stripeStatus: entRow.stripeStatus,
-                currentPeriodEnd: entRow.currentPeriodEnd?.toISOString() ?? null,
-              }
-            : null;
+          const current = await readEntitlement(tx, userId, { lock: true });
           const grant = input.grant(current);
 
           // The unique (code_id, user_id) index is the once-per-user guard;
@@ -662,7 +646,7 @@ export function createPostgresRepos(): Repos {
             compedUntil: toDate(grant.compedUntil),
             updatedAt: now,
           };
-          if (entRow) {
+          if (current) {
             await tx
               .update(schema.entitlements)
               .set(compColumns)
@@ -743,6 +727,38 @@ function rowToRedemption(row: typeof schema.inviteRedemptions.$inferSelect): Inv
 
 function toDate(iso: string | null): Date | null {
   return iso ? new Date(iso) : null;
+}
+
+function entitlementRowToSnapshot(
+  ent: typeof schema.entitlements.$inferSelect,
+  user: typeof schema.users.$inferSelect,
+): EntitlementSnapshot {
+  return {
+    tier: ent.tier,
+    trialStartedAt: user.trialStartedAt?.toISOString() ?? null,
+    trialEndsAt: ent.trialEndsAt?.toISOString() ?? null,
+    subscriptionActive: ent.subscriptionActive,
+    compedAt: ent.compedAt?.toISOString() ?? null,
+    compedUntil: ent.compedUntil?.toISOString() ?? null,
+    stripeCustomerId: user.stripeCustomerId,
+    stripeSubscriptionId: ent.stripeSubscriptionId,
+    stripeStatus: ent.stripeStatus,
+    currentPeriodEnd: ent.currentPeriodEnd?.toISOString() ?? null,
+  };
+}
+
+function entitlementColumns(snapshot: EntitlementSnapshot, now: Date) {
+  return {
+    tier: snapshot.tier,
+    trialEndsAt: toDate(snapshot.trialEndsAt),
+    subscriptionActive: snapshot.subscriptionActive,
+    compedAt: toDate(snapshot.compedAt),
+    compedUntil: toDate(snapshot.compedUntil),
+    stripeSubscriptionId: snapshot.stripeSubscriptionId,
+    stripeStatus: snapshot.stripeStatus,
+    currentPeriodEnd: toDate(snapshot.currentPeriodEnd),
+    updatedAt: now,
+  };
 }
 
 function groupLabelIds(rows: Array<{ taskId: string; labelId: string }>): Map<string, string[]> {

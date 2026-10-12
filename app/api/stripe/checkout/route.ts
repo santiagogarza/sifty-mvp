@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/auth/session";
 import { StripeNotConfiguredError, getPriceIds, getStripe } from "@/lib/billing/stripe";
 import { getRepos } from "@/lib/db/repos";
-import { TRIAL_DAYS } from "@/lib/entitlements/entitlements";
+import { TRIAL_DAYS, trialSnapshot } from "@/lib/entitlements/entitlements";
 import { buildRateLimitKey, consumeToken, rateLimitResponseInit } from "@/lib/ratelimit/limiter";
 import { STRIPE_USER_POLICY, clientIdFromRequest } from "@/lib/ratelimit/policies";
 import { NextResponse } from "next/server";
@@ -69,12 +69,11 @@ export async function POST(req: Request) {
       await repos.users.setStripeCustomerId(session.user.id, customerId);
       // Also pin it onto the entitlement snapshot so lookups during the
       // webhook find this user even before we receive the first event.
-      const current =
-        ent ?? (await repos.entitlements.startTrialIfMissing(session.user.id, TRIAL_DAYS));
-      await repos.entitlements.upsert(session.user.id, {
-        ...current,
-        stripeCustomerId: customerId,
-      });
+      const pinned = customerId;
+      await repos.entitlements.update(session.user.id, (current) => ({
+        ...(current ?? trialSnapshot(TRIAL_DAYS)),
+        stripeCustomerId: pinned,
+      }));
     }
 
     const origin = req.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL ?? "";

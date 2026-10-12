@@ -116,8 +116,17 @@ export interface UserRepo {
 
 export interface EntitlementRepo {
   get(userId: string): Promise<EntitlementSnapshot | null>;
-  /** Idempotent upsert. */
+  /** Idempotent upsert. Overwrites every fact; use `update` when other writers may race. */
   upsert(userId: string, snapshot: EntitlementSnapshot): Promise<EntitlementSnapshot>;
+  /**
+   * Atomic read-modify-write: the row is locked while `mutate` runs, so two
+   * writers (Stripe webhook, invite redemption, checkout) serialize and the
+   * second one sees the first one's facts instead of clobbering them.
+   */
+  update(
+    userId: string,
+    mutate: (current: EntitlementSnapshot | null) => EntitlementSnapshot,
+  ): Promise<EntitlementSnapshot>;
   startTrialIfMissing(userId: string, days: number): Promise<EntitlementSnapshot>;
 }
 
