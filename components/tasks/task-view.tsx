@@ -39,14 +39,17 @@ export function TaskView({
   emptyDescription?: string;
   rightSlot?: React.ReactNode;
 }) {
-  const { openDetail } = useFrame();
+  const { openDetail, serverReady } = useFrame();
   const tasks = useStore((s) => s.tasks);
   const hydrated = useStore((s) => s.hydrated);
   const viewMode = useStore((s) => s.viewMode);
 
   const visible = React.useMemo(() => selector(tasks), [tasks, selector]);
 
-  const board = hydrated && viewMode === "board";
+  // Local cache first; an empty cache waits for the first pull so a new
+  // account never flashes "Inbox zero" before its starter tasks arrive.
+  const ready = hydrated && (tasks.length > 0 || serverReady);
+  const board = ready && viewMode === "board";
 
   const header = (
     <PageHeader
@@ -74,8 +77,8 @@ export function TaskView({
       ) : (
         header
       )}
-      <WelcomeCard />
-      {!hydrated ? (
+      {ready ? <WelcomeCard /> : null}
+      {!ready ? (
         <TaskListSkeleton />
       ) : board ? (
         <TaskBoard
