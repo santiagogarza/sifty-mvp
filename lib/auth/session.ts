@@ -1,13 +1,10 @@
 import { type Repos, getRepos } from "@/lib/db/repos";
 import type { EntitlementSnapshot } from "@/lib/db/repos/types";
-import {
-  isDemoSeedEnabled,
-  seedDefaultLabels,
-  seedDemoWorkspaceIfEmpty,
-} from "@/lib/demo/seed-demo";
+import { isDemoSeedEnabled, seedDemoWorkspaceIfEmpty } from "@/lib/demo/seed-demo";
 import type { UserProfile } from "@/lib/domain/types";
 import { TRIAL_DAYS, creatorSnapshot, withResolvedTier } from "@/lib/entitlements/entitlements";
 import { demoFlagEnabled } from "@/lib/env/production-guards";
+import { seedStarterWorkspaceIfEmpty } from "@/lib/onboarding/seed";
 import { getSessionCookie } from "better-auth/cookies";
 import { headers } from "next/headers";
 import { AUTH_COOKIE_PREFIX, type Auth, getAuth } from "./auth";
@@ -54,13 +51,16 @@ export async function getSession(req?: Request): Promise<Session | null> {
   }
 
   const repos = getRepos();
+  // The fallback profile (row not mirrored into the repos) takes the creator
+  // flag from Better Auth's user, which is only set once the address is
+  // verified. Deriving it from the email here would skip that proof.
   const user =
     (await repos.users.getById(resolved.user.id)) ??
     ({
       id: resolved.user.id,
       email: resolved.user.email,
       displayName: resolved.user.name,
-      isCreator: isCreatorEmail(resolved.user.email),
+      isCreator: resolved.user.isCreator === true,
       createdAt: new Date(resolved.user.createdAt).toISOString(),
     } satisfies UserProfile);
 
@@ -164,7 +164,7 @@ async function bootstrapBypassUser(repos: Repos): Promise<UserProfile> {
   if (isDemoSeedEnabled()) {
     await seedDemoWorkspaceIfEmpty(repos, user.id);
   } else {
-    await seedDefaultLabels(repos, user.id);
+    await seedStarterWorkspaceIfEmpty(repos, user.id);
   }
 
   return user;

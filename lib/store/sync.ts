@@ -684,7 +684,9 @@ registerSyncHooks(hooks);
 
 /** Sign-out / account-switch: drop the local cache and the sync ledger. */
 export function resetLocalWorkspace(): void {
-  useStore.setState({ tasks: [], labels: [], memories: [] });
+  // The first-run card is per workspace, not per browser: a later new
+  // account on this device should see it again.
+  useStore.setState({ tasks: [], labels: [], memories: [], welcomeDismissed: false });
   ledger = emptyLedger();
   saveLedger();
   publishStatus();

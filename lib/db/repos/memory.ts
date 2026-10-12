@@ -134,6 +134,10 @@ export function createMemoryRepos(): MemoryReposHandle {
       const u = state.users.get(id);
       return u ? { ...u } : null;
     },
+    async setCreator(userId, isCreator) {
+      const u = state.users.get(userId);
+      if (u) state.users.set(userId, { ...u, isCreator });
+    },
     async setStripeCustomerId(userId, customerId) {
       state.stripeCustomers.set(userId, customerId);
       const ent = state.entitlements.get(userId);

@@ -96,7 +96,7 @@ export function describeRepoContract(getRepos: () => Repos): void {
   });
 
   describe("round trips", () => {
-    it("users: create, lookup by id/email, stripe customer mapping", async () => {
+    it("users: create, lookup by id/email, stripe customer mapping, creator flag", async () => {
       const repos = getRepos();
       const u = await createUser(repos, "round@example.com");
       expect(await repos.users.getById(u.id)).toEqual(u);
@@ -106,6 +106,14 @@ export function describeRepoContract(getRepos: () => Repos): void {
       await repos.users.setStripeCustomerId(u.id, "cus_123");
       expect((await repos.users.findByStripeCustomerId("cus_123"))?.id).toBe(u.id);
       expect(await repos.users.findByStripeCustomerId("cus_nope")).toBeNull();
+
+      expect(u.isCreator).toBe(false);
+      await repos.users.setCreator(u.id, true);
+      expect((await repos.users.getById(u.id))?.isCreator).toBe(true);
+      await repos.users.setCreator(u.id, false);
+      expect((await repos.users.getById(u.id))?.isCreator).toBe(false);
+      // Unknown ids are a no-op, not an error.
+      await repos.users.setCreator("user_nobody", true);
     });
 
     it("entitlements: trial starts once, upsert is idempotent", async () => {

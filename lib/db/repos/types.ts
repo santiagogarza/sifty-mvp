@@ -134,6 +134,11 @@ export interface UserRepo {
   create(input: UserCreateInput): Promise<UserProfile>;
   getById(id: string): Promise<UserProfile | null>;
   getByEmail(email: string): Promise<UserProfile | null>;
+  /**
+   * Grant or withdraw the creator flag. Only `lib/auth` calls this, and only
+   * once the address has been verified; see `promoteVerifiedCreator`.
+   */
+  setCreator(userId: string, isCreator: boolean): Promise<void>;
   setStripeCustomerId(userId: string, customerId: string): Promise<void>;
   findByStripeCustomerId(customerId: string): Promise<UserProfile | null>;
   /**

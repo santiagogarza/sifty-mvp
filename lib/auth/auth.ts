@@ -1,14 +1,11 @@
 import { getDb } from "@/lib/db/client";
 import { type Repos, getPersistenceMode, getRepos } from "@/lib/db/repos";
 import * as schema from "@/lib/db/schema";
-import {
-  isDemoSeedEnabled,
-  seedDefaultLabels,
-  seedDemoWorkspaceIfEmpty,
-} from "@/lib/demo/seed-demo";
+import { isDemoSeedEnabled, seedDemoWorkspaceIfEmpty } from "@/lib/demo/seed-demo";
 import { sendTemplate } from "@/lib/email/templates";
-import { TRIAL_DAYS, creatorSnapshot } from "@/lib/entitlements/entitlements";
+import { TRIAL_DAYS, creatorSnapshot, withResolvedTier } from "@/lib/entitlements/entitlements";
 import { reportError } from "@/lib/observability/report-error";
+import { seedStarterWorkspaceIfEmpty } from "@/lib/onboarding/seed";
 import { id as makeId } from "@/lib/utils/ids";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -106,6 +103,11 @@ function createAuth(repos: Repos) {
           clientId: process.env.GOOGLE_CLIENT_ID!,
           clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
           prompt: "select_account" as const,
+          // Google can report `email_verified: false` (e.g. some Workspace
+          // tenants). Without this, Better Auth would still open a session
+          // for the unproven address; with it the account is created
+          // unverified and the user gets the normal verification email.
+          requireEmailVerification: true,
         },
       }
     : {};
@@ -204,12 +206,23 @@ function createAuth(repos: Repos) {
             data: {
               ...user,
               name: user.name?.trim() || user.email.split("@")[0]!,
-              isCreator: isCreatorEmail(user.email),
+              isCreator: isVerifiedCreator(user),
             },
           }),
           after: async (user, ctx) => {
             await onUserCreated(repos, user);
             if (ctx && !user.emailVerified) setSignupBinding(ctx, user.id);
+          },
+        },
+        update: {
+          // Every path that proves the mailbox ends in an `emailVerified`
+          // update (verify-email link, magic link on an unverified account,
+          // OAuth linking a verified address). The creator tier is granted
+          // here and nowhere earlier.
+          after: async (user) => {
+            const u = user as AuthUser;
+            if (u.isCreator === true || !isVerifiedCreator(u)) return;
+            await promoteVerifiedCreator(repos, u);
           },
         },
       },
@@ -261,12 +274,23 @@ type AuthUser = {
 } & Record<string, unknown>;
 
 /**
+ * The creator tier requires both the address and proof of the mailbox.
+ * Matching `CREATOR_EMAIL` alone is not enough: anyone can type that
+ * address into the sign-up form, and an OAuth provider can assert it
+ * unverified. Until `emailVerified` is true the account is an ordinary
+ * trial account, and it is promoted by the `user.update.after` hook.
+ */
+function isVerifiedCreator(user: Pick<AuthUser, "email" | "emailVerified">): boolean {
+  return user.emailVerified === true && isCreatorEmail(user.email);
+}
+
+/**
  * Runs once per new account, whatever the sign-up method. Mirrors the row
  * into the repos when they are not the same store as Better Auth's, grants
  * the creator or trial entitlement, and seeds the workspace.
  */
 async function onUserCreated(repos: Repos, user: AuthUser): Promise<void> {
-  const isCreator = user.isCreator === true || isCreatorEmail(user.email);
+  const isCreator = isVerifiedCreator(user);
   const existing = await repos.users.getById(user.id);
   if (!existing) {
     await repos.users.create({
@@ -286,12 +310,26 @@ async function onUserCreated(repos: Repos, user: AuthUser): Promise<void> {
   if (isDemoSeedEnabled()) {
     await seedDemoWorkspaceIfEmpty(repos, user.id);
   } else {
-    await seedDefaultLabels(repos, user.id);
+    await seedStarterWorkspaceIfEmpty(repos, user.id);
   }
 
   // OAuth sign-ups arrive verified and never pass through
   // `afterEmailVerification`, so welcome them here.
   if (user.emailVerified) await sendWelcome(user);
+}
+
+/**
+ * First verification of the creator address: flag the account in both
+ * stores and replace the trial with the creator entitlement, keeping any
+ * Stripe facts already recorded. Idempotent; the Better Auth write re-enters
+ * the `user.update.after` hook, which sees `isCreator` set and returns.
+ */
+async function promoteVerifiedCreator(repos: Repos, user: AuthUser): Promise<void> {
+  const ctx = await getAuth().$context;
+  await ctx.internalAdapter.updateUser(user.id, { isCreator: true });
+  await repos.users.setCreator(user.id, true);
+  const existing = await repos.entitlements.get(user.id);
+  await repos.entitlements.upsert(user.id, withResolvedTier(existing ?? creatorSnapshot(), true));
 }
 
 function setSignupBinding(

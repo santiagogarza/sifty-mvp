@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/auth/session";
 import { StripeNotConfiguredError, getPriceIds, getStripe } from "@/lib/billing/stripe";
 import { getRepos } from "@/lib/db/repos";
-import { TRIAL_DAYS, trialSnapshot } from "@/lib/entitlements/entitlements";
+import { emptySnapshot } from "@/lib/entitlements/entitlements";
 import { enforceRateLimit } from "@/lib/ratelimit/guard";
 import { STRIPE_IP_POLICY, STRIPE_USER_POLICY } from "@/lib/ratelimit/policies";
 import { NextResponse } from "next/server";
@@ -74,9 +74,11 @@ export async function POST(req: Request) {
       await repos.users.setStripeCustomerId(session.user.id, customerId);
       // Also pin it onto the entitlement snapshot so lookups during the
       // webhook find this user even before we receive the first event.
+      // Starting a checkout grants nothing: an account with no row yet
+      // (pre-entitlements sign-up) stays `free` until Stripe says otherwise.
       const pinned = customerId;
       await repos.entitlements.update(session.user.id, (current) => ({
-        ...(current ?? trialSnapshot(TRIAL_DAYS)),
+        ...(current ?? emptySnapshot()),
         stripeCustomerId: pinned,
       }));
     }

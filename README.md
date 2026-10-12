@@ -239,6 +239,57 @@ Rules that hold at every step:
 - With `SIFTY_AI_OFFLINE=1` (or `?offline=1` off production) every stage
   uses the deterministic heuristic through the same steps.
 
+## Background jobs (Vercel Workflow)
+
+Durable, multi-step work runs on [Vercel Workflow](https://vercel.com/docs/workflows)
+(`workflow` v5, on Vercel Queues). Workflow and step functions live in
+`lib/workflows/`; routes enqueue through `startWorkflow()` in
+`lib/workflows/dispatch.ts`, the single seam tests swap out.
+
+How it is wired:
+
+- `next.config.ts` is wrapped with `withWorkflow()`, which compiles the
+  `"use workflow"` / `"use step"` directives and generates the queue-triggered
+  flow route under `app/.well-known/workflow/` at build time (gitignored).
+- **On Vercel** the managed "Vercel World" is selected from
+  `VERCEL_DEPLOYMENT_ID`: storage, queues, and OIDC auth are provisioned by
+  the platform, runs are pinned to the deployment that started them, and
+  every run shows up under the project's **Workflows** tab. Two project
+  settings must stay on: *Enable access to System Environment Variables*
+  and Fluid Compute (both default on for new projects). Workflow is
+  available on the Hobby plan with an included monthly allotment of events.
+- **Locally** (`pnpm dev`, `pnpm start`, Playwright) the bundled Local World
+  runs inside the Next.js process and stores runs as JSON under
+  `.next/workflow-data/`. No extra service, no env var. `pnpm dev` uses
+  webpack: Turbopack on Next 15.1 cannot bundle the Workflow runtime
+  (`assert/strict` resolution in `@vercel/queue`), and `pnpm dev:turbo`
+  stays available for UI-only work that never enqueues.
+- `SIFTY_AI_OFFLINE=1` keeps every step deterministic (same heuristic as the
+  synchronous triage), so the full pipeline runs in CI and demos without a
+  provider key.
+
+Operating it:
+
+```bash
+pnpm workflow:web               # local dashboard: runs, steps, inputs/outputs
+pnpm workflow:runs              # list local runs in the terminal
+npx workflow inspect runs --backend vercel --project sifty-app --team santiagogarzas-projects
+```
+
+Smoke test a deployment as the creator: `POST /api/admin/workflow-ping`
+(button at `/admin/costs`) starts a one-step workflow and waits for it.
+`completed` means the queue trigger, flow route, and storage all work.
+
+Concurrency: Workflow has no built-in per-user concurrency key, so
+`lib/workflows/user-lock.ts` turns hook tokens into slots: a run claims one
+of N `scope:userId:slot` tokens before its first step and holds it until the
+run ends; when all slots are busy it suspends on the owners' results.
+
+Cost accounting: every step writes an `ai_runs` row with `stage`,
+`prompt_version`, `sift_id`, and `workflow_run_id`. Caps count sifts, not
+steps (`sift_id IS NULL OR stage = 'sift'`). The creator-only `/admin/costs`
+page rolls the table up by day, stage, model, and account.
+
 ## Configuration
 
 Every environment variable lives in `.env.example` with descriptions.

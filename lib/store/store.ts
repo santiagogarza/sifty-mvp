@@ -83,10 +83,13 @@ interface SiftyState {
   /** Settings → AI model. A preference id from `MODEL_PREFERENCES`, never a raw model id. */
   modelPreference: ModelPreference;
   viewMode: TaskViewMode;
+  /** First-run welcome card closed on this device. */
+  welcomeDismissed: boolean;
 
   setHydrated: (v: boolean) => void;
   setModelPreference: (preference: ModelPreference) => void;
   setViewMode: (mode: TaskViewMode) => void;
+  dismissWelcome: () => void;
 
   createTask: (input: { sourceText: string; sourceContext?: string | null }) => Task;
   updateTask: (
@@ -197,10 +200,12 @@ export const useStore = create<SiftyState>()(
         memories: [],
         modelPreference: DEFAULT_MODEL_PREFERENCE,
         viewMode: "list",
+        welcomeDismissed: false,
 
         setHydrated: (v) => set({ hydrated: v }),
         setModelPreference: (preference) => set({ modelPreference: preference }),
         setViewMode: (mode) => set({ viewMode: mode }),
+        dismissWelcome: () => set({ welcomeDismissed: true }),
 
         createTask: ({ sourceText, sourceContext }) => {
           const now = new Date().toISOString();
@@ -543,6 +548,7 @@ export const useStore = create<SiftyState>()(
         memories: s.memories,
         modelPreference: s.modelPreference,
         viewMode: s.viewMode,
+        welcomeDismissed: s.welcomeDismissed,
       }),
       migrate: (persisted, version) => {
         const state = persisted as Partial<SiftyState>;

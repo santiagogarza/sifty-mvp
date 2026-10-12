@@ -68,22 +68,28 @@ describe("SIFTY_DEMO_SEED", () => {
     expect(await repos.tasks.list(userId)).toHaveLength(1);
   });
 
-  it("the flag is ignored on Vercel production", async () => {
+  it("the flag is ignored on Vercel production: only the starter examples are seeded", async () => {
     vi.stubEnv("VERCEL_ENV", "production");
     const repos = getTestRepos();
     const userId = await signUp("prod@example.com");
 
-    expect(await repos.tasks.list(userId)).toHaveLength(0);
+    const tasks = await repos.tasks.list(userId);
+    expect(tasks).toHaveLength(3);
+    expect(tasks.some((t) => t.title === "Dentist")).toBe(true);
     expect(await repos.memories.list(userId)).toHaveLength(0);
   });
 
-  it("without the flag, sign-up seeds only the default labels", async () => {
+  it("without the flag, sign-up seeds the labels and the three starter examples", async () => {
     vi.stubEnv("SIFTY_DEMO_SEED", "");
     const repos = getTestRepos();
     const userId = await signUp("plain@example.com");
 
-    expect(await repos.tasks.list(userId)).toHaveLength(0);
+    const tasks = await repos.tasks.list(userId);
+    expect(tasks).toHaveLength(3);
     expect(await repos.memories.list(userId)).toHaveLength(0);
-    expect((await repos.labels.list(userId)).length).toBeGreaterThanOrEqual(6);
+    const labels = await repos.labels.list(userId);
+    expect(labels.length).toBeGreaterThanOrEqual(7);
+    const example = labels.find((l) => l.name === "Example")!;
+    expect(tasks.every((t) => t.labelIds.includes(example.id))).toBe(true);
   });
 });

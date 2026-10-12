@@ -91,6 +91,13 @@ export function createPostgresRepos(): Repos {
         createdAt: row.createdAt.toISOString(),
       };
     },
+    async setCreator(userId, isCreator) {
+      const db = getDb();
+      await db
+        .update(schema.users)
+        .set({ isCreator, updatedAt: new Date() })
+        .where(eq(schema.users.id, userId));
+    },
     async setStripeCustomerId(userId, customerId) {
       const db = getDb();
       await db
