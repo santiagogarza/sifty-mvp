@@ -269,8 +269,10 @@ AI routes answer `402` with `code: "free_cap"` (upgrade path) or
   never a wrong charge. A user Stripe already bills or is
   chasing (`past_due`, `unpaid`, `incomplete`) gets 409 and the portal.
 - Portal: `/api/stripe/portal` (POST) opens the Stripe Customer Portal for
-  anyone with a Stripe customer. Configure the portal once in the
-  dashboard (update payment method, cancel, switch monthly/yearly, invoices).
+  anyone with a Stripe customer — "Manage subscription" while one is open,
+  "Billing history & invoices" after cancellation. Configure the portal
+  once in the dashboard (update payment method, cancel, switch
+  monthly/yearly, invoices).
 - Webhook: `/api/stripe/webhook` verifies the `Stripe-Signature` HMAC,
   deduplicates by `event.id` in the `stripe_events` table, then runs the
   pure reducer in `lib/billing/events.ts` against the user's entitlement

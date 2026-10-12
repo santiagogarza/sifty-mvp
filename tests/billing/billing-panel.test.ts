@@ -141,6 +141,14 @@ describe("BillingPanel", () => {
     });
     expect(screen.getByRole("button", { name: /Upgrade — \$10\/month/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Manage subscription/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Billing history & invoices/ })).toBeInTheDocument();
+  });
+
+  it("no Stripe customer at all: no portal entry", () => {
+    renderPanel({ entitlement: ent("free"), stripe: noStripe });
+    expect(
+      screen.queryByRole("button", { name: /Billing history|Manage subscription/ }),
+    ).toBeNull();
   });
 
   it("creator: no billing section at all", () => {

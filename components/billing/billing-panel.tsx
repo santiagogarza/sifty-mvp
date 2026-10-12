@@ -166,9 +166,9 @@ export function BillingPanel({
               Billing isn't set up yet, so upgrades are closed for now. Invite codes still work.
             </p>
           ) : null}
-          {stripe.customer && (stripe.open || isPro) ? (
+          {stripe.customer ? (
             <Button variant="ghost" disabled={pending} onClick={openPortal} className="mt-3">
-              Manage subscription
+              {stripe.open || isPro ? "Manage subscription" : "Billing history & invoices"}
             </Button>
           ) : null}
           {error ? (
