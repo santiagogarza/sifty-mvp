@@ -319,17 +319,35 @@ export async function deleteAuthIdentity(userId: string, email: string): Promise
   await ctx.internalAdapter.deleteUser(userId);
   await ctx.internalAdapter.deleteUserSessions(userId);
   // Verification tokens are not keyed by user id: a reset token stores the
-  // user id as its value, a magic link stores the email inside a JSON
-  // value. Neither would cascade, and either could act on whoever
-  // registers the address next.
+  // user id as its value, a magic link stores the address (as typed) inside
+  // a JSON value. Neither would cascade, and either could act on whoever
+  // registers the address next. Magic links are matched by parsing the
+  // JSON, not by LIKE: the address is user input and `_`/`%` are wildcards.
   await ctx.adapter.deleteMany({
     model: "verification",
     where: [{ field: "value", value: userId, operator: "eq" }],
   });
-  await ctx.adapter.deleteMany({
+  const live = await ctx.adapter.findMany<{ id: string; value: string }>({
     model: "verification",
-    where: [{ field: "value", value: `"${email.toLowerCase()}"`, operator: "contains" }],
+    where: [{ field: "expiresAt", value: new Date(), operator: "gt" }],
   });
+  const wanted = email.toLowerCase();
+  for (const row of live) {
+    if (magicLinkEmail(row.value) !== wanted) continue;
+    await ctx.adapter.delete({ model: "verification", where: [{ field: "id", value: row.id }] });
+  }
+}
+
+function magicLinkEmail(value: string): string | null {
+  if (!value.startsWith("{")) return null;
+  try {
+    const parsed = JSON.parse(value) as { type?: unknown; email?: unknown };
+    return parsed.type === "magic-link" && typeof parsed.email === "string"
+      ? parsed.email.toLowerCase()
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The session cookies Better Auth sets, so a route can expire them on its own response. */

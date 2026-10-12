@@ -221,8 +221,18 @@ describe("DELETE /api/account", () => {
     await auth.api.requestPasswordReset({
       body: { email: "tokens@example.com", redirectTo: "/reset" },
     });
+    // As typed, with different case — Better Auth stores it verbatim.
     await auth.api.signInMagicLink({
-      body: { email: "tokens@example.com" },
+      body: { email: "Tokens@Example.com" },
+      headers: new Headers({ origin: "http://localhost:3000" }),
+    });
+    // Another tenant's pending magic link must survive, even though
+    // "tokens_example.com" would LIKE-match "tokens@example.com".
+    const bystander = await createUserWithCookie(repos, {
+      email: "tokens_example.com@example.org",
+    });
+    await auth.api.signInMagicLink({
+      body: { email: bystander.user.email },
       headers: new Headers({ origin: "http://localhost:3000" }),
     });
     const ctx = await auth.$context;
@@ -233,7 +243,10 @@ describe("DELETE /api/account", () => {
     expect(res.status).toBe(200);
     const after = await ctx.adapter.findMany<{ value: string }>({ model: "verification" });
     expect(after.filter((v) => v.value === a.user.id)).toHaveLength(0);
-    expect(after.filter((v) => v.value.includes("tokens@example.com"))).toHaveLength(0);
+    expect(after.filter((v) => v.value.toLowerCase().includes("tokens@example.com"))).toHaveLength(
+      0,
+    );
+    expect(after.filter((v) => v.value.includes(bystander.user.email))).toHaveLength(1);
   });
 
   it("is a no-op for Stripe when keys are not configured", async () => {
