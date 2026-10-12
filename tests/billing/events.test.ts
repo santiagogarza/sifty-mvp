@@ -329,6 +329,35 @@ describe("applyStripeEvent — dunning grace period", () => {
     expect(next.tier).toBe("free");
   });
 
+  it("a stale subscription.updated for a cancelled subscription changes nothing", () => {
+    const inGrace = applyStripeEvent(paying(), failed(), NOW);
+    const cancelled = applyStripeEvent(
+      inGrace,
+      subEvent("customer.subscription.deleted", "canceled"),
+    );
+    for (const status of ["past_due", "unpaid", "active", "trialing"]) {
+      const late = applyStripeEvent(cancelled, {
+        ...subEvent("customer.subscription.updated", status),
+        created: unix(new Date(NOW.getTime() + DAY)),
+      });
+      expect(late).toBe(cancelled);
+    }
+    // A genuinely new subscription (different id) is honoured.
+    const fresh = applyStripeEvent(cancelled, {
+      type: "customer.subscription.created",
+      data: {
+        object: {
+          id: "sub_new",
+          status: "active",
+          current_period_end: Math.floor((NOW.getTime() + 30 * DAY) / 1000),
+          customer: "cus_X",
+        },
+      },
+    });
+    expect(fresh.tier).toBe("pro");
+    expect(fresh.stripeSubscriptionId).toBe("sub_new");
+  });
+
   it("payment_failed on an incomplete, paused, or expired subscription changes nothing", () => {
     for (const status of ["incomplete", "incomplete_expired", "paused"]) {
       const before = applyStripeEvent(
