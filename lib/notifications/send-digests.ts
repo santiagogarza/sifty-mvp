@@ -32,8 +32,11 @@ import { unsubscribeUrl } from "./unsubscribe";
  * later tick in the window from recomputing it.
  *
  * Time budget: the walk stops once `timeBudgetMs` is spent and reports
- * `truncated`. Users not reached are still inside their late window on
- * the next tick, so nothing is lost — it just arrives an hour later.
+ * `truncated` (and an error, so it is visible). On the hourly cron the
+ * users not reached are still inside their late window on the next tick
+ * and get their digest an hour late. On the daily Hobby cron there is no
+ * next tick within the window: those users miss that day's digest, which
+ * is why truncation is reported rather than silently tolerated.
  */
 
 export interface DigestRunResult {

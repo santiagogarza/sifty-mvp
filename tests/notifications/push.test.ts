@@ -12,6 +12,7 @@ import {
 } from "@/lib/notifications/push";
 import { setErrorSink } from "@/lib/observability/report-error";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import webpush from "web-push";
 import { getTestRepos } from "../setup";
 
 const payload = { title: "Hi", body: "there", url: "https://sifty.example/today", tag: "t" };
@@ -175,6 +176,46 @@ describe("sendPushToUser", () => {
       "https://push.example/ok",
     ]);
     expect(reported).toHaveLength(1);
+  });
+
+  it("hands web-push the VAPID details, a one-hour TTL, and a request timeout", async () => {
+    const user = await userWithSubscriptions(["https://push.example/real"]);
+    const spy = vi.spyOn(webpush, "sendNotification").mockResolvedValue({
+      statusCode: 201,
+      body: "",
+      headers: {},
+    });
+    setPushTransportForTesting(null);
+    expect(await sendPushToUser(getTestRepos(), user.id, payload)).toEqual({
+      status: "sent",
+      delivered: 1,
+      removed: 0,
+      failed: 0,
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [subscription, body, options] = spy.mock.calls[0]!;
+    expect(subscription).toEqual({
+      endpoint: "https://push.example/real",
+      keys: { p256dh: "p", auth: "a" },
+    });
+    expect(JSON.parse(body as string)).toEqual(payload);
+    expect(options).toMatchObject({
+      TTL: 3600,
+      urgency: "normal",
+      timeout: 10_000,
+      vapidDetails: { subject: "mailto:santi@example.com", publicKey: "pub", privateKey: "priv" },
+    });
+
+    // 410 from the service maps to "gone" and removes the device.
+    spy.mockRejectedValueOnce(Object.assign(new Error("gone"), { statusCode: 410 }));
+    expect(await sendPushToUser(getTestRepos(), user.id, payload)).toEqual({
+      status: "sent",
+      delivered: 0,
+      removed: 1,
+      failed: 0,
+    });
+    expect(await getTestRepos().pushSubscriptions.listForUser(user.id)).toEqual([]);
+    spy.mockRestore();
   });
 
   it("reports no_subscriptions for a user without devices", async () => {
