@@ -1,14 +1,13 @@
+import { captureToSentry } from "./sentry";
+
 /**
  * Error reporting seam.
  *
- * Stage 4 keeps this minimal — every server-side `catch` should call
- * `reportError(err, context)` instead of (or in addition to) `console.error`.
- * The default sink writes to stderr with a stable JSON shape; pointing it
- * at Sentry / Vercel Observability later is a one-file change.
- *
- * The shape (`name`, `message`, `stack`, `tags`) is what Sentry's `withScope`
- * + `captureException` would consume; we keep it stable so the future
- * adapter is just routing.
+ * Every server-side `catch` calls `reportError(err, context)` instead of
+ * (or in addition to) `console.error`. The default sink writes one JSON
+ * line to stderr (what Vercel Logs shows) and forwards to Sentry when
+ * `SENTRY_DSN` is set (`lib/observability/sentry.ts`). Tests swap the sink
+ * with `setErrorSink()`.
  */
 
 export interface ErrorContext {
@@ -54,4 +53,5 @@ function defaultSink(err: unknown, ctx: ErrorContext): void {
     ts: new Date().toISOString(),
   });
   console.error(line);
+  captureToSentry(err, ctx);
 }

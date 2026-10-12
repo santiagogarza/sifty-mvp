@@ -1,3 +1,5 @@
+import { Analytics } from "@/components/observability/analytics";
+import { SentryClient } from "@/components/observability/sentry-client";
 import { SITE_DESCRIPTION, getSiteUrl } from "@/lib/site/config";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
@@ -55,7 +57,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body className="min-h-dvh">{children}</body>
+      <body className="min-h-dvh">
+        {children}
+        <SentryClient />
+        <Analytics />
+      </body>
     </html>
   );
 }
