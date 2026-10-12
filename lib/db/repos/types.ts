@@ -253,10 +253,19 @@ export type DecisionResolution = Exclude<DecisionStatus, "open">;
 export interface DecisionRepo {
   create(userId: string, input: DecisionCreateInput): Promise<Decision>;
   get(userId: string, id: string): Promise<Decision | null>;
-  /** Open decisions, newest first. Every read is bounded; callers pick the bound. */
+  /**
+   * Open decisions still inside their deadline, newest first. What the
+   * inbox and the badge show; a row past `expiresAt` is hidden even if
+   * the run that would close it is gone. Every read is bounded.
+   */
   listOpen(userId: string, opts: { limit: number }): Promise<Decision[]>;
+  /** Same filter as `listOpen`. */
   countOpen(userId: string): Promise<number>;
-  /** Open decisions attached to one task, newest first, at most `limit`. */
+  /**
+   * Every `open` decision attached to one task, newest first, at most
+   * `limit` — deadline included, so a re-sift or a delete can close a row
+   * whose run already died.
+   */
   listOpenForTask(userId: string, taskId: string, opts: { limit: number }): Promise<Decision[]>;
   /**
    * Compare-and-set out of `open`: returns the resolved row, or null when

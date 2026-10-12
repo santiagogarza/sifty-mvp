@@ -482,18 +482,21 @@ export function describeRepoContract(getRepos: () => Repos): void {
         expiresAt: null,
       });
       await new Promise((r) => setTimeout(r, 5));
+      // A deadline a week out: relative, so this case never turns into a
+      // time bomb once the calendar passes a hardcoded date.
+      const deadline = new Date(Date.now() + 7 * 86_400_000).toISOString();
       const newer = await repos.decisions.create(a.id, {
         id: "dec_fixed",
         kind: "clarifying_question",
         taskId: task.id,
         payload: question("Federal or state?", [], "sift_1"),
         resumeToken: "decision:dec_fixed",
-        expiresAt: "2026-10-19T00:00:00.000Z",
+        expiresAt: deadline,
       });
       expect(newer.id).toBe("dec_fixed");
       expect(newer.status).toBe("open");
       expect(newer.resumeToken).toBe("decision:dec_fixed");
-      expect(newer.expiresAt).toBe("2026-10-19T00:00:00.000Z");
+      expect(newer.expiresAt).toBe(deadline);
 
       // Newest first; counts match.
       expect((await repos.decisions.listOpen(a.id, { limit: 10 })).map((d) => d.id)).toEqual([
@@ -587,9 +590,12 @@ export function describeRepoContract(getRepos: () => Repos): void {
         live.id,
       ]);
       expect(await repos.decisions.countOpen(u.id)).toBe(1);
+      // The per-task read still sees it, so a re-sift or a delete can close it.
       expect(
-        (await repos.decisions.listOpenForTask(u.id, task.id, { limit: 10 })).map((d) => d.id),
-      ).toEqual([live.id]);
+        (await repos.decisions.listOpenForTask(u.id, task.id, { limit: 10 }))
+          .map((d) => d.id)
+          .sort(),
+      ).toEqual([live.id, stale.id].sort());
       // The row itself is untouched: the asking run (if alive) still closes it.
       expect((await repos.decisions.get(u.id, stale.id))?.status).toBe("open");
     });

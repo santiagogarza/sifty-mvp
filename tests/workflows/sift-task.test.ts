@@ -273,6 +273,34 @@ describe("siftTask with a clarifying question (offline stages)", () => {
     expect((await repos.decisions.get(user.id, decision!.id))?.status).toBe("answered");
   });
 
+  it("when the deadline fires after a dismiss won the CAS, the run ends as dismissed", async () => {
+    const { siftTask } = await import("@/lib/workflows/sift-task");
+    const { repos, user, task, input } = await seed({ offline: true });
+    const run = siftTask(input);
+    await until(
+      () => repos.decisions.countOpen(user.id),
+      (n) => n === 1,
+      "the decision",
+    );
+    const [decision] = await repos.decisions.listOpenForTask(user.id, task.id, { limit: 5 });
+    await repos.decisions.resolve(user.id, decision!.id, { status: "dismissed", answer: null });
+    await until(
+      async () => sleepResolve !== null,
+      (v) => v,
+      "the deadline timer",
+    );
+    sleepResolve!();
+    await expect(run).resolves.toEqual({ outcome: "completed", decision: "dismissed" });
+    expect((await repos.tasks.get(user.id, task.id))?.aiAttempts).toBe(1);
+    expect((await repos.decisions.get(user.id, decision!.id))?.status).toBe("dismissed");
+  });
+
+  it("expireDecision reports expired for a row that is gone", async () => {
+    const { expireDecision } = await import("@/lib/ai/sift/execute-stage");
+    const { input } = await seed({ offline: true });
+    await expect(expireDecision(input, "dec_missing")).resolves.toEqual({ status: "expired" });
+  });
+
   it("a confident capture asks nothing and completes in one pass", async () => {
     const { siftTask } = await import("@/lib/workflows/sift-task");
     const { repos, user, input } = await seed({

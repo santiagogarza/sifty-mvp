@@ -537,7 +537,7 @@ export function createMemoryRepos(): MemoryReposHandle {
     },
     async listOpenForTask(userId, taskId, opts) {
       return Array.from(state.decisions.values())
-        .filter((d) => d.userId === userId && isLive(d) && d.taskId === taskId)
+        .filter((d) => d.userId === userId && d.status === "open" && d.taskId === taskId)
         .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
         .slice(0, opts.limit)
         .map(stripUserId);

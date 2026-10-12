@@ -646,7 +646,7 @@ export function createPostgresRepos(): Repos {
           and(
             eq(schema.decisions.userId, userId),
             eq(schema.decisions.taskId, taskId),
-            liveDecision(new Date()),
+            eq(schema.decisions.status, "open"),
           ),
         )
         .orderBy(desc(schema.decisions.createdAt))
