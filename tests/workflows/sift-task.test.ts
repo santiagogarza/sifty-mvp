@@ -130,7 +130,7 @@ describe("siftTask with a clarifying question (offline stages)", () => {
 
     const run = siftTask(input);
     const decision = await until(
-      () => repos.decisions.listOpenForTask(user.id, task.id),
+      () => repos.decisions.listOpenForTask(user.id, task.id, { limit: 5 }),
       (list) => list.length === 1,
       "the decision",
     ).then((list) => list[0]!);
@@ -183,7 +183,7 @@ describe("siftTask with a clarifying question (offline stages)", () => {
       (n) => n === 1,
       "the decision",
     );
-    const [decision] = await repos.decisions.listOpenForTask(user.id, task.id);
+    const [decision] = await repos.decisions.listOpenForTask(user.id, task.id, { limit: 5 });
     // What the answer route does before waking the run.
     await repos.decisions.resolve(user.id, decision!.id, {
       status: "answered",
@@ -236,7 +236,7 @@ describe("siftTask with a clarifying question (offline stages)", () => {
     sleepResolve!();
 
     await expect(run).resolves.toEqual({ outcome: "completed", decision: "expired" });
-    const [decision] = await repos.decisions.listOpen(user.id);
+    const [decision] = await repos.decisions.listOpen(user.id, { limit: 5 });
     expect(decision).toBeUndefined();
     expect((await repos.tasks.get(user.id, task.id))?.aiAttempts).toBe(1);
   });
@@ -327,7 +327,7 @@ describe("siftTask with the mock model", () => {
       (n) => n === 1,
       "the decision",
     );
-    const [decision] = await repos.decisions.listOpenForTask(user.id, task.id);
+    const [decision] = await repos.decisions.listOpenForTask(user.id, task.id, { limit: 5 });
     expect(decision!.payload).toMatchObject({
       question: "Personal or company taxes?",
       options: ["Personal", "Company"],

@@ -612,14 +612,14 @@ export function createPostgresRepos(): Repos {
         .where(and(eq(schema.decisions.id, id), eq(schema.decisions.userId, userId)));
       return row ? rowToDecision(row) : null;
     },
-    async listOpen(userId, opts = {}) {
+    async listOpen(userId, opts) {
       const db = getDb();
-      const query = db
+      const rows = await db
         .select()
         .from(schema.decisions)
         .where(and(eq(schema.decisions.userId, userId), eq(schema.decisions.status, "open")))
-        .orderBy(desc(schema.decisions.createdAt), desc(schema.decisions.id));
-      const rows = opts.limit === undefined ? await query : await query.limit(opts.limit);
+        .orderBy(desc(schema.decisions.createdAt), desc(schema.decisions.id))
+        .limit(opts.limit);
       return rows.map(rowToDecision);
     },
     async countOpen(userId) {
@@ -630,7 +630,7 @@ export function createPostgresRepos(): Repos {
         .where(and(eq(schema.decisions.userId, userId), eq(schema.decisions.status, "open")));
       return row?.value ?? 0;
     },
-    async listOpenForTask(userId, taskId) {
+    async listOpenForTask(userId, taskId, opts) {
       const db = getDb();
       const rows = await db
         .select()
@@ -642,7 +642,8 @@ export function createPostgresRepos(): Repos {
             eq(schema.decisions.status, "open"),
           ),
         )
-        .orderBy(desc(schema.decisions.createdAt));
+        .orderBy(desc(schema.decisions.createdAt))
+        .limit(opts.limit);
       return rows.map(rowToDecision);
     },
     async resolve(userId, id, input) {

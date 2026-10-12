@@ -167,11 +167,44 @@ describe("POST /api/decisions/:id/answer", () => {
       status: "answered",
       answer: { text: "Pick an accountant", option: "A decision", via: "app" },
     });
-    // The run folds the answer in; the route did not start a second sift.
+    // The answer is on the task before the run is woken, and the route did
+    // not start a second sift; the run's own fold step is idempotent on it.
     expect(client.start).not.toHaveBeenCalled();
     const stored = await repos.tasks.get(userId, task.id);
     expect(stored?.siftId).toBe("sift_q");
-    expect(stored?.sourceContext).toBeNull();
+    expect(stored?.sourceContext).toBe("Answer: A decision — Pick an accountant");
+    const { foldAnswer } = await import("@/lib/ai/sift/execute-stage");
+    await foldAnswer(
+      {
+        userId,
+        taskId: task.id,
+        siftId: "sift_q",
+        accountingRunId: "run_x",
+        modelPreference: null,
+        offline: true,
+      },
+      { text: "Pick an accountant", option: "A decision", via: "app" },
+    );
+    expect((await repos.tasks.get(userId, task.id))?.sourceContext).toBe(
+      "Answer: A decision — Pick an accountant",
+    );
+  });
+
+  it("a re-sift that claimed the task after the question was shown still gets the answer", async () => {
+    const { repos, task, decision } = await seedQuestion();
+    // Between the user reading the question and answering it, a re-sift
+    // took the task over; the parked run will be superseded when woken.
+    await repos.tasks.update(userId, task.id, { siftId: "sift_newer", aiStatus: "running" });
+    const res = await answer(decision.id, { option: "Something sent" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.mode).toBe("resifted");
+    expect(client.start).toHaveBeenCalledTimes(1);
+    const stored = await repos.tasks.get(userId, task.id);
+    expect(stored?.sourceContext).toBe("Answer: Something sent");
+    expect(stored?.siftId).not.toBe("sift_newer");
+    expect(stored?.siftId).not.toBe("sift_q");
+    expect((await repos.decisions.get(userId, decision.id))?.status).toBe("answered");
   });
 
   it("409 on a second answer: the first one won", async () => {
@@ -243,7 +276,7 @@ describe("POST /api/decisions/:id/dismiss", () => {
       status: "dismissed",
     });
     expect(client.start).not.toHaveBeenCalled();
-    expect((await repos.decisions.listOpen(userId)).length).toBe(0);
+    expect((await repos.decisions.listOpen(userId, { limit: 10 })).length).toBe(0);
   });
 
   it("leaves the task alone when a newer sift already owns it", async () => {

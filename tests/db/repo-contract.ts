@@ -496,18 +496,20 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect(newer.expiresAt).toBe("2026-10-19T00:00:00.000Z");
 
       // Newest first; counts match.
-      expect((await repos.decisions.listOpen(a.id)).map((d) => d.id)).toEqual([newer.id, older.id]);
+      expect((await repos.decisions.listOpen(a.id, { limit: 10 })).map((d) => d.id)).toEqual([
+        newer.id,
+        older.id,
+      ]);
       expect((await repos.decisions.listOpen(a.id, { limit: 1 })).map((d) => d.id)).toEqual([
         newer.id,
       ]);
       expect(await repos.decisions.countOpen(a.id)).toBe(2);
-      expect((await repos.decisions.listOpenForTask(a.id, task.id)).map((d) => d.id)).toEqual([
-        newer.id,
-        older.id,
-      ]);
+      expect(
+        (await repos.decisions.listOpenForTask(a.id, task.id, { limit: 10 })).map((d) => d.id),
+      ).toEqual([newer.id, older.id]);
 
       // B sees nothing and cannot resolve A's decision.
-      expect(await repos.decisions.listOpen(b.id)).toEqual([]);
+      expect(await repos.decisions.listOpen(b.id, { limit: 10 })).toEqual([]);
       expect(await repos.decisions.countOpen(b.id)).toBe(0);
       expect(await repos.decisions.get(b.id, newer.id)).toBeNull();
       expect(
@@ -549,7 +551,9 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect(resolved.resolvedAt).not.toBeNull();
       if (resolved.status === "answered") expect(resolved.answer).toEqual(answer);
       expect(await repos.decisions.countOpen(a.id)).toBe(1);
-      expect((await repos.decisions.listOpen(a.id)).map((d) => d.id)).toEqual([older.id]);
+      expect((await repos.decisions.listOpen(a.id, { limit: 10 })).map((d) => d.id)).toEqual([
+        older.id,
+      ]);
 
       // Deleting the task takes its decisions with it.
       expect(await repos.tasks.delete(a.id, task.id)).toBe(true);

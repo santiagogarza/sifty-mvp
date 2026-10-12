@@ -253,11 +253,11 @@ export type DecisionResolution = Exclude<DecisionStatus, "open">;
 export interface DecisionRepo {
   create(userId: string, input: DecisionCreateInput): Promise<Decision>;
   get(userId: string, id: string): Promise<Decision | null>;
-  /** Open decisions, newest first. `limit` undefined returns every open one. */
-  listOpen(userId: string, opts?: { limit?: number }): Promise<Decision[]>;
+  /** Open decisions, newest first. Every read is bounded; callers pick the bound. */
+  listOpen(userId: string, opts: { limit: number }): Promise<Decision[]>;
   countOpen(userId: string): Promise<number>;
-  /** Open decisions attached to one task, newest first. */
-  listOpenForTask(userId: string, taskId: string): Promise<Decision[]>;
+  /** Open decisions attached to one task, newest first, at most `limit`. */
+  listOpenForTask(userId: string, taskId: string, opts: { limit: number }): Promise<Decision[]>;
   /**
    * Compare-and-set out of `open`: returns the resolved row, or null when
    * the decision does not exist for this user or was already resolved, so

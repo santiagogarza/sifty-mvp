@@ -514,7 +514,7 @@ export function createMemoryRepos(): MemoryReposHandle {
       if (!d || d.userId !== userId) return null;
       return stripUserId(d);
     },
-    async listOpen(userId, opts = {}) {
+    async listOpen(userId, opts) {
       return Array.from(state.decisions.values())
         .filter((d) => d.userId === userId && d.status === "open")
         .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || (a.id < b.id ? 1 : -1))
@@ -526,10 +526,11 @@ export function createMemoryRepos(): MemoryReposHandle {
       for (const d of state.decisions.values()) if (d.userId === userId && d.status === "open") n++;
       return n;
     },
-    async listOpenForTask(userId, taskId) {
+    async listOpenForTask(userId, taskId, opts) {
       return Array.from(state.decisions.values())
         .filter((d) => d.userId === userId && d.status === "open" && d.taskId === taskId)
         .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+        .slice(0, opts.limit)
         .map(stripUserId);
     },
     async resolve(userId, id, input) {

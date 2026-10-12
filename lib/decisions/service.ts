@@ -18,12 +18,18 @@ import { DECISION_TTL_MS, type DecisionResolutionPayload, decisionHookToken } fr
 export { DECISION_TTL_MS, decisionHookToken };
 export type { DecisionResolutionPayload };
 
+/** Default bound for `listOpen`; the inbox shows at most this many. */
+export const OPEN_DECISIONS_LIMIT = 50;
+/** A task carries at most one open question per sift; this is headroom, not a target. */
+const OPEN_PER_TASK_LIMIT = 10;
+
 /**
- * Open decisions newest first. Stable export consumed by the notifications
+ * Open decisions newest first, at most `limit` (default
+ * `OPEN_DECISIONS_LIMIT`). Stable export consumed by the notifications
  * worker for the "waiting on you" section of digests and pushes.
  */
 export async function listOpen(userId: string, opts: { limit?: number } = {}): Promise<Decision[]> {
-  return getRepos().decisions.listOpen(userId, opts);
+  return getRepos().decisions.listOpen(userId, { limit: opts.limit ?? OPEN_DECISIONS_LIMIT });
 }
 
 export async function openClarifyingQuestion(
@@ -62,23 +68,34 @@ export type ResolveResult =
   | { ok: false; reason: "not_found" | "already_resolved"; decision: Decision | null };
 
 /**
- * Resolve an open decision and wake the run waiting on it. Two concurrent
- * resolutions (two tabs, a link and the app) cannot both succeed: the
- * repository CAS admits one and the other sees `already_resolved`.
+ * Resolve an open decision and, unless `wake` is false, wake the run
+ * waiting on it. Two concurrent resolutions (two tabs, a link and the app)
+ * cannot both succeed: the repository CAS admits one and the other sees
+ * `already_resolved`. Callers that must write something *before* the run
+ * moves (an answer onto the task) pass `wake: false` and call
+ * `wakeDecisionRun` themselves.
  */
 export async function resolveDecision(
   userId: string,
   id: string,
-  input: { status: DecisionResolution; answer: DecisionAnswer | null },
+  input: { status: DecisionResolution; answer: DecisionAnswer | null; wake?: boolean },
   repos: Repos = getRepos(),
 ): Promise<ResolveResult> {
-  const resolved = await repos.decisions.resolve(userId, id, input);
+  const resolved = await repos.decisions.resolve(userId, id, {
+    status: input.status,
+    answer: input.answer,
+  });
   if (!resolved) {
     const current = await repos.decisions.get(userId, id);
     return { ok: false, reason: current ? "already_resolved" : "not_found", decision: current };
   }
-  const resumed = await wakeRun(userId, resolved, payloadFor(resolved));
+  const resumed = input.wake === false ? false : await wakeDecisionRun(userId, resolved);
   return { ok: true, decision: resolved, resumed };
+}
+
+/** Deliver a resolved decision to the run suspended on it; true when one received it. */
+export function wakeDecisionRun(userId: string, decision: Decision): Promise<boolean> {
+  return wakeRun(userId, decision, payloadFor(decision));
 }
 
 function payloadFor(decision: Decision): DecisionResolutionPayload {
@@ -98,7 +115,9 @@ export async function expireOpenDecisionsForTask(
   userId: string,
   taskId: string,
 ): Promise<number> {
-  const open = await repos.decisions.listOpenForTask(userId, taskId);
+  const open = await repos.decisions.listOpenForTask(userId, taskId, {
+    limit: OPEN_PER_TASK_LIMIT,
+  });
   let expired = 0;
   for (const decision of open) {
     const resolved = await repos.decisions.resolve(userId, decision.id, {

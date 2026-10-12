@@ -285,10 +285,16 @@ export async function foldAnswer(input: SiftInput, answer: DecisionAnswer): Prom
   return folded ? "applied" : "superseded";
 }
 
-/** `sourceContext` with the answer appended as an `Answer:` line. */
+/**
+ * `sourceContext` with the answer appended as an `Answer:` line. Idempotent:
+ * the route writes the line before waking the run and the run's fold step
+ * writes it again, so an identical trailing line is not repeated.
+ */
 export function withAnswer(sourceContext: string | null, answer: string): string {
   const line = `Answer: ${answer.trim()}`;
-  const next = sourceContext?.trim() ? `${sourceContext.trim()}\n\n${line}` : line;
+  const existing = sourceContext?.trim() ?? "";
+  if (existing === line || existing.endsWith(`\n${line}`)) return existing;
+  const next = existing ? `${existing}\n\n${line}` : line;
   return next.length > TASK_LIMITS.sourceContext ? next.slice(-TASK_LIMITS.sourceContext) : next;
 }
 
