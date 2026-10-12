@@ -327,24 +327,37 @@ export async function deleteAuthIdentity(userId: string, email: string): Promise
     model: "verification",
     where: [{ field: "value", value: userId, operator: "eq" }],
   });
-  const live = await ctx.adapter.findMany<{ id: string; value: string }>({
-    model: "verification",
-    where: [{ field: "expiresAt", value: new Date(), operator: "gt" }],
-  });
+  // Identifiers are stored hashed (`storeIdentifier: "hashed"`), so the
+  // purpose prefix cannot be filtered on; bound the read by lifetime and
+  // page size instead. Live rows are short-lived tokens (minutes to an
+  // hour), so this stays a small scan.
   const wanted = email.toLowerCase();
-  for (const row of live) {
-    if (magicLinkEmail(row.value) !== wanted) continue;
-    await ctx.adapter.delete({ model: "verification", where: [{ field: "id", value: row.id }] });
+  const pageSize = 500;
+  for (let page = 0; page < MAX_VERIFICATION_PAGES; page++) {
+    const rows = await ctx.adapter.findMany<{ id: string; value: string }>({
+      model: "verification",
+      where: [{ field: "expiresAt", value: new Date(), operator: "gt" }],
+      sortBy: { field: "id", direction: "asc" },
+      limit: pageSize,
+      offset: page * pageSize,
+    });
+    for (const row of rows) {
+      if (tokenEmail(row.value) !== wanted) continue;
+      await ctx.adapter.delete({ model: "verification", where: [{ field: "id", value: row.id }] });
+    }
+    if (rows.length < pageSize) break;
   }
 }
 
-function magicLinkEmail(value: string): string | null {
+/** 500 rows × 20 pages; far beyond the live tokens short TTLs can accumulate. */
+const MAX_VERIFICATION_PAGES = 20;
+
+/** The address inside a JSON verification value, whatever else it carries. */
+function tokenEmail(value: string): string | null {
   if (!value.startsWith("{")) return null;
   try {
-    const parsed = JSON.parse(value) as { type?: unknown; email?: unknown };
-    return parsed.type === "magic-link" && typeof parsed.email === "string"
-      ? parsed.email.toLowerCase()
-      : null;
+    const parsed = JSON.parse(value) as { email?: unknown };
+    return typeof parsed.email === "string" ? parsed.email.toLowerCase() : null;
   } catch {
     return null;
   }
