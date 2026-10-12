@@ -178,6 +178,16 @@ function createAuth(repos: Repos) {
       // any sessions created before the proof are unproven and removed.
       beforeEmailVerification: async (user, request) => {
         if (user.emailVerified) return;
+        // Verification tokens are stateless JWTs keyed by email, so account
+        // deletion cannot revoke them. A link minted before this account
+        // existed belongs to a previous owner of the address; refuse it
+        // before anything below can touch this account's credentials.
+        if (tokenPredatesAccount(request, user.createdAt)) {
+          throw new APIError("UNAUTHORIZED", {
+            message:
+              "This verification link was issued before this account existed. Request a new one.",
+          });
+        }
         if (hasValidSignupBinding(request?.headers, user.id, getAuthSecret())) return;
         await revokeUnprovenCredentials(user.id);
       },
@@ -295,6 +305,31 @@ function setSignupBinding(
     appendSignupBinding(readSignupBindingCookie(ctx.headers), userId, getAuthSecret()),
     { httpOnly: true, sameSite: "lax", secure, path: "/", maxAge: SIGNUP_BINDING_MAX_AGE_S },
   );
+}
+
+/** `iat` is whole seconds; the sign-up link is minted in the same second the row is created. */
+const TOKEN_IAT_GRACE_MS = 2_000;
+
+function tokenPredatesAccount(request: Request | undefined, createdAt: Date | string): boolean {
+  if (!request) return false;
+  const token = new URL(request.url).searchParams.get("token");
+  if (!token) return false;
+  const iat = jwtIssuedAt(token);
+  if (iat === null) return false;
+  return iat * 1000 + TOKEN_IAT_GRACE_MS < new Date(createdAt).getTime();
+}
+
+/** `iat` from a JWT the route has already signature-checked; null when unreadable. */
+function jwtIssuedAt(token: string): number | null {
+  const payload = token.split(".")[1];
+  if (!payload) return null;
+  try {
+    const json = Buffer.from(payload, "base64url").toString("utf8");
+    const { iat } = JSON.parse(json) as { iat?: unknown };
+    return typeof iat === "number" ? iat : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Delete credential accounts and every session of a user whose address was never proven. */

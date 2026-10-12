@@ -270,6 +270,56 @@ describe("DELETE /api/account", () => {
     expect(after.filter((v) => v.value.includes(bystander.user.email))).toHaveLength(1);
   });
 
+  it("refuses a pre-deletion email-verification link against the next account with that address", async () => {
+    const repos = getTestRepos();
+    const { getAuth } = await import("@/lib/auth/auth");
+    const { getTestOutbox } = await import("../setup");
+    const { firstUrl, markEmailVerified, signInCookie, TEST_PASSWORD } = await import(
+      "../helpers/auth"
+    );
+    const auth = getAuth();
+    const email = "reused@example.com";
+    const lastMail = () => {
+      const outbox = getTestOutbox().outbox;
+      return outbox[outbox.length - 1]!;
+    };
+
+    // First owner signs up; the verification JWT is a stateless bearer.
+    const first = await auth.api.signUpEmail({
+      body: { email, password: TEST_PASSWORD, name: "First" },
+    });
+    const staleLink = firstUrl(lastMail().text);
+    await markEmailVerified(first.user.id);
+    const cookie = await signInCookie(email, TEST_PASSWORD);
+    expect((await deleteFor(cookie, { confirmEmail: email })).status).toBe(200);
+    expect(await repos.users.getById(first.user.id)).toBeNull();
+
+    // A successor registers the freed address a little later.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 10_000);
+    try {
+      const second = await auth.api.signUpEmail({
+        body: { email, password: "another-passw0rd", name: "Second" },
+      });
+      const freshLink = firstUrl(lastMail().text);
+      const ctx = await auth.$context;
+
+      const stale = await auth.handler(new Request(staleLink, { redirect: "manual" }));
+      expect(stale.status).toBeGreaterThanOrEqual(400);
+      expect((await ctx.internalAdapter.findUserByEmail(email))?.user.emailVerified).toBe(false);
+      // The successor's password survived the refused attempt.
+      const accounts = await ctx.internalAdapter.findAccounts(second.user.id);
+      expect(accounts.some((a) => a.providerId === "credential")).toBe(true);
+
+      // Their own link still works.
+      const fresh = await auth.handler(new Request(freshLink, { redirect: "manual" }));
+      expect(fresh.status).toBe(302);
+      expect((await ctx.internalAdapter.findUserByEmail(email))?.user.emailVerified).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("is a no-op for Stripe when keys are not configured", async () => {
     const repos = getTestRepos();
     const a = await createUserWithCookie(repos, { email: "nokeys@example.com" });
