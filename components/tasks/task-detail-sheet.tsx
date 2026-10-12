@@ -529,7 +529,7 @@ function AgentBriefSection({ task }: { task: Task }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           taskId: task.id,
-          modelId: useStore.getState().preferredModelId,
+          modelPreference: useStore.getState().modelPreference,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {

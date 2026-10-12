@@ -1,7 +1,9 @@
 import { gateAiRequest, resolveOfflineMode } from "@/lib/ai/ai-gate";
 import { recordAiRun } from "@/lib/ai/ai-runs";
 import { applyTriageToTask } from "@/lib/ai/apply-triage";
-import { MissingAiKeyError, triageTask } from "@/lib/ai/triage-agent";
+import { AiConfigError } from "@/lib/ai/provider";
+import { triageTask } from "@/lib/ai/triage-agent";
+import { TRIAGE_PROMPT_VERSION } from "@/lib/ai/triage-schema";
 import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
 import { AI_CONTEXT_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
@@ -18,6 +20,9 @@ const Body = z.object({
   sourceContext: z.string().max(TASK_LIMITS.sourceContext).nullable().optional(),
   recentLabels: z.array(z.string()).max(AI_CONTEXT_LIMITS.maxRecentLabels).optional(),
   preferences: z.array(z.string()).max(AI_CONTEXT_LIMITS.maxPreferences).optional(),
+  /** Settings → AI model preference id. Unknown values fall back to the stage default. */
+  modelPreference: z.string().min(1).max(64).optional(),
+  /** Pre-registry clients sent a raw model id here; still accepted as a preference. */
   modelId: z.string().min(1).max(64).optional(),
 });
 
@@ -41,13 +46,15 @@ export async function POST(req: Request) {
   const gate = await gateAiRequest({ req, session, bucket: "triage" });
   if (!gate.ok) return gate.response;
 
+  const modelPreference = parsed.data.modelPreference ?? parsed.data.modelId ?? null;
+
   try {
     const result = await triageTask({
       sourceText: parsed.data.sourceText,
       sourceContext: parsed.data.sourceContext ?? null,
       recentLabels: parsed.data.recentLabels,
       preferences: parsed.data.preferences,
-      modelId: parsed.data.modelId,
+      modelPreference,
       offline,
     });
 
@@ -84,12 +91,14 @@ export async function POST(req: Request) {
       labels: applied?.labels ?? [],
     });
   } catch (err) {
-    if (err instanceof MissingAiKeyError) {
+    if (err instanceof AiConfigError) {
+      // Operator problem, not a user problem: log the exact variable that is
+      // missing and tell the client AI is unavailable.
+      reportError(err, { area: "triage.config", userId: session.user.id });
       return NextResponse.json(
         {
-          error:
-            "No AI provider key is configured. Set AI_GATEWAY_API_KEY (or a provider-specific key) and reload.",
-          code: "no_ai_key",
+          error: "AI is not configured on this server. Check the AI_TRANSPORT settings.",
+          code: err.code,
         },
         { status: 503 },
       );
@@ -101,14 +110,15 @@ export async function POST(req: Request) {
     reportError(err, {
       area: "triage.route",
       userId: session.user.id,
-      tags: { modelId: parsed.data.modelId ?? null, offline },
+      tags: { modelPreference, offline },
     });
     await recordAiRun({
       userId: session.user.id,
       taskId: parsed.data.taskId ?? null,
       meta: {
-        promptVersion: "triage.v1",
-        model: parsed.data.modelId ?? "unknown",
+        promptVersion: TRIAGE_PROMPT_VERSION,
+        stage: "triage",
+        model: "unknown",
         transport: "unknown",
         durationMs: 0,
         inputTokens: null,

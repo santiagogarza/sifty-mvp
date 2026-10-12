@@ -151,8 +151,9 @@ Required for production:
 | `AUTH_SECRET` | HS256 key for the session JWT. ≥ 32 chars. |
 | `CREATOR_EMAIL` | Email address that gets the permanent unlimited tier. |
 | `DATABASE_URL` | Postgres connection (Vercel Postgres / Neon / Supabase). |
-| `AI_GATEWAY_API_KEY` | Vercel AI Gateway key — preferred path. |
-| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | Direct fallback when no Gateway key. |
+| `AI_TRANSPORT` | `gateway` (default) or `direct`. Explicit; never inferred from keys. |
+| `AI_GATEWAY_API_KEY` | Vercel AI Gateway key. Required when `AI_TRANSPORT=gateway`. |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | Required when `AI_TRANSPORT=direct` (every stage has an OpenAI fallback). |
 | `STRIPE_SECRET_KEY` | Stripe secret. Used by checkout, portal, webhook. |
 | `STRIPE_WEBHOOK_SECRET` | HMAC verifier for the webhook endpoint. |
 | `STRIPE_PRICE_MONTHLY` / `STRIPE_PRICE_YEARLY` | Pro recurring price ids. |
@@ -176,14 +177,32 @@ Optional:
 
 Triage runs through the [AI SDK](https://sdk.vercel.ai/) and validates
 output against the `TriageOutput` Zod schema. The system prompt and
-prompt builder are in `lib/ai/prompts.ts`; the model registry (Claude
-Sonnet, Claude Haiku, GPT-4o, GPT-4o mini) is in `lib/ai/models.ts`.
+prompt builder are in `lib/ai/prompts.ts`.
+
+The model registry (`lib/ai/models.ts`) keys models by canonical
+`provider/model` slug and declares, per pipeline stage (`enrich`,
+`prioritize`, `triage`, `subtasks`, `plan`, `execute`, `digest`), a primary
+model, an ordered fallback list, and list prices. Defaults: Claude Haiku 4.5
+for the cheap stages, Claude Sonnet 4.5 for `plan`/`execute`, one OpenAI
+fallback per stage. Settings → AI model is a *preference* (Recommended, Best
+quality, Fastest, Prefer OpenAI) that remaps stages by class; the UI never
+sees raw model ids.
+
+`lib/ai/provider.ts` is the only module that imports a provider SDK.
+`resolveProvider(stage)` returns an AI SDK model with the fallbacks baked
+in for the configured `AI_TRANSPORT`: in `gateway` mode the fallback list
+is passed to the Gateway as a routing option; in `direct` mode an
+in-process wrapper fails over on retryable provider errors. Every
+`ai_runs` row records `stage`, `transport`, the model that actually
+answered, tokens, and `cost_cents` (fractional) priced from the registry,
+so spend reporting works identically in both modes.
 
 Pinned memories from `/memory` are passed into the prompt as `User
 preferences` — adding a memory like "I avoid deep work after 4pm"
 demonstrably influences how the model triages later evening tasks.
 
-If no provider key is set, the route returns 503 with `code: "no_ai_key"`.
+If the configured transport is missing its key, the route returns 503 with
+`code: "no_ai_key"` (an invalid `AI_TRANSPORT` value gives `ai_misconfigured`).
 The deterministic offline heuristic still works as an explicit debug
 fallback via `/api/triage?offline=1` or `SIFTY_AI_OFFLINE=1` — useful for
 keyless local dev, screenshots, and CI smoke runs.

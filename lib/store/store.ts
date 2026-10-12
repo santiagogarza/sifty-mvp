@@ -1,6 +1,10 @@
 "use client";
 
-import { DEFAULT_MODEL_ID } from "@/lib/ai/models";
+import {
+  DEFAULT_MODEL_PREFERENCE,
+  type ModelPreference,
+  normalizeModelPreference,
+} from "@/lib/ai/models";
 import { normalizeAssigneeName } from "@/lib/domain/assignee";
 import { bucketFromScalars } from "@/lib/domain/priority";
 import { mergeTriageIntoTask } from "@/lib/domain/triage-merge";
@@ -61,10 +65,11 @@ interface SiftyState {
   tasks: Task[];
   labels: Label[];
   memories: Memory[];
-  preferredModelId: string;
+  /** Settings → AI model. A preference id from `MODEL_PREFERENCES`, never a raw model id. */
+  modelPreference: ModelPreference;
 
   setHydrated: (v: boolean) => void;
-  setPreferredModelId: (modelId: string) => void;
+  setModelPreference: (preference: ModelPreference) => void;
 
   createTask: (input: { sourceText: string; sourceContext?: string | null }) => Task;
   updateTask: (
@@ -126,7 +131,7 @@ interface SiftyState {
   ensureLabel: (name: string) => Label;
 }
 
-const VERSION = 3;
+const VERSION = 4;
 
 export const useStore = create<SiftyState>()(
   persist(
@@ -141,10 +146,10 @@ export const useStore = create<SiftyState>()(
         tasks: [],
         labels: [],
         memories: [],
-        preferredModelId: DEFAULT_MODEL_ID,
+        modelPreference: DEFAULT_MODEL_PREFERENCE,
 
         setHydrated: (v) => set({ hydrated: v }),
-        setPreferredModelId: (modelId) => set({ preferredModelId: modelId }),
+        setModelPreference: (preference) => set({ modelPreference: preference }),
 
         createTask: ({ sourceText, sourceContext }) => {
           const now = new Date().toISOString();
@@ -399,7 +404,7 @@ export const useStore = create<SiftyState>()(
         tasks: s.tasks,
         labels: s.labels,
         memories: s.memories,
-        preferredModelId: s.preferredModelId,
+        modelPreference: s.modelPreference,
       }),
       migrate: (persisted, version) => {
         const state = persisted as Partial<SiftyState>;
@@ -408,6 +413,11 @@ export const useStore = create<SiftyState>()(
         }
         if (version < 3 && state.tasks) {
           state.tasks = state.tasks.map((t) => ({ ...t, assigneeName: t.assigneeName ?? null }));
+        }
+        if (version < 4) {
+          // v3 persisted a raw model id (`preferredModelId`); map it onto the registry preference.
+          const legacy = (persisted as { preferredModelId?: string }).preferredModelId;
+          state.modelPreference = normalizeModelPreference(legacy);
         }
         return state as SiftyState;
       },
