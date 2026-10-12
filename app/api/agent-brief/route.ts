@@ -20,14 +20,14 @@ const Body = z.object({
 });
 
 export async function POST(req: Request) {
+  const ipGate = await gateAiRequestByIp(req, "brief");
+  if (!ipGate.ok) return ipGate.response;
+
   const json = await req.json().catch(() => null);
   const parsed = Body.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
-
-  const ipGate = await gateAiRequestByIp(req, "brief");
-  if (!ipGate.ok) return ipGate.response;
 
   const session = await getSession(req);
   if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });

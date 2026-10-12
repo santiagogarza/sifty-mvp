@@ -27,6 +27,9 @@ const Body = z.object({
 });
 
 export async function POST(req: Request) {
+  const ipGate = await gateAiRequestByIp(req, "triage");
+  if (!ipGate.ok) return ipGate.response;
+
   const json = await req.json().catch(() => null);
   const parsed = Body.safeParse(json);
   if (!parsed.success) {
@@ -37,9 +40,6 @@ export async function POST(req: Request) {
   }
 
   const offline = resolveOfflineMode(req);
-
-  const ipGate = await gateAiRequestByIp(req, "triage");
-  if (!ipGate.ok) return ipGate.response;
 
   const session = await getSession(req);
   if (!session) {
