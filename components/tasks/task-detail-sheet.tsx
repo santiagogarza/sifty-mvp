@@ -78,7 +78,15 @@ export function TaskDetailSheet({
   onClose: () => void;
 }) {
   const task = useStore((s) => s.tasks.find((t) => t.id === taskId));
+  const duplicateTask = useStore((s) => s.duplicateTask);
+  const { openDetail } = useFrame();
   const open = !!taskId && !!task;
+
+  const duplicate = () => {
+    if (!task) return;
+    const copy = duplicateTask(task.id);
+    if (copy) openDetail(copy.id);
+  };
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
@@ -93,6 +101,16 @@ export function TaskDetailSheet({
           e.preventDefault();
           (e.currentTarget as HTMLElement | null)?.focus({ preventScroll: true });
         }}
+        onKeyDown={(e) => {
+          // Shift+D duplicates — only when not typing, so a capital D in a
+          // field is still just a letter. Lives on the panel so it works
+          // from the panel's own focus right after opening.
+          if (e.key === "D" && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            if (isEditableTarget(e.target)) return;
+            e.preventDefault();
+            duplicate();
+          }
+        }}
       >
         {task ? (
           <>
@@ -101,7 +119,7 @@ export function TaskDetailSheet({
             </VisuallyHidden>
             {/* Keyed so switching tasks resets local UI state (disclosures,
                 fill animation tracking) instead of leaking across tasks. */}
-            <DetailBody key={task.id} task={task} onClose={onClose} />
+            <DetailBody key={task.id} task={task} onClose={onClose} onDuplicate={duplicate} />
           </>
         ) : null}
       </SheetContent>
@@ -109,16 +127,17 @@ export function TaskDetailSheet({
   );
 }
 
-function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
+function DetailBody({
+  task,
+  onClose,
+  onDuplicate,
+}: {
+  task: Task;
+  onClose: () => void;
+  onDuplicate: () => void;
+}) {
   const updateTask = useStore((s) => s.updateTask);
   const deleteTask = useStore((s) => s.deleteTask);
-  const duplicateTask = useStore((s) => s.duplicateTask);
-  const { openDetail } = useFrame();
-
-  const duplicate = () => {
-    const copy = duplicateTask(task.id);
-    if (copy) openDetail(copy.id);
-  };
   const labels = useStore((s) => s.labels);
   const ensureLabel = useStore((s) => s.ensureLabel);
   const addSubtask = useStore((s) => s.addSubtask);
@@ -153,18 +172,7 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
     // min-h-0 + flex-1 (not h-full): the mobile sheet has only a max-height,
     // so a percentage height resolves to auto and the column grows past the
     // panel instead of letting the body scroll.
-    <div
-      className="flex min-h-0 flex-1 flex-col"
-      onKeyDown={(e) => {
-        // Shift+D duplicates — only when not typing, so a capital D in a
-        // field is still just a letter.
-        if (e.key === "D" && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
-          if (isEditableTarget(e.target)) return;
-          e.preventDefault();
-          duplicate();
-        }
-      }}
-    >
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-elevated)]/95 backdrop-blur px-4 sm:px-5 py-3">
         <div className="flex items-center gap-2 text-[12px] text-[var(--fg-subtle)]">
           {organizing && task.priorityBucket === "unset" ? (
@@ -409,7 +417,7 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
           <Button
             variant="ghost"
             size="sm"
-            onClick={duplicate}
+            onClick={onDuplicate}
             aria-label="Duplicate task"
             title="Duplicate task (Shift+D)"
           >
