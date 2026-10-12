@@ -82,18 +82,33 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} onCapture={openCapture} />
       <TaskDetailSheet taskId={detailTaskId} onClose={closeDetail} />
       <GlobalKeyboard onCapture={openCapture} onCommand={openCommand} />
-      {sync.hydrated && sync.error ? (
-        <div
-          role="status"
-          className="fixed bottom-[92px] md:bottom-4 left-1/2 -translate-x-1/2 z-40 rounded-full border border-[var(--border)] bg-[var(--bg-elevated)]/95 backdrop-blur px-3.5 py-1.5 text-[12px] text-[var(--fg-muted)] shadow-sm"
-        >
-          Can't reach Sifty — changes are saved locally and will sync.
-        </div>
-      ) : null}
+      <SyncNotice error={sync.hydrated ? sync.error : null} rejected={sync.rejected} />
     </FrameContext.Provider>
   );
 }
 
+/**
+ * One calm status pill for the two ways sync can be off: the server is
+ * unreachable (transient, everything replays) or it refused a change
+ * (terminal, kept on this device, retried on the next edit).
+ */
+function SyncNotice({ error, rejected }: { error: string | null; rejected: number }) {
+  const message = error
+    ? "Can't reach Sifty — changes are saved locally and will sync."
+    : rejected > 0
+      ? `${rejected === 1 ? "One change" : `${rejected} changes`} couldn't sync to your account — kept on this device.`
+      : null;
+  if (!message) return null;
+  return (
+    <div
+      role="status"
+      data-testid="sync-notice"
+      className="fixed bottom-[92px] md:bottom-4 left-1/2 -translate-x-1/2 z-40 rounded-full border border-[var(--border)] bg-[var(--bg-elevated)]/95 backdrop-blur px-3.5 py-1.5 text-[12px] text-[var(--fg-muted)] shadow-sm"
+    >
+      {message}
+    </div>
+  );
+}
 interface FrameApi {
   openDetail: (id: string) => void;
   openCapture: () => void;
