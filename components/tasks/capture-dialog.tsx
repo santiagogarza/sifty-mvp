@@ -112,7 +112,7 @@ export function CaptureDialog({
             placeholder="What do you need to do?"
             value={text}
             maxLength={TASK_LIMITS.sourceText}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => onTextChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();

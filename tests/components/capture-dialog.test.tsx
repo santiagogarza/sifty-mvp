@@ -184,6 +184,27 @@ describe("CaptureDialog natural-language due date", () => {
     expect(task.title).toBe("Send the report by Friday please");
   });
 
+  it("a removed chip comes back once the phrase leaves the text and a date is typed again", async () => {
+    const user = userEvent.setup();
+    renderCapture();
+
+    const textarea = screen.getByPlaceholderText(PLACEHOLDER);
+    await user.type(textarea, "Call Ana tomorrow");
+    await user.click(screen.getByRole("button", { name: "Remove due date" }));
+    expect(screen.queryByTestId("capture-due-chip")).toBeNull();
+
+    // Retyping the same text from scratch is a new decision.
+    await user.clear(textarea);
+    await user.type(textarea, "Call Ana tomorrow");
+    expect(screen.getByTestId("capture-due-chip")).toBeInTheDocument();
+
+    // Removing again and changing the phrase to a different date also re-offers.
+    await user.click(screen.getByRole("button", { name: "Remove due date" }));
+    await user.clear(textarea);
+    await user.type(textarea, "Call Ana next week");
+    expect(screen.getByTestId("capture-due-chip")).toBeInTheDocument();
+  });
+
   it("shows no chip for text without a date", async () => {
     const user = userEvent.setup();
     renderCapture();
