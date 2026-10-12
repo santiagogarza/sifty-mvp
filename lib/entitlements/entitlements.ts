@@ -100,7 +100,10 @@ export function resolveTier(facts: TierFacts, now: Date = new Date()): Tier {
 const DUNNING_STATUSES = new Set(["past_due", "unpaid"]);
 
 export type PaymentProblem =
-  /** Payment failed; Pro is kept until `graceEndsAt`. */
+  /**
+   * Payment failed; Pro is kept until `graceEndsAt` — the dunning window,
+   * or the end of a still-open app trial when that outlives the window.
+   */
   | { kind: "grace"; graceEndsAt: string }
   /** The grace period ran out (or Stripe gave up); Pro is off until payment recovers. */
   | { kind: "lapsed" };
@@ -121,10 +124,13 @@ export function paymentProblem(
   if (isGraceActive(snapshot.graceEndsAt, now)) {
     return { kind: "grace", graceEndsAt: snapshot.graceEndsAt as string };
   }
-  if (snapshot.stripeStatus && DUNNING_STATUSES.has(snapshot.stripeStatus)) {
-    return { kind: "lapsed" };
+  if (!snapshot.stripeStatus || !DUNNING_STATUSES.has(snapshot.stripeStatus)) return null;
+  // Grace is over but an open app trial still resolves to Pro caps, so Pro
+  // is not paused yet: name the trial end as the deadline instead.
+  if (isTrialActive(snapshot.trialEndsAt, now)) {
+    return { kind: "grace", graceEndsAt: snapshot.trialEndsAt as string };
   }
-  return null;
+  return { kind: "lapsed" };
 }
 
 /** A snapshot with no facts at all: a `free` account that never had a trial. */
