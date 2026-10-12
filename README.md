@@ -263,17 +263,43 @@ AI routes answer `402` with `code: "free_cap"` (upgrade path) or
 `"fair_use_cap"` (Pro ceiling).
 
 - Checkout: `/api/stripe/checkout` (POST `{ cadence: "monthly" | "yearly" }`)
-  creates the Stripe customer if needed, then a Checkout Session with
-  `allow_promotion_codes: true`. Discount/comp codes you create in the
-  Stripe Dashboard are redeemable end-to-end.
-- Portal: `/api/stripe/portal` (POST) opens the Stripe Billing Portal
-  for active subscribers.
+  creates the Stripe customer if needed, then a subscription Checkout
+  Session with `allow_promotion_codes`, Stripe Tax (`automatic_tax`,
+  address saved on the customer, tax-id collection), and, for someone still
+  inside the 30-day app trial, `trial_end` set to that date so the card is
+  first charged when the trial ends. Prices come from
+  `STRIPE_PRICE_MONTHLY` / `STRIPE_PRICE_YEARLY` and are checked once per
+  process against `lib/billing/plans.ts` (amount, currency, interval, and
+  a tax behavior set — Stripe Tax rejects `unspecified`); a drift is a 503,
+  never a wrong charge. A user Stripe already bills or is
+  chasing (`past_due`, `unpaid`, `incomplete`) gets 409 and the portal.
+- Portal: `/api/stripe/portal` (POST) opens the Stripe Customer Portal for
+  anyone with a Stripe customer — "Manage subscription" while one is open,
+  "Billing history & invoices" after cancellation. Configure the portal
+  once in the dashboard (update payment method, cancel, switch
+  monthly/yearly, invoices).
 - Webhook: `/api/stripe/webhook` verifies the `Stripe-Signature` HMAC,
   deduplicates by `event.id` in the `stripe_events` table, then runs the
-  pure reducer in `lib/billing/events.ts` against the user's
-  entitlement. Creator entitlement is sticky.
+  pure reducer in `lib/billing/events.ts` against the user's entitlement
+  inside the locked `EntitlementRepo.update()`. Events to register:
+  `customer.subscription.created|updated|deleted`, `invoice.paid`,
+  `invoice.payment_failed`, `checkout.session.completed`
+  (`lib/billing/webhook-events.ts`). Creator entitlement is sticky; a
+  comp is never stripped by a Stripe event.
+- Dunning: a failed payment (`invoice.payment_failed`, or status
+  `past_due`/`unpaid`) opens a 7-day grace period (`graceEndsAt`) during
+  which the user keeps Pro, sends the `payment-failed` email once per
+  Stripe event, and shows a persistent in-app banner linking to the
+  portal. Recovery (`active`, `invoice.paid`) clears it; cancellation ends
+  Pro at once. `expireGracePeriods()` persists the drop to free; it is
+  exposed as `GET /api/cron/expire-grace-periods` (Bearer `CRON_SECRET`),
+  to be scheduled daily from `vercel.json`.
+- Without `STRIPE_SECRET_KEY` + both price ids, `/settings/billing` says
+  billing is not set up, checkout and portal answer 503 with
+  `code: "billing_not_configured"`, and the webhook answers 503. No path 500s.
 - UI: `/settings/billing` shows tier, sifts used today, trial countdown,
-  Upgrade (monthly/yearly), Manage subscription, and invite-code redemption.
+  Upgrade (monthly/yearly, priced from `lib/billing/plans.ts`), Manage
+  subscription / Update payment method, and invite-code redemption.
 
 ### Invite codes
 

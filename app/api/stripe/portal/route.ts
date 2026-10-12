@@ -1,6 +1,7 @@
 import { getSession } from "@/lib/auth/session";
 import { StripeNotConfiguredError, getStripe } from "@/lib/billing/stripe";
 import { getRepos } from "@/lib/db/repos";
+import { reportError } from "@/lib/observability/report-error";
 import { buildRateLimitKey, consumeToken, rateLimitResponseInit } from "@/lib/ratelimit/limiter";
 import { STRIPE_USER_POLICY, clientIdFromRequest } from "@/lib/ratelimit/policies";
 import { NextResponse } from "next/server";
@@ -19,6 +20,13 @@ export async function POST(req: Request) {
     return NextResponse.json(
       { error: "Too many portal requests. Try again in a moment." },
       rateLimitResponseInit(limit),
+    );
+  }
+
+  if (!process.env.STRIPE_SECRET_KEY) {
+    return NextResponse.json(
+      { error: "Billing is not configured yet.", code: "billing_not_configured" },
+      { status: 503 },
     );
   }
 
@@ -43,8 +51,12 @@ export async function POST(req: Request) {
     if (err instanceof StripeNotConfiguredError) {
       return NextResponse.json({ error: err.message }, { status: 503 });
     }
+    reportError(err, { area: "stripe.portal" });
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Portal session failed" },
+      {
+        error: "We couldn't reach Stripe just now. Try again in a moment.",
+        detail: err instanceof Error ? err.message : "Portal session failed",
+      },
       { status: 500 },
     );
   }

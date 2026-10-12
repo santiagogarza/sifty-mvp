@@ -3,27 +3,47 @@
 import { RedeemInviteForm } from "@/components/billing/redeem-invite-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { type Cadence, PRO_PRICES, formatPrice, yearlySavingsPercent } from "@/lib/billing/plans";
+import { honoursRemainingTrial } from "@/lib/billing/trial-carryover";
 import type { Entitlement } from "@/lib/domain/types";
-import { FREE_SIFTS_PER_DAY, tierLabel, tierSummary } from "@/lib/entitlements/entitlements";
+import {
+  FREE_SIFTS_PER_DAY,
+  type PaymentProblem,
+  formatBillingDay,
+  tierLabel,
+  tierSummary,
+} from "@/lib/entitlements/entitlements";
 import * as React from "react";
+
+export interface StripeFacts {
+  /** A Stripe customer exists, so the portal can open. */
+  customer: boolean;
+  /** Stripe still considers a subscription open (paying, dunning, or incomplete). */
+  open: boolean;
+  /** Stripe is billing now. A comp can mask this as `comped`, so check it directly. */
+  active: boolean;
+  status: string | null;
+  currentPeriodEnd: string | null;
+}
 
 export function BillingPanel({
   user,
   entitlement,
-  hasSubscription,
-  subscriptionActive,
+  billingConfigured,
+  stripe,
+  paymentProblem,
 }: {
   user: { email: string; isCreator: boolean };
   entitlement: Entitlement;
-  /** A Stripe subscription exists (active or not), so the portal is useful. */
-  hasSubscription: boolean;
-  /** Stripe is billing now. A comp can mask this as `comped`, so check it directly. */
-  subscriptionActive: boolean;
+  /** Secret key and both price ids are set; otherwise upgrades are hidden. */
+  billingConfigured: boolean;
+  stripe: StripeFacts;
+  paymentProblem: PaymentProblem | null;
 }) {
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  async function startCheckout(cadence: "monthly" | "yearly") {
+  async function startCheckout(cadence: Cadence) {
     setPending(true);
     setError(null);
     try {
@@ -63,8 +83,9 @@ export function BillingPanel({
 
   const { tier } = entitlement;
   const isPro = tier === "pro";
-  // Never offer a second subscription to someone Stripe is already billing.
-  const canCheckout = !isPro && !subscriptionActive;
+  // Never offer a second subscription to someone Stripe is already billing
+  // or chasing for payment.
+  const canCheckout = !isPro && !stripe.open;
   const paidTier = tier === "pro" || tier === "comped" || tier === "creator";
   const trialDaysLeft = entitlement.trialEndsAt ? daysUntil(entitlement.trialEndsAt) : null;
 
@@ -75,7 +96,7 @@ export function BillingPanel({
           <div>
             <div className="text-[15px] text-[var(--fg)]">{user.email}</div>
             <div className="text-[12px] text-[var(--fg-muted)] mt-0.5">
-              {tierSummary(entitlement)}
+              {isPro && paymentProblem ? "Sifty Pro — payment needed" : tierSummary(entitlement)}
             </div>
           </div>
           <Badge tone={paidTier ? "ember" : "mist"}>{tierLabel(tier)}</Badge>
@@ -88,6 +109,11 @@ export function BillingPanel({
               : `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left in your Pro trial.`}
           </div>
         ) : null}
+        {stripe.active && stripe.status === "trialing" && stripe.currentPeriodEnd ? (
+          <div className="text-[13px] text-[var(--fg-muted)] mt-1">
+            Card on file. Your first charge is on {formatBillingDay(stripe.currentPeriodEnd)}.
+          </div>
+        ) : null}
         {tier === "creator" ? (
           <div className="text-[13px] text-[var(--fg-muted)] mt-1">
             Permanent unlimited access — Stripe never bills this account.
@@ -95,25 +121,54 @@ export function BillingPanel({
         ) : null}
       </section>
 
+      {paymentProblem && !user.isCreator ? (
+        <section
+          role="alert"
+          className="surface-card p-5 border-[var(--accent)]"
+          data-testid="billing-payment-problem"
+        >
+          <div className="text-eyebrow mb-2">Payment needed</div>
+          <p className="text-[13px] text-[var(--fg)] leading-[1.5] max-w-prose">
+            {paymentProblem.kind === "grace"
+              ? `Your last payment didn't go through. Pro stays on until ${formatBillingDay(paymentProblem.graceEndsAt)}; update your card before then to keep it.`
+              : "Your payment is still failing, so Pro is paused. Update your card to turn it back on; nothing else changes."}
+          </p>
+          <Button variant="primary" disabled={pending} onClick={openPortal} className="mt-4">
+            Update payment method
+          </Button>
+        </section>
+      ) : null}
+
       {!user.isCreator ? (
         <section className="surface-card p-5">
           <div className="text-eyebrow mb-2">{isPro ? "Subscription" : "Sifty Pro"}</div>
           <p className="text-[13px] text-[var(--fg-muted)] leading-[1.5] max-w-prose">
             {upgradeCopy(entitlement)}
           </p>
-          {canCheckout ? (
-            <div className="flex gap-2 mt-4">
+          {canCheckout && billingConfigured ? (
+            <div className="flex flex-wrap gap-2 mt-4">
               <Button variant="primary" disabled={pending} onClick={() => startCheckout("monthly")}>
-                Upgrade — Monthly
+                Upgrade — {formatPrice(PRO_PRICES.monthly)}/month
               </Button>
               <Button variant="ghost" disabled={pending} onClick={() => startCheckout("yearly")}>
-                Upgrade — Yearly
+                Upgrade — {formatPrice(PRO_PRICES.yearly)}/year
+                <span className="text-[12px] text-[var(--fg-muted)]">
+                  save {yearlySavingsPercent()}%
+                </span>
               </Button>
             </div>
           ) : null}
-          {hasSubscription ? (
+          {canCheckout && !billingConfigured ? (
+            <p
+              className="text-[13px] text-[var(--fg-muted)] mt-4"
+              data-testid="billing-not-configured"
+            >
+              Billing isn't set up yet, so upgrades are closed for now. Invite codes still work.
+            </p>
+          ) : null}
+          {stripe.customer ? (
             <Button variant="ghost" disabled={pending} onClick={openPortal} className="mt-3">
-              Manage subscription
+              {stripe.open || isPro ? "Manage subscription" : "Billing history & invoices"}
             </Button>
           ) : null}
           {error ? (
@@ -165,7 +220,9 @@ function upgradeCopy(ent: Entitlement): string {
         ? "Your invite covers Pro for now. Add a subscription to keep Pro after it ends, or wait until then."
         : "Your invite covers Pro permanently. No card needed.";
     case "trialing":
-      return "You're on the Pro trial: unlimited sifting. Subscribe to keep it after the trial, or drop to Free and keep capturing with a few sifts a day. Promo codes work at checkout.";
+      return honoursRemainingTrial(ent.trialEndsAt)
+        ? "You're on the Pro trial: unlimited sifting. Subscribe now and your card is first charged when the trial ends; or drop to Free and keep capturing with a few sifts a day. Promo codes work at checkout."
+        : "Your Pro trial is almost over. Subscribe to keep unlimited sifting (billing starts right away), or drop to Free and keep capturing with a few sifts a day. Promo codes work at checkout.";
     default:
       return `Free includes capture, organize, sync, reminders, and ${FREE_SIFTS_PER_DAY} sifts a day. Pro removes the sifting cap and adds autonomous execution and connectors. Promo codes work at checkout.`;
   }
