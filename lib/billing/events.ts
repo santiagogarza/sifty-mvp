@@ -24,10 +24,12 @@ import { GRACE_PERIOD_DAYS, withResolvedTier } from "@/lib/entitlements/entitlem
  *    persistence layer (the `stripeEvents` table) prevents duplicated *side
  *    effects*; this reducer protects against state divergence in the case
  *    where the idempotency check fails open.
- * 4. Grace is sticky within one dunning cycle. The first failure opens a
- *    `GRACE_PERIOD_DAYS` window; later failures in the same cycle do not
- *    extend it. Recovery (`active`/`trialing`, `invoice.paid`) and
- *    cancellation (`deleted`, `canceled`, `incomplete_expired`) close it.
+ * 4. One grace window per dunning cycle. The first failure opens a
+ *    `GRACE_PERIOD_DAYS` window; later failures in the same cycle neither
+ *    extend nor reopen it, even after `expireGracePeriods()` has cleared
+ *    the timestamp (the `past_due`/`unpaid` status marks the cycle as under
+ *    way). Recovery (`active`/`trialing`, `invoice.paid`) and cancellation
+ *    (`deleted`, `canceled`, `incomplete_expired`) end the cycle.
  */
 
 export interface StripeSubscriptionLike {
@@ -99,8 +101,15 @@ export function applyStripeEvent(
   const at = event.created ? new Date(event.created * 1000) : now;
   const resolve = (facts: Partial<EntitlementSnapshot>): EntitlementSnapshot =>
     withResolvedTier({ ...current, ...facts }, false, at);
-  // Open a grace window on the first failure of a cycle; keep it afterwards.
-  const keepOrOpenGrace = () => current.graceEndsAt ?? graceEndFrom(at);
+  // One grace window per dunning cycle. Keep an open one; once the cycle is
+  // under way (status already past_due/unpaid, which outlives the window
+  // after `expireGracePeriods()` clears it) later retries get no new window.
+  // Only a transition from a non-dunning status opens one.
+  const keepOrOpenGrace = (): string | null => {
+    if (current.graceEndsAt) return current.graceEndsAt;
+    if (DUNNING_STATUSES.has(current.stripeStatus ?? "")) return null;
+    return graceEndFrom(at);
+  };
 
   switch (event.type) {
     case "customer.subscription.created":
