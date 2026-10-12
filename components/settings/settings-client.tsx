@@ -28,6 +28,7 @@ import {
   Cpu,
   CreditCard,
   Download,
+  Link2,
   LogOut,
   Monitor,
   Moon,
@@ -104,6 +105,13 @@ export function SettingsClient({ account }: { account: SettingsAccount }) {
             >
               <Bell size={13} />
               Notifications
+            </Link>
+            <Link
+              href="/settings/connections"
+              className="inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] px-2 py-1.5 text-[12.5px] text-[var(--fg-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--fg)] transition-colors"
+            >
+              <Link2 size={13} />
+              Connections
             </Link>
             {account.entitlement.tier === "creator" ? (
               <Link

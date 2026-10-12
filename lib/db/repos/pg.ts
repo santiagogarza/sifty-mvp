@@ -33,6 +33,8 @@ import { taskPatchColumns } from "./task-columns";
 import {
   type AiRunRepo,
   type AiRunWriteInput,
+  type ConnectionRecord,
+  type ConnectionRepo,
   DAILY_PLAN_LEASE_MS,
   type DailyPlanRecord,
   type DailyPlanRepo,
@@ -46,6 +48,7 @@ import {
   type InviteConsumeFailure,
   type InviteRedemption,
   type LabelRepo,
+  MAX_CONNECTIONS_PER_USER,
   MAX_PUSH_SUBSCRIPTIONS_PER_USER,
   type MemoryCreateInput,
   type MemoryRepo,
@@ -1278,6 +1281,81 @@ export function createPostgresRepos(): Repos {
     },
   };
 
+  const connections: ConnectionRepo = {
+    async list(userId) {
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.connections)
+        .where(eq(schema.connections.userId, userId))
+        .orderBy(schema.connections.createdAt)
+        .limit(MAX_CONNECTIONS_PER_USER);
+      return rows.map(rowToConnection);
+    },
+    async get(userId, provider) {
+      const db = getDb();
+      const [row] = await db
+        .select()
+        .from(schema.connections)
+        .where(
+          and(eq(schema.connections.userId, userId), eq(schema.connections.provider, provider)),
+        )
+        .limit(1);
+      return row ? rowToConnection(row) : null;
+    },
+    async upsert(userId, provider, input) {
+      const db = getDb();
+      const values = {
+        broker: input.broker,
+        status: input.status,
+        connectorUid: input.connectorUid,
+        scopes: input.scopes,
+        externalAccount: input.externalAccount ?? null,
+        authState: input.authState ?? null,
+        encryptedSecret: input.encryptedSecret ?? null,
+        lastError: input.lastError ?? null,
+      };
+      const [row] = await db
+        .insert(schema.connections)
+        .values({ id: makeId("conn"), userId, provider, ...values })
+        .onConflictDoUpdate({
+          target: [schema.connections.userId, schema.connections.provider],
+          set: { ...values, lastCheckedAt: null, updatedAt: new Date() },
+        })
+        .returning();
+      return rowToConnection(row!);
+    },
+    async update(userId, provider, patch) {
+      const db = getDb();
+      const set: Partial<typeof schema.connections.$inferInsert> = { updatedAt: new Date() };
+      if (patch.status !== undefined) set.status = patch.status;
+      if (patch.scopes !== undefined) set.scopes = patch.scopes;
+      if (patch.externalAccount !== undefined) set.externalAccount = patch.externalAccount;
+      if (patch.authState !== undefined) set.authState = patch.authState;
+      if (patch.encryptedSecret !== undefined) set.encryptedSecret = patch.encryptedSecret;
+      if (patch.lastCheckedAt !== undefined) set.lastCheckedAt = toDate(patch.lastCheckedAt);
+      if (patch.lastError !== undefined) set.lastError = patch.lastError;
+      const [row] = await db
+        .update(schema.connections)
+        .set(set)
+        .where(
+          and(eq(schema.connections.userId, userId), eq(schema.connections.provider, provider)),
+        )
+        .returning();
+      return row ? rowToConnection(row) : null;
+    },
+    async delete(userId, provider) {
+      const db = getDb();
+      const deleted = await db
+        .delete(schema.connections)
+        .where(
+          and(eq(schema.connections.userId, userId), eq(schema.connections.provider, provider)),
+        )
+        .returning({ id: schema.connections.id });
+      return deleted.length > 0;
+    },
+  };
+
   return {
     users,
     entitlements,
@@ -1293,6 +1371,26 @@ export function createPostgresRepos(): Repos {
     pushSubscriptions,
     notificationSends,
     dailyPlans,
+    connections,
+  };
+}
+
+function rowToConnection(row: typeof schema.connections.$inferSelect): ConnectionRecord {
+  return {
+    id: row.id,
+    userId: row.userId,
+    provider: row.provider,
+    broker: row.broker,
+    status: row.status,
+    connectorUid: row.connectorUid,
+    scopes: row.scopes ?? [],
+    externalAccount: row.externalAccount,
+    authState: row.authState,
+    encryptedSecret: row.encryptedSecret,
+    lastCheckedAt: row.lastCheckedAt?.toISOString() ?? null,
+    lastError: row.lastError,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
   };
 }
 

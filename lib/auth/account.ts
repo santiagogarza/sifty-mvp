@@ -1,6 +1,11 @@
 import { type StripeCustomerDeletion, deleteStripeCustomer } from "@/lib/billing/customers";
 import type { Repos } from "@/lib/db/repos";
-import type { AiRunRecord, EntitlementSnapshot, TaskEventRecord } from "@/lib/db/repos/types";
+import type {
+  AiRunRecord,
+  ConnectionRecord,
+  EntitlementSnapshot,
+  TaskEventRecord,
+} from "@/lib/db/repos/types";
 import type { Label, Memory, Task, UserProfile } from "@/lib/domain/types";
 import { reportError } from "@/lib/observability/report-error";
 import { deleteAuthIdentity } from "./auth";
@@ -38,21 +43,38 @@ export interface AccountExport {
   memories: Memory[];
   taskEvents: TaskEventRecord[];
   aiRuns: AiRunRecord[];
+  /** Which services are connected and with what scopes; never the credential. */
+  connections: ConnectionSummary[];
   /** Lists that hit their ceiling; the newest `aiRuns` / oldest `taskEvents` are included. */
   truncated: Array<"aiRuns" | "taskEvents">;
 }
 
+export type ConnectionSummary = Pick<
+  ConnectionRecord,
+  "provider" | "status" | "scopes" | "externalAccount" | "createdAt" | "updatedAt"
+>;
+
 export async function exportAccount(repos: Repos, userId: string): Promise<AccountExport | null> {
   const user = await repos.users.getById(userId);
   if (!user) return null;
-  const [entitlement, tasks, labels, memories, taskEvents, aiRuns] = await Promise.all([
-    repos.entitlements.get(userId),
-    repos.tasks.list(userId),
-    repos.labels.list(userId),
-    repos.memories.list(userId),
-    repos.taskEvents.list(userId, EXPORT_LIMITS.taskEvents),
-    repos.aiRuns.list(userId, EXPORT_LIMITS.aiRuns),
-  ]);
+  const [entitlement, tasks, labels, memories, taskEvents, aiRuns, connectionRows] =
+    await Promise.all([
+      repos.entitlements.get(userId),
+      repos.tasks.list(userId),
+      repos.labels.list(userId),
+      repos.memories.list(userId),
+      repos.taskEvents.list(userId, EXPORT_LIMITS.taskEvents),
+      repos.aiRuns.list(userId, EXPORT_LIMITS.aiRuns),
+      repos.connections.list(userId),
+    ]);
+  const connections: ConnectionSummary[] = connectionRows.map((c) => ({
+    provider: c.provider,
+    status: c.status,
+    scopes: c.scopes,
+    externalAccount: c.externalAccount,
+    createdAt: c.createdAt,
+    updatedAt: c.updatedAt,
+  }));
   const truncated: AccountExport["truncated"] = [];
   if (aiRuns.length >= EXPORT_LIMITS.aiRuns) truncated.push("aiRuns");
   if (taskEvents.length >= EXPORT_LIMITS.taskEvents) truncated.push("taskEvents");
@@ -67,6 +89,7 @@ export async function exportAccount(repos: Repos, userId: string): Promise<Accou
     memories,
     taskEvents,
     aiRuns,
+    connections,
     truncated,
   };
 }
