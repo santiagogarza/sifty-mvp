@@ -197,6 +197,24 @@ describe("CaptureDialog natural-language due date", () => {
     expect(screen.queryByTestId("capture-due-chip")).toBeNull();
   });
 
+  it("editing the phrase in place after removing the chip re-offers the new date", async () => {
+    const user = userEvent.setup();
+    renderCapture();
+
+    const textarea = screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    await user.type(textarea, "Send the report by Friday");
+    await user.click(screen.getByRole("button", { name: "Remove due date" }));
+    expect(screen.queryByTestId("capture-due-chip")).toBeNull();
+
+    // Replace just the day: "Friday" → "Monday". The removed phrase is gone
+    // from the text, so the new phrase is a new offer.
+    textarea.setSelectionRange("Send the report by ".length, textarea.value.length);
+    await user.keyboard("Monday");
+    expect(textarea).toHaveValue("Send the report by Monday");
+    expect(screen.getByTestId("capture-due-chip")).toBeInTheDocument();
+    expect(screen.getByText("from “by Monday”")).toBeInTheDocument();
+  });
+
   it("a removed chip comes back once the phrase leaves the text and a date is typed again", async () => {
     const user = userEvent.setup();
     renderCapture();
