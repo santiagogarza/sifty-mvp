@@ -1,4 +1,4 @@
-import { AccountDeletionError, deleteAccount } from "@/lib/auth/account";
+import { AccountDeletionError, CreatorAccountError, deleteAccount } from "@/lib/auth/account";
 import { SESSION_COOKIE_NAME, getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
 import { reportError } from "@/lib/observability/report-error";
@@ -42,21 +42,27 @@ export async function DELETE(req: Request) {
   try {
     result = await deleteAccount(getRepos(), session.user.id);
   } catch (err) {
-    const stage = err instanceof AccountDeletionError ? err.stage : "database";
-    reportError(err, { area: "account.delete", userId: session.user.id, tags: { stage } });
-    if (stage === "billing") {
+    if (err instanceof CreatorAccountError) {
+      return NextResponse.json({ error: err.message }, { status: 403 });
+    }
+    const failure = err instanceof AccountDeletionError ? err : null;
+    reportError(err, {
+      area: "account.delete",
+      userId: session.user.id,
+      tags: { stage: failure?.stage ?? "unknown", stripeCustomer: failure?.stripeCustomer },
+    });
+    if (failure?.stage === "billing") {
       return NextResponse.json(
         { error: "Couldn't cancel billing for this account. Nothing was deleted; try again." },
         { status: 502 },
       );
     }
-    return NextResponse.json(
-      {
-        error:
-          "Billing was cancelled but the account couldn't be removed. Try again; nothing will be charged.",
-      },
-      { status: 500 },
-    );
+    // Only say billing is gone when Stripe actually removed the customer.
+    const error =
+      failure?.stripeCustomer === "deleted"
+        ? "Billing was cancelled but the account couldn't be removed. Try again; nothing will be charged."
+        : "Couldn't delete the account. Nothing was changed; try again.";
+    return NextResponse.json({ error }, { status: 500 });
   }
   if (!result) return NextResponse.json({ error: "Not found" }, { status: 404 });
 

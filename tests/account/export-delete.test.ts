@@ -231,6 +231,34 @@ describe("DELETE /api/account", () => {
     expect(await repos.users.getById(a.user.id)).not.toBeNull();
   });
 
+  it("does not claim billing was cancelled when there was no Stripe customer", async () => {
+    const repos = getTestRepos();
+    const a = await createUserWithCookie(repos, { email: "plain-fail@example.com" });
+    const original = repos.users.delete;
+    repos.users.delete = async () => {
+      throw new Error("connection reset");
+    };
+
+    const res = await deleteFor(a.cookie, { confirmEmail: "plain-fail@example.com" });
+    repos.users.delete = original;
+    expect(res.status).toBe(500);
+    expect(((await res.json()) as { error: string }).error).toMatch(/Nothing was changed/);
+    expect(stripeMock.del).not.toHaveBeenCalled();
+    expect(await repos.users.getById(a.user.id)).not.toBeNull();
+  });
+
+  it("refuses to delete the creator account, whose email would be re-claimable at sign-up", async () => {
+    const repos = getTestRepos();
+    const creator = await createUserWithCookie(repos, { email: "s.gonzalez.garza@gmail.com" });
+    await seedWorkspace(repos, creator.user.id, "creator");
+
+    const res = await deleteFor(creator.cookie, { confirmEmail: "s.gonzalez.garza@gmail.com" });
+    expect(res.status).toBe(403);
+    expect(await repos.users.getById(creator.user.id)).not.toBeNull();
+    expect(await repos.tasks.list(creator.user.id)).toHaveLength(1);
+    expect((await exportFor(creator.cookie)).status).toBe(200);
+  });
+
   it("treats a customer Stripe already forgot as deleted", async () => {
     stripeMock.configured = true;
     stripeMock.del.mockRejectedValue(

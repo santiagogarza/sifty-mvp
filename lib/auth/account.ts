@@ -56,10 +56,14 @@ export interface AccountDeletion {
   stripeCustomer: StripeCustomerDeletion | "none";
 }
 
-/** Which step of the deletion failed, so the caller can say what state the account is in. */
+/**
+ * Which step of the deletion failed, and whether Stripe had already acted,
+ * so the caller can say exactly what state the account is in.
+ */
 export class AccountDeletionError extends Error {
   constructor(
     readonly stage: "billing" | "database",
+    readonly stripeCustomer: AccountDeletion["stripeCustomer"],
     cause: unknown,
   ) {
     super(stage === "billing" ? "Stripe customer deletion failed" : "Account row deletion failed", {
@@ -69,28 +73,43 @@ export class AccountDeletionError extends Error {
   }
 }
 
+/** Thrown when the account is the creator: see `deleteAccount`. */
+export class CreatorAccountError extends Error {
+  constructor() {
+    super("The creator account cannot be deleted from the app");
+    this.name = "CreatorAccountError";
+  }
+}
+
 /**
  * Stripe first, then the database: if Stripe refuses, nothing local is
  * touched and the caller can report a retryable failure. A database
  * failure after the Stripe step leaves an account whose billing is already
- * cancelled; the error says so. Returns null when the user does not exist.
+ * cancelled; the error carries that. Returns null when the user does not
+ * exist.
+ *
+ * The creator account is refused outright: its row is the only thing that
+ * holds `CREATOR_EMAIL`, and sign-up grants the creator tier to whoever
+ * registers that address next. Deleting it would hand the unlimited tier
+ * to an anonymous caller.
  */
 export async function deleteAccount(repos: Repos, userId: string): Promise<AccountDeletion | null> {
   const user = await repos.users.getById(userId);
   if (!user) return null;
+  if (user.isCreator) throw new CreatorAccountError();
   const entitlement = await repos.entitlements.get(userId);
   let stripeCustomer: AccountDeletion["stripeCustomer"] = "none";
   if (entitlement?.stripeCustomerId) {
     try {
       stripeCustomer = await deleteStripeCustomer(entitlement.stripeCustomerId, { userId });
     } catch (err) {
-      throw new AccountDeletionError("billing", err);
+      throw new AccountDeletionError("billing", "none", err);
     }
   }
   try {
     await repos.users.delete(userId);
   } catch (err) {
-    throw new AccountDeletionError("database", err);
+    throw new AccountDeletionError("database", stripeCustomer, err);
   }
   return { stripeCustomer };
 }
