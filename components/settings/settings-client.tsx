@@ -234,7 +234,7 @@ export function SettingsClient({ account }: { account: SettingsAccount }) {
         </p>
       </SectionCard>
 
-      {account.authBypass || account.tier === "creator" ? null : (
+      {account.authBypass || account.entitlement.tier === "creator" ? null : (
         <SectionCard
           title="Delete account"
           description="Permanently deletes your account, every task, label, memory, and AI run, and cancels any subscription. There is no undo — export first if you want a copy."
