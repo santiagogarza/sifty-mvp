@@ -225,6 +225,22 @@ describe("paymentProblem", () => {
     });
   });
 
+  it("names the trial end instead of 'lapsed' while an open app trial still carries Pro", () => {
+    const trialEnd = new Date(AFTER.getTime() + 10 * DAY).toISOString();
+    const snapshot = { ...inGrace("cus_t"), trialEndsAt: trialEnd };
+    expect(paymentProblem(snapshot, false, FAILED_AT)).toEqual({
+      kind: "grace",
+      graceEndsAt: GRACE_END.toISOString(),
+    });
+    expect(paymentProblem(snapshot, false, AFTER)).toEqual({
+      kind: "grace",
+      graceEndsAt: trialEnd,
+    });
+    expect(paymentProblem(snapshot, false, new Date(Date.parse(trialEnd) + DAY))).toEqual({
+      kind: "lapsed",
+    });
+  });
+
   it("clears once the subscription recovers or is cancelled", () => {
     const snapshot = inGrace("cus_c");
     const recovered = applyStripeEvent(snapshot, {
