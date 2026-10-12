@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   date,
@@ -223,7 +224,7 @@ export const taskEvents = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     taskId: text("task_id").notNull(),
-    /** "created" | "updated" | "ai_triage" | "deleted" | "lifecycle" */
+    /** `TaskEventKind` in `lib/db/repos/types.ts` ("plan.moved_in", …). */
     kind: text("kind").notNull(),
     payload: jsonb("payload").$type<Record<string, unknown>>().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -476,6 +477,59 @@ export const notificationSends = pgTable(
   },
   (t) => [
     uniqueIndex("notification_sends_period_idx").on(t.userId, t.kind, t.channel, t.periodKey),
+  ],
+);
+
+/**
+ * One row per `dailyPlan` workflow run. The nightly cron claims
+ * (user, plan_date) before enqueueing — the partial unique index makes a
+ * rerun of the same tick a no-op — while manual "Re-plan today" runs may
+ * repeat within a day. `moves` is what the Today page shows ("moved into
+ * Today: due tomorrow, high importance"); the per-task audit trail is in
+ * `task_events`.
+ */
+export const dailyPlans = pgTable(
+  "daily_plans",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** The local calendar day the plan is for. */
+    planDate: date("plan_date").notNull(),
+    /** IANA zone `planDate` was resolved in ("UTC" when the user has none). */
+    timezone: text("timezone").notNull().default("UTC"),
+    trigger: text("trigger", { enum: ["cron", "manual"] }).notNull(),
+    status: text("status", { enum: ["running", "completed", "failed"] })
+      .notNull()
+      .default("running"),
+    workflowRunId: text("workflow_run_id"),
+    /** The `prioritize` `ai_runs` row this run wrote. */
+    aiRunId: text("ai_run_id"),
+    /** One-paragraph plan for the day, from the model. */
+    summary: text("summary"),
+    moves: jsonb("moves")
+      .$type<
+        Array<{
+          taskId: string;
+          title: string;
+          kind: "moved_in" | "moved_out" | "rescored";
+          reason: string;
+        }>
+      >()
+      .notNull()
+      .default([]),
+    /** Open tasks the planner looked at (after the bounded read). */
+    considered: integer("considered").notNull().default(0),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("daily_plans_user_created_idx").on(t.userId, t.createdAt),
+    uniqueIndex("daily_plans_cron_day_idx")
+      .on(t.userId, t.planDate)
+      .where(sql`${t.trigger} = 'cron'`),
   ],
 );
 

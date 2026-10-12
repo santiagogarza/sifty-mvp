@@ -1,8 +1,9 @@
 "use client";
 
 import { focusScore } from "@/lib/domain/priority";
+import { toLocalIsoDate } from "@/lib/domain/snooze";
+import { isTodayTaskOnDay } from "@/lib/domain/today";
 import type { Lifecycle, Task } from "@/lib/domain/types";
-import { isOverdue, isToday } from "@/lib/utils/dates";
 import { useMemo } from "react";
 import { useStore } from "./store";
 
@@ -43,21 +44,11 @@ function applyCommonFilters(tasks: Task[], args: ViewArgs): Task[] {
 }
 
 /**
- * Today membership:
- *  - Inbox/Focus tasks that are overdue, due today, or read as urgent +
- *    important (`do_now`) — your ball, today.
- *  - Waiting-on tasks only when a deadline forces them (overdue/due today):
- *    the ball is elsewhere, but the date arrives regardless — chase it.
- *  - Someday never resurfaces (an explicit "not now"), and done/dropped
- *    are out of play.
+ * Today membership on the browser's local day; the rule itself lives in
+ * `lib/domain/today.ts` so the server-side daily plan applies the same one.
  */
 export function isTodayTask(t: Task, now = new Date()): boolean {
-  const dueForces = isOverdue(t.due, now) || isToday(t.due, now);
-  if (t.lifecycle === "inbox" || t.lifecycle === "active") {
-    return dueForces || t.priorityBucket === "do_now";
-  }
-  if (t.lifecycle === "waiting") return dueForces;
-  return false;
+  return isTodayTaskOnDay(t, toLocalIsoDate(now));
 }
 
 function byFocusScore(now: Date) {
