@@ -209,11 +209,12 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect(task.id).toBe("task_client1");
       expect(task.lifecycle).not.toBe("done");
 
-      // Two devices completing at once (both read the row before either
-      // writes) must agree on one completion time: the recurring
-      // successor's id derives from it. Postgres gets this from
-      // coalesce(completed_at, now) in the SET; the memory repo is
-      // single-threaded.
+      // Two completions must agree on one completion time: the recurring
+      // successor's id derives from it. Overlapping calls on the memory repo
+      // serialize before any await, so this exercises the "second writer
+      // keeps the first time" rule; the Postgres SET uses
+      // coalesce(completed_at, now) for the genuinely concurrent case, and
+      // `task-columns.test.ts` pins that SQL.
       const [doneA, doneB] = await Promise.all([
         repos.tasks.update(u.id, task.id, { lifecycle: "done" }),
         repos.tasks.update(u.id, task.id, { lifecycle: "done" }),
