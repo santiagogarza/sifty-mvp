@@ -1,0 +1,16 @@
+---
+description: Always show a screen recording after building a new feature or fixing a bug to prove it works
+alwaysApply: true
+---
+
+# Screen recording proof
+
+Always show a screen recording after building a new feature or fixing a bug to prove it works.
+
+- The final response must embed a recording of the real change running end-to-end:
+  `<video src="/opt/cursor/artifacts/<name>.mp4" controls></video>`
+- Follow `.cursor/skills/screen-recording-proof/SKILL.md` for how to record, review, and name it.
+- Never save or show a recording of a failed or partial demonstration. Fix and re-record.
+- If a recording cannot be produced, say so in one sentence and attach the strongest alternative evidence (test output, logs). Do not omit it silently.
+
+Skip only for refactors with no observable change, docs-only edits, or when the user says `/no-test`.
