@@ -1,10 +1,8 @@
-import { signSessionToken } from "@/lib/auth/jwt";
 import { middleware } from "@/middleware";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 beforeEach(() => {
-  vi.stubEnv("AUTH_SECRET", "test-auth-secret-do-not-use-in-production-please-32");
   vi.stubEnv("SIFTY_DISABLE_AUTH", "");
 });
 
@@ -13,7 +11,7 @@ afterEach(() => {
 });
 
 describe("middleware", () => {
-  it("redirects unauthenticated users away from protected routes", async () => {
+  it("redirects visitors without a session cookie away from protected routes", async () => {
     const req = new NextRequest("http://localhost/today");
     const res = await middleware(req);
     expect(res.status).toBe(307);
@@ -22,21 +20,27 @@ describe("middleware", () => {
     expect(location).toContain("next=%2Ftoday");
   });
 
-  it("redirects when the JWT cookie is invalid", async () => {
+  it("ignores cookies that are not the Sifty session cookie", async () => {
     const req = new NextRequest("http://localhost/today", {
-      headers: { cookie: "sifty_session=not-a-real-jwt" },
+      headers: { cookie: "better-auth.session_token=abc; sifty_session=legacy-jwt" },
     });
     const res = await middleware(req);
     expect(res.status).toBe(307);
   });
 
-  it("allows authenticated users through", async () => {
-    const token = await signSessionToken({ sub: "u1", sid: "s1", email: "u@example.com" }, 60);
+  it("lets requests with a session cookie through to the server-side check", async () => {
     const req = new NextRequest("http://localhost/today", {
-      headers: { cookie: `sifty_session=${token}` },
+      headers: { cookie: "sifty.session_token=tok.sig" },
     });
     const res = await middleware(req);
-    // No redirect; NextResponse.next() returns 200 in middleware tests.
+    expect(res.status).toBe(200);
+  });
+
+  it("accepts the __Secure- prefixed cookie used on https", async () => {
+    const req = new NextRequest("https://sifty.example/today", {
+      headers: { cookie: "__Secure-sifty.session_token=tok.sig" },
+    });
+    const res = await middleware(req);
     expect(res.status).toBe(200);
   });
 

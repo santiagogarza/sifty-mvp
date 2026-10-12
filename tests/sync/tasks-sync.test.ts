@@ -36,6 +36,9 @@ describe("task sync contract", () => {
       "PUT",
     );
     expect(labelRes.status).toBe(200);
+    // "Work" is part of the default palette seeded on sign-up, so ensure()
+    // adopts the existing label: the returned id is canonical, not ours.
+    const labelId = (await labelRes.json()).label.id as string;
 
     const res = await post("/api/tasks", cookie, {
       id: "task_client1",
@@ -47,7 +50,7 @@ describe("task sync contract", () => {
       aiStatus: "ready",
       urgency: 0.8,
       importance: 0.9,
-      labelIds: ["label_abc123"],
+      labelIds: [labelId],
       subtasks: [{ id: "st_1", title: "Write the plan", done: false, order: 0 }],
       editedFields: ["title"],
     });
@@ -55,13 +58,13 @@ describe("task sync contract", () => {
     const { task } = await res.json();
     expect(task.id).toBe("task_client1");
     expect(task.title).toBe("Ship the thing, properly");
-    expect(task.labelIds).toEqual(["label_abc123"]);
+    expect(task.labelIds).toEqual([labelId]);
     expect(task.createdAt).toBe("2026-07-01T10:00:00.000Z");
     expect(task.editedFields).toEqual(["title"]);
 
     const listed = await repos.tasks.list(user.id);
     expect(listed).toHaveLength(1);
-    expect(listed[0]!.labelIds).toEqual(["label_abc123"]);
+    expect(listed[0]!.labelIds).toEqual([labelId]);
     expect(listed[0]!.subtasks[0]!.title).toBe("Write the plan");
   });
 

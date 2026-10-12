@@ -28,12 +28,19 @@ import {
  *   editedFields).
  */
 
+/**
+ * `users`, `sessions`, `accounts`, and `verifications` are also Better
+ * Auth's models (mapped in `lib/auth/auth.ts`: `name` → `displayName`,
+ * table names pluralised). Password hashes live in `accounts.password`
+ * (provider `credential`), never on the user row.
+ */
 export const users = pgTable(
   "users",
   {
     id: text("id").primaryKey(),
     email: text("email").notNull(),
-    passwordHash: text("password_hash"),
+    emailVerified: boolean("email_verified").notNull().default(false),
+    image: text("image"),
     displayName: text("display_name").notNull(),
     isCreator: boolean("is_creator").notNull().default(false),
     /** Trial start; null until first non-creator login. */
@@ -221,10 +228,57 @@ export const sessions = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    /** Opaque bearer stored (signed) in the session cookie. */
+    token: text("token").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("sessions_user_idx").on(t.userId), uniqueIndex("sessions_token_idx").on(t.token)],
+);
+
+/** Credential (password) and OAuth links per user. One row per provider. */
+export const accounts = pgTable(
+  "accounts",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Provider-side id: the user id for `credential`, the Google sub for `google`. */
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at", { withTimezone: true }),
+    scope: text("scope"),
+    /** scrypt hash for new passwords; legacy `$2*` bcrypt hashes are still verified. */
+    password: text("password"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("accounts_user_idx").on(t.userId),
+    uniqueIndex("accounts_provider_account_idx").on(t.providerId, t.accountId),
+  ],
+);
+
+/** Short-lived tokens: email verification, password reset, magic links, OAuth state. */
+export const verifications = pgTable(
+  "verifications",
+  {
+    id: text("id").primaryKey(),
+    identifier: text("identifier").notNull(),
+    value: text("value").notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("sessions_user_idx").on(t.userId)],
+  (t) => [index("verifications_identifier_idx").on(t.identifier)],
 );
 
 /**
@@ -246,3 +300,4 @@ export type DbLabel = typeof labels.$inferSelect;
 export type DbMemory = typeof memories.$inferSelect;
 export type DbAiRun = typeof aiRuns.$inferSelect;
 export type DbSession = typeof sessions.$inferSelect;
+export type DbAccount = typeof accounts.$inferSelect;

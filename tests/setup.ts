@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
 
 // Default test env. Individual tests may override per-suite via vi.stubEnv().
 (process.env as Record<string, string | undefined>).NODE_ENV = "test";
-process.env.AUTH_SECRET ??= "test-auth-secret-do-not-use-in-production-please-32";
+process.env.BETTER_AUTH_SECRET ??= "test-auth-secret-do-not-use-in-production-please-32";
 process.env.CREATOR_EMAIL ??= "s.gonzalez.garza@gmail.com";
 
 // Provide a fresh in-memory repo and email outbox per test so writes don't

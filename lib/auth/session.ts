@@ -6,16 +6,18 @@ import {
 } from "@/lib/demo/seed-demo";
 import type { UserProfile } from "@/lib/domain/types";
 import { TRIAL_DAYS } from "@/lib/entitlements/entitlements";
-import { cookies } from "next/headers";
-import { verifySessionToken } from "./jwt";
-import { CREATOR_EMAIL, SESSION_COOKIE_NAME, isCreatorEmail } from "./session-shared";
+import { headers } from "next/headers";
+import { getAuth } from "./auth";
+import { CREATOR_EMAIL, isCreatorEmail } from "./session-shared";
 
 /**
  * Session boundary.
  *
- * Reads the `sifty_session` JWT cookie, verifies it, loads the session row
- * (so we can revoke), and returns the user profile + entitlement snapshot
- * the route handlers care about.
+ * Asks Better Auth to resolve the session cookie (signature + session row,
+ * so revocation is immediate), then returns the user profile + entitlement
+ * snapshot the route handlers care about. The `Session` shape and
+ * `getSession()` signature are unchanged from the hand-rolled auth, so API
+ * routes and pages did not have to change.
  *
  * If `SIFTY_DISABLE_AUTH=1` (and only then), `getSession()` returns a
  * bypass session without requiring sign-in. The bypass user is a real row
@@ -25,7 +27,7 @@ import { CREATOR_EMAIL, SESSION_COOKIE_NAME, isCreatorEmail } from "./session-sh
  * in production.
  */
 
-export { SESSION_COOKIE_NAME, isCreatorEmail };
+export { isCreatorEmail };
 
 export function getCreatorEmail(): string {
   return CREATOR_EMAIL;
@@ -35,34 +37,40 @@ export interface Session {
   user: UserProfile;
   trialStartedAt: string | null;
   subscriptionActive: boolean;
-  /** Raw session id for sign-out. */
+  /** Raw session id for sign-out; null for the auth-bypass session. */
   sessionId: string | null;
 }
 
 export async function getSession(req?: Request): Promise<Session | null> {
-  const token = await readSessionCookie(req);
+  const requestHeaders = await resolveHeaders(req);
+  const resolved = requestHeaders
+    ? await getAuth()
+        .api.getSession({ headers: requestHeaders })
+        .catch(() => null)
+    : null;
 
-  if (!token) {
+  if (!resolved) {
     if (isAuthBypassMode()) return getBypassSession();
     return null;
   }
 
-  const payload = await verifySessionToken(token).catch(() => null);
-  if (!payload) return null;
-
   const repos = getRepos();
-  const row = await repos.sessions.get(payload.sid);
-  if (!row || row.userId !== payload.sub) return null;
-
-  const user = await repos.users.getById(payload.sub);
-  if (!user) return null;
+  const user =
+    (await repos.users.getById(resolved.user.id)) ??
+    ({
+      id: resolved.user.id,
+      email: resolved.user.email,
+      displayName: resolved.user.name,
+      isCreator: isCreatorEmail(resolved.user.email),
+      createdAt: new Date(resolved.user.createdAt).toISOString(),
+    } satisfies UserProfile);
 
   const ent = await repos.entitlements.get(user.id);
   return {
     user,
     trialStartedAt: ent?.trialStartedAt ?? null,
     subscriptionActive: !!ent?.subscriptionActive,
-    sessionId: payload.sid,
+    sessionId: resolved.session.id,
   };
 }
 
@@ -70,17 +78,10 @@ function isAuthBypassMode(): boolean {
   return process.env.SIFTY_DISABLE_AUTH === "1";
 }
 
-async function readSessionCookie(req?: Request): Promise<string | null> {
-  if (req) {
-    const header = req.headers.get("cookie");
-    if (!header) return null;
-    const match = header.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE_NAME}=([^;]+)`));
-    return match?.[1] ?? null;
-  }
+async function resolveHeaders(req?: Request): Promise<Headers | null> {
+  if (req) return req.headers;
   try {
-    const store = await cookies();
-    const c = store.get(SESSION_COOKIE_NAME);
-    return c?.value ?? null;
+    return await headers();
   } catch {
     return null;
   }
@@ -113,29 +114,23 @@ async function bootstrapBypassSession(repos: Repos): Promise<Session> {
   const existing = await repos.users.getByEmail(email);
   let user: UserProfile;
   if (existing) {
-    const { passwordHash: _ph, ...profile } = existing;
-    user = profile;
+    user = existing;
   } else {
     user = await repos.users
       .create({
         id: "user_local",
         email,
-        passwordHash: null,
         displayName: isCreator ? "Santi" : email.split("@")[0]!,
         isCreator,
       })
       .catch(async () => {
         // A concurrent instance won the create race — adopt its row.
         const raced = await repos.users.getByEmail(email);
-        if (raced) {
-          const { passwordHash: _ph, ...profile } = raced;
-          return profile;
-        }
+        if (raced) return raced;
         // The fixed id is taken by a *different* email (SIFTY_USER_EMAIL
         // changed against a persistent DB): fall back to a generated id.
         return repos.users.create({
           email,
-          passwordHash: null,
           displayName: isCreator ? "Santi" : email.split("@")[0]!,
           isCreator,
         });

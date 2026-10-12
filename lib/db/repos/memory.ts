@@ -19,7 +19,6 @@ import {
   type MemoryCreateInput,
   type MemoryRepo,
   type Repos,
-  type SessionRepo,
   type StripeEventRepo,
   type TaskCreateInput,
   type TaskRepo,
@@ -37,7 +36,7 @@ import {
  */
 
 interface State {
-  users: Map<string, UserProfile & { passwordHash: string | null }>;
+  users: Map<string, UserProfile>;
   emails: Map<string, string>; // lowercased email → user id
   entitlements: Map<string, EntitlementSnapshot>;
   tasks: Map<string, Task & { userId: string }>;
@@ -60,7 +59,6 @@ interface State {
     error: string | null;
     createdAt: string;
   }>;
-  sessions: Map<string, { userId: string; expiresAt: string }>;
   stripeEvents: Set<string>;
 }
 
@@ -73,7 +71,6 @@ function emptyState(): State {
     labels: new Map(),
     memories: new Map(),
     aiRuns: [],
-    sessions: new Map(),
     stripeEvents: new Set(),
   };
 }
@@ -97,16 +94,13 @@ export function createMemoryRepos(): MemoryReposHandle {
         isCreator: input.isCreator,
         createdAt: now,
       };
-      state.users.set(id, { ...profile, passwordHash: input.passwordHash });
+      state.users.set(id, profile);
       state.emails.set(input.email.toLowerCase(), id);
       return profile;
     },
     async getById(id) {
       const u = state.users.get(id);
-      if (!u) return null;
-      const { passwordHash, ...rest } = u;
-      void passwordHash;
-      return rest;
+      return u ? { ...u } : null;
     },
     async getByEmail(email) {
       const id = state.emails.get(email.toLowerCase());
@@ -122,10 +116,7 @@ export function createMemoryRepos(): MemoryReposHandle {
       for (const [userId, ent] of state.entitlements) {
         if (ent.stripeCustomerId === customerId) {
           const u = state.users.get(userId);
-          if (!u) continue;
-          const { passwordHash, ...rest } = u;
-          void passwordHash;
-          return rest;
+          if (u) return { ...u };
         }
       }
       return null;
@@ -400,27 +391,6 @@ export function createMemoryRepos(): MemoryReposHandle {
     },
   };
 
-  const sessions: SessionRepo = {
-    async create(userId, ttlMs) {
-      const id = nanoid(32);
-      const expiresAt = new Date(Date.now() + ttlMs).toISOString();
-      state.sessions.set(id, { userId, expiresAt });
-      return { id, expiresAt };
-    },
-    async get(id) {
-      const s = state.sessions.get(id);
-      if (!s) return null;
-      if (Date.parse(s.expiresAt) < Date.now()) {
-        state.sessions.delete(id);
-        return null;
-      }
-      return { ...s };
-    },
-    async delete(id) {
-      state.sessions.delete(id);
-    },
-  };
-
   const stripeEvents: StripeEventRepo = {
     async recordIfNew(eventId) {
       if (state.stripeEvents.has(eventId)) return false;
@@ -439,7 +409,6 @@ export function createMemoryRepos(): MemoryReposHandle {
     labels,
     memories,
     aiRuns,
-    sessions,
     stripeEvents,
     __reset: () => {
       state = emptyState();

@@ -1,4 +1,4 @@
-import { signUp } from "@/lib/auth/service";
+import { getAuth } from "@/lib/auth/auth";
 import { seedDemoWorkspaceIfEmpty } from "@/lib/demo/seed-demo";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getTestRepos } from "../setup";
@@ -11,12 +11,17 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+async function signUp(email: string): Promise<string> {
+  const res = await getAuth().api.signUpEmail({
+    body: { email, password: "password123", name: email.split("@")[0]! },
+  });
+  return res.user.id;
+}
+
 describe("SIFTY_DEMO_SEED", () => {
   it("sign-up populates a fully-triaged demo workspace", async () => {
     const repos = getTestRepos();
-    const result = await signUp({ email: "demo@example.com", password: "password123" });
-    expect("cookie" in result).toBe(true);
-    const userId = ("user" in result ? result.user : null)!.id;
+    const userId = await signUp("demo@example.com");
 
     const [tasks, memories, labels] = await Promise.all([
       repos.tasks.list(userId),
@@ -51,8 +56,7 @@ describe("SIFTY_DEMO_SEED", () => {
 
   it("never reseeds a workspace that already has data", async () => {
     const repos = getTestRepos();
-    const result = await signUp({ email: "demo2@example.com", password: "password123" });
-    const userId = ("user" in result ? result.user : null)!.id;
+    const userId = await signUp("demo2@example.com");
 
     const before = await repos.tasks.list(userId);
     // Simulate the user clearing everything except one task.
@@ -67,8 +71,7 @@ describe("SIFTY_DEMO_SEED", () => {
   it("without the flag, sign-up seeds only the default labels", async () => {
     vi.stubEnv("SIFTY_DEMO_SEED", "");
     const repos = getTestRepos();
-    const result = await signUp({ email: "plain@example.com", password: "password123" });
-    const userId = ("user" in result ? result.user : null)!.id;
+    const userId = await signUp("plain@example.com");
 
     expect(await repos.tasks.list(userId)).toHaveLength(0);
     expect(await repos.memories.list(userId)).toHaveLength(0);

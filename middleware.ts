@@ -1,26 +1,25 @@
-import { CREATOR_EMAIL, SESSION_COOKIE_NAME } from "@/lib/auth/session-shared";
-import { jwtVerify } from "jose";
+import { getSessionCookie } from "better-auth/cookies";
 import { type NextRequest, NextResponse } from "next/server";
 
 /**
  * Middleware.
  *
- * Two responsibilities:
+ * Gates the signed-in app routes (`/today`, `/focus`, ...) — redirect
+ * visitors without a session cookie to `/sign-in?next=<original>`.
  *
- * 1. Gate the signed-in app routes (`/today`, `/focus`, ...) — redirect
- *    unauthenticated users to `/sign-in?next=<original>`.
- * 2. Light pre-check on the JWT cookie. We don't load the DB here; the
- *    server-side `getSession()` does that on each request. The middleware
- *    only catches the obviously-missing-or-tampered-cookie case so we don't
- *    spin up a route handler just to redirect.
+ * This is the optimistic check Better Auth recommends for middleware: it
+ * only looks for the cookie, it does not validate it (that needs the
+ * database). The authoritative check is `getSession()` in the `(app)`
+ * layout, which redirects when the cookie is stale or tampered with. The
+ * middleware exists so an obviously signed-out visitor never renders the
+ * app shell.
  *
  * `SIFTY_DISABLE_AUTH=1` is the local-dev escape hatch — when set, the
  * middleware lets every request through (matching the bypass in
  * `getSession()`).
  */
 
-const ISSUER = "sifty";
-const AUDIENCE = "sifty-app";
+const COOKIE_PREFIX = "sifty";
 
 const PROTECTED_PREFIXES = [
   "/today",
@@ -47,21 +46,10 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
   );
   if (!isProtected) return NextResponse.next();
 
-  const cookie = req.cookies.get(SESSION_COOKIE_NAME)?.value;
+  const cookie = getSessionCookie(req, { cookiePrefix: COOKIE_PREFIX });
   if (!cookie) return redirectToSignIn(req);
 
-  const ok = await verifyCookie(cookie).catch(() => false);
-  if (!ok) return redirectToSignIn(req);
-
   return NextResponse.next();
-}
-
-async function verifyCookie(token: string): Promise<boolean> {
-  const secret = process.env.AUTH_SECRET;
-  if (!secret || secret.length < 32) return false;
-  const key = new TextEncoder().encode(secret);
-  await jwtVerify(token, key, { issuer: ISSUER, audience: AUDIENCE });
-  return true;
 }
 
 function redirectToSignIn(req: NextRequest): NextResponse {
@@ -82,6 +70,3 @@ export const config = {
     "/((?!api|_next/static|_next/image|favicon.ico|manifest.webmanifest|.*\\..*).*)",
   ],
 };
-
-// Suppress unused export warning for CREATOR_EMAIL - re-exported for ergonomics.
-export { CREATOR_EMAIL };
