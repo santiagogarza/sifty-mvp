@@ -64,8 +64,11 @@ function deny(
     ok: false,
     scope,
     result,
+    // `error` is what the app's own fetch helpers read; `message` is what the
+    // Better Auth client surfaces, so the middleware 429 on `/api/auth/*`
+    // shows the same sentence in the sign-in form as the per-email hook.
     response: NextResponse.json(
-      { error: message, code: "rate_limited" },
+      { error: message, message, code: "rate_limited" },
       rateLimitResponseInit(result),
     ),
   };

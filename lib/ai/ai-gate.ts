@@ -53,7 +53,7 @@ export async function gateAiRequest(args: {
     return {
       ok: false,
       response: NextResponse.json(
-        { error: TOO_MANY, code: "rate_limited" },
+        { error: TOO_MANY, message: TOO_MANY, code: "rate_limited" },
         {
           status: 429,
           headers: {

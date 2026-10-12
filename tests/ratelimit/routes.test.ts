@@ -1,4 +1,5 @@
 import { resolveProvider } from "@/lib/ai/provider";
+import { RATE_LIMIT_MESSAGE } from "@/lib/auth/abuse-hooks";
 import {
   __resetRateLimits,
   createMemoryStore,
@@ -44,7 +45,13 @@ function json(url: string, body: unknown, headers: Record<string, string> = {}) 
 async function expect429(res: Response) {
   expect(res.status).toBe(429);
   expect(Number(res.headers.get("Retry-After"))).toBeGreaterThan(0);
-  expect((await res.json()).code).toBe("rate_limited");
+  const body = await res.json();
+  expect(body.code).toBe("rate_limited");
+  // Both shapes carry a human sentence: `message` is what the Better Auth
+  // client renders, `error` what the app's fetch helpers read.
+  expect(typeof body.message).toBe("string");
+  expect(body.message.length).toBeGreaterThan(0);
+  return body as { code: string; message: string; error?: string };
 }
 
 describe.each(STORES)("per-route rate limits — $name", ({ make }) => {
@@ -112,6 +119,23 @@ describe.each(STORES)("per-route rate limits — $name", ({ make }) => {
     await expect429(await fire(a.cookie, "7.7.7.7"));
     // The other user had 1 of 2 → one more from a fresh IP passes.
     expect((await fire(b.cookie, "8.8.8.8")).status).toBe(200);
+  });
+
+  it("/api/agent-brief: own per-user budget, 429 before any task lookup", async () => {
+    vi.stubEnv("RATELIMIT_TRIAGE_PER_MIN", "2");
+    const { cookie } = await createUserWithCookie(getTestRepos(), { email: "brief@example.com" });
+    const { POST } = await import("@/app/api/agent-brief/route");
+    const fire = () =>
+      POST(
+        json(
+          "http://localhost/api/agent-brief",
+          { taskId: "task_missing" },
+          { cookie, "x-forwarded-for": "9.9.9.9" },
+        ),
+      );
+    expect((await fire()).status).toBe(404);
+    expect((await fire()).status).toBe(404);
+    await expect429(await fire());
   });
 
   it("/api/invites/redeem: per IP across users and per user across IPs", async () => {
@@ -220,9 +244,26 @@ describe.each(STORES)("per-route rate limits — $name", ({ make }) => {
         )
       ).status,
     ).toBe(200);
-    await expect429(await attempt("4.4.4.4"));
+    const limited = await expect429(await attempt("4.4.4.4"));
+    expect(limited.message).toBe(RATE_LIMIT_MESSAGE);
     // Another account is unaffected.
     expect((await attempt("4.4.4.4", "other@example.com")).status).toBe(401);
+  });
+
+  it("send-verification-email draws from the same per-email cap", async () => {
+    vi.stubEnv("RATELIMIT_AUTH_EMAIL_PER_MIN", "2");
+    const { POST } = await import("@/app/api/auth/[...all]/route");
+    const resend = () =>
+      POST(
+        json(
+          "http://localhost/api/auth/send-verification-email",
+          { email: "resend@example.com", callbackURL: "/today" },
+          { origin: "http://localhost:3000" },
+        ),
+      );
+    expect((await resend()).status).toBe(200);
+    expect((await resend()).status).toBe(200);
+    await expect429(await resend());
   });
 
   it("magic-link and password-reset requests share the per-email cap", async () => {
@@ -265,7 +306,11 @@ describe.each(STORES)("per-route rate limits — $name", ({ make }) => {
     expect((await post("/api/auth/sign-in", "1.2.3.4")).status).toBe(200);
     expect((await post("/api/auth/sign-up", "1.2.3.4")).status).toBe(200);
     const limited = await post("/api/auth/magic-link", "1.2.3.4");
-    await expect429(limited);
+    const body = await expect429(limited);
+    // The sign-in form renders `message` (via `authErrorMessage`), so the
+    // middleware 429 must say the same thing as the per-email hook's 429.
+    expect(body.message).toBe(RATE_LIMIT_MESSAGE);
+    expect(body.error).toBe(RATE_LIMIT_MESSAGE);
     // Other IPs and reads are unaffected.
     expect((await post("/api/auth/sign-in", "5.6.7.8")).status).toBe(200);
     const read = await middleware(
