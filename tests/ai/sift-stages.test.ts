@@ -116,6 +116,50 @@ describe("offline stages", () => {
     const inbox = await runStage("triage", ctx(), { offline: true });
     expect(inbox.output.routing).toBe("inbox");
   });
+
+  it("offers tappable options for each canned question, none when confident, none once answered", async () => {
+    const terse = await runStage("triage", ctx({ task: task({ sourceText: "Taxes" }) }), {
+      offline: true,
+    });
+    expect(terse.output.clarifyingQuestion).toBe("What outcome would mark this as done?");
+    expect(terse.output.clarifyingOptions).toEqual([
+      "A decision",
+      "Something sent",
+      "Something built",
+    ]);
+
+    const asked = await runStage(
+      "triage",
+      ctx({ task: task({ sourceText: "Should we move the offsite to March?" }) }),
+      { offline: true },
+    );
+    expect(asked.output.clarifyingQuestion).toMatch(/research note/);
+    expect(asked.output.clarifyingOptions).toEqual(["Yes, a note", "No, it's a task"]);
+
+    // Three or more words with a question mark and no date: the deadline question.
+    const vague = await runStage(
+      "triage",
+      ctx({ task: task({ sourceText: "Is the vendor contract renewal still pending for us?" }) }),
+      { offline: true },
+    );
+    expect(vague.output.confidence).toBeLessThan(0.55);
+    expect(vague.output.clarifyingQuestion).toMatch(/research note|deadline/);
+    expect(vague.output.clarifyingOptions.length).toBeGreaterThan(0);
+
+    const confident = await runStage("triage", ctx(), { offline: true });
+    expect(confident.output.clarifyingQuestion).toBeNull();
+    expect(confident.output.clarifyingOptions).toEqual([]);
+
+    // The second pass after an answer never re-asks.
+    const answered = await runStage(
+      "triage",
+      ctx({ task: task({ sourceText: "Taxes", sourceContext: "Answer: Something sent" }) }),
+      { offline: true },
+    );
+    expect(answered.output.clarifyingQuestion).toBeNull();
+    expect(answered.output.clarifyingOptions).toEqual([]);
+    expect(answered.output.confidence).toBeGreaterThanOrEqual(0.7);
+  });
 });
 
 describe("online stages", () => {

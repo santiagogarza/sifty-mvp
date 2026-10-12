@@ -1,5 +1,6 @@
 import { decisionHookToken } from "@/lib/decisions/hook";
 import { openClarifyingQuestion } from "@/lib/decisions/service";
+import { DECISION_LIMITS } from "@/lib/domain/limits";
 import { __resetRateLimits } from "@/lib/ratelimit/limiter";
 import { type WorkflowClient, setWorkflowClientForTesting } from "@/lib/workflows/dispatch";
 import { siftTask } from "@/lib/workflows/sift-task";
@@ -129,11 +130,22 @@ describe("POST /api/decisions/:id/answer", () => {
     expect(client.resume).not.toHaveBeenCalled();
   });
 
-  it("400 for an empty answer or an unknown field", async () => {
+  it("400 for an empty answer, an unknown field, or an oversized answer", async () => {
     const { decision } = await seedQuestion();
     expect((await answer(decision.id, {})).status).toBe(400);
     expect((await answer(decision.id, { text: "   " })).status).toBe(400);
     expect((await answer(decision.id, { nope: 1 })).status).toBe(400);
+    expect(
+      (await answer(decision.id, { text: "x".repeat(DECISION_LIMITS.answerText + 1) })).status,
+    ).toBe(400);
+    expect(
+      (await answer(decision.id, { option: "y".repeat(DECISION_LIMITS.option + 1) })).status,
+    ).toBe(400);
+    // Nothing above resolved it; the limit itself is accepted.
+    expect((await getTestRepos().decisions.get(userId, decision.id))?.status).toBe("open");
+    expect(
+      (await answer(decision.id, { text: "x".repeat(DECISION_LIMITS.answerText) })).status,
+    ).toBe(200);
   });
 
   it("resolves the decision, wakes the run that asked, and puts the task back in motion", async () => {
