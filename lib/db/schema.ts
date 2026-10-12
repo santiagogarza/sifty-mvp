@@ -395,6 +395,90 @@ export const inviteRedemptions = pgTable(
   ],
 );
 
+/**
+ * Per-user notification settings. One row per user, created on first save;
+ * readers treat a missing row as the defaults (`lib/notifications/preferences`).
+ * Hours are local to `timezone` (IANA name) and whole hours, because Vercel
+ * Cron runs hourly at best.
+ */
+export const notificationPreferences = pgTable("notification_preferences", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  timezone: text("timezone").notNull().default("UTC"),
+  emailEnabled: boolean("email_enabled").notNull().default(true),
+  pushEnabled: boolean("push_enabled").notNull().default(false),
+  morningPlanEnabled: boolean("morning_plan_enabled").notNull().default(true),
+  /** Local hour (0–23) the morning plan and the weekly review go out. */
+  morningPlanHour: integer("morning_plan_hour").notNull().default(7),
+  dueRemindersEnabled: boolean("due_reminders_enabled").notNull().default(true),
+  /** Local hour (0–23) of the afternoon due/overdue nudge. */
+  dueReminderHour: integer("due_reminder_hour").notNull().default(15),
+  weeklyReviewEnabled: boolean("weekly_review_enabled").notNull().default(true),
+  /** 0 = Sunday … 6 = Saturday. */
+  weeklyReviewDay: integer("weekly_review_day").notNull().default(0),
+  /** Quiet hours [start, end) in local hours; both null = none. May wrap midnight. */
+  quietHoursStart: integer("quiet_hours_start"),
+  quietHoursEnd: integer("quiet_hours_end"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Web Push subscriptions (one per browser/device). The endpoint is unique
+ * across users: re-subscribing from the same browser after switching
+ * accounts moves the row rather than fanning out to two people.
+ */
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("push_subscriptions_endpoint_idx").on(t.endpoint),
+    index("push_subscriptions_user_idx").on(t.userId),
+  ],
+);
+
+/**
+ * Digest send ledger. One row per (user, digest kind, channel, period) is
+ * claimed before anything goes out, so a cron rerun — or two overlapping
+ * runs — can never deliver the same digest twice.
+ */
+export const notificationSends = pgTable(
+  "notification_sends",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** "morning_plan" | "due_reminder" | "weekly_review" */
+    kind: text("kind").notNull(),
+    /** "email" | "push" */
+    channel: text("channel").notNull(),
+    /** Local date `YYYY-MM-DD` for daily digests, `YYYY-Www` for weekly. */
+    periodKey: text("period_key").notNull(),
+    status: text("status", { enum: ["pending", "sent", "skipped", "failed"] })
+      .notNull()
+      .default("pending"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("notification_sends_period_idx").on(t.userId, t.kind, t.channel, t.periodKey),
+  ],
+);
+
 export type DbUser = typeof users.$inferSelect;
 export type DbEntitlement = typeof entitlements.$inferSelect;
 export type DbTask = typeof tasks.$inferSelect;

@@ -2,6 +2,21 @@ import { render } from "@react-email/render";
 import type { ReactElement } from "react";
 import { sendEmail } from "../index";
 import type { EmailCategory, SentEmail } from "../types";
+import {
+  DigestDueReminder,
+  type DigestDueReminderProps,
+  digestDueReminderSubject,
+} from "./digest-due-reminder";
+import {
+  DigestMorningPlan,
+  type DigestMorningPlanProps,
+  digestMorningPlanSubject,
+} from "./digest-morning-plan";
+import {
+  DigestWeeklyReview,
+  type DigestWeeklyReviewProps,
+  digestWeeklyReviewSubject,
+} from "./digest-weekly-review";
 import { InviteRedeemed, type InviteRedeemedProps, inviteRedeemedSubject } from "./invite-redeemed";
 import { MagicLink, type MagicLinkProps, magicLinkSubject } from "./magic-link";
 import { PasswordReset, type PasswordResetProps, passwordResetSubject } from "./password-reset";
@@ -59,6 +74,24 @@ export const templates = {
     category: "transactional",
     subject: paymentFailedSubject,
     component: PaymentFailed,
+  }),
+  "digest-morning-plan": define<DigestMorningPlanProps>({
+    category: "notification",
+    subject: digestMorningPlanSubject,
+    component: DigestMorningPlan,
+    unsubscribeUrl: (p) => p.unsubscribeUrl,
+  }),
+  "digest-due-reminder": define<DigestDueReminderProps>({
+    category: "notification",
+    subject: digestDueReminderSubject,
+    component: DigestDueReminder,
+    unsubscribeUrl: (p) => p.unsubscribeUrl,
+  }),
+  "digest-weekly-review": define<DigestWeeklyReviewProps>({
+    category: "notification",
+    subject: digestWeeklyReviewSubject,
+    component: DigestWeeklyReview,
+    unsubscribeUrl: (p) => p.unsubscribeUrl,
   }),
 };
 

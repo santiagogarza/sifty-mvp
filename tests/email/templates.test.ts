@@ -5,8 +5,22 @@ import {
   renderEmail,
   sendTemplate,
 } from "@/lib/email/templates";
+import type { DigestTask } from "@/lib/notifications/digest";
 import { describe, expect, it } from "vitest";
 import { getTestOutbox } from "../setup";
+
+const digestTask = (id: string, over: Partial<DigestTask> = {}): DigestTask => ({
+  id,
+  title: `Task ${id}`,
+  nextAction: null,
+  lifecycle: "active",
+  effort: "small",
+  priorityBucket: "schedule",
+  due: null,
+  dueState: null,
+  url: `https://sifty.example/today?task=${id}`,
+  ...over,
+});
 
 /**
  * Every template renders to HTML + plain text, carries its call-to-action
@@ -30,8 +44,64 @@ const fixtures: { [K in TemplateName]: { props: TemplateProps<K>; link: string }
     link: `${APP}/api/auth/magic-link/verify?token=m4gic`,
   },
   welcome: {
-    props: { name: "Ana", appUrl: APP, unsubscribeUrl: `${APP}/settings#notifications` },
+    props: { name: "Ana", appUrl: APP, unsubscribeUrl: `${APP}/settings/notifications` },
     link: `${APP}/today`,
+  },
+  "digest-morning-plan": {
+    props: {
+      plan: {
+        kind: "morning_plan",
+        name: "Ana",
+        dateKey: "2026-10-12",
+        dateLabel: "Monday, October 12",
+        overdue: [digestTask("t1", { due: "2026-10-09", dueState: "overdue" })],
+        dueToday: [digestTask("t2", { due: "2026-10-12", dueState: "today" })],
+        today: [digestTask("t3", { priorityBucket: "do_now", nextAction: "Call Ben" })],
+        focus: [digestTask("t4")],
+        inboxCount: 2,
+        away: null,
+        appUrl: APP,
+      },
+      unsubscribeUrl: `${APP}/api/notifications/unsubscribe?token=abc`,
+      settingsUrl: `${APP}/settings/notifications`,
+    },
+    link: `${APP}/today`,
+  },
+  "digest-due-reminder": {
+    props: {
+      reminder: {
+        kind: "due_reminder",
+        name: "Ana",
+        dateKey: "2026-10-12",
+        overdue: [digestTask("t1", { due: "2026-10-09", dueState: "overdue" })],
+        dueToday: [digestTask("t2", { due: "2026-10-12", dueState: "today" })],
+        appUrl: APP,
+      },
+      unsubscribeUrl: `${APP}/api/notifications/unsubscribe?token=abc`,
+      settingsUrl: `${APP}/settings/notifications`,
+    },
+    link: `${APP}/today`,
+  },
+  "digest-weekly-review": {
+    props: {
+      review: {
+        kind: "weekly_review",
+        name: "Ana",
+        weekKey: "2026-W42",
+        rangeLabel: "Oct 5 – Oct 11",
+        completed: [digestTask("t5", { lifecycle: "done" })],
+        completedCount: 1,
+        overdue: [digestTask("t1", { due: "2026-10-09", dueState: "overdue" })],
+        upcoming: [digestTask("t6", { due: "2026-10-15", dueState: "upcoming" })],
+        inboxCount: 3,
+        focusCount: 2,
+        waitingCount: 1,
+        appUrl: APP,
+      },
+      unsubscribeUrl: `${APP}/api/notifications/unsubscribe?token=abc`,
+      settingsUrl: `${APP}/settings/notifications`,
+    },
+    link: `${APP}/inbox`,
   },
   "invite-redeemed": {
     props: { name: "Ana", grant: "Sifty Pro", expiresAt: "2027-01-15T00:00:00.000Z", appUrl: APP },
@@ -76,7 +146,7 @@ describe("email templates", () => {
     });
   }
 
-  it("marks only welcome as non-transactional", async () => {
+  it("marks welcome and the digests as non-transactional", async () => {
     const categories = Object.fromEntries(
       await Promise.all(
         TEMPLATE_NAMES.map(async (name) => [
@@ -92,7 +162,43 @@ describe("email templates", () => {
       welcome: "notification",
       "invite-redeemed": "transactional",
       "payment-failed": "transactional",
+      "digest-morning-plan": "notification",
+      "digest-due-reminder": "notification",
+      "digest-weekly-review": "notification",
     });
+  });
+
+  it("digest emails list every task with its deep link and the overdue marker", async () => {
+    const plan = await renderEmail("digest-morning-plan", fixtures["digest-morning-plan"].props);
+    expect(plan.subject).toBe("Your plan for Monday, October 12 — 1 overdue");
+    expect(plan.text).toContain("Task t1");
+    expect(plan.text).toContain("overdue since Oct 9");
+    expect(plan.text).toContain("Call Ben");
+    expect(plan.text).toContain("2 captures are waiting in Inbox");
+    expect(plan.html).toContain(`href="${APP}/today?task=t3"`);
+    expect(plan.html).not.toContain("while you were away");
+
+    const nudge = await renderEmail("digest-due-reminder", fixtures["digest-due-reminder"].props);
+    expect(nudge.subject).toBe("1 still due today, 1 overdue");
+
+    const review = await renderEmail(
+      "digest-weekly-review",
+      fixtures["digest-weekly-review"].props,
+    );
+    expect(review.subject).toBe("Your week in review — 1 done, 1 coming up");
+    expect(review.text).toContain("Inbox 3 · Focus 2 · Waiting on 1");
+    expect(review.text).toContain("1 task finished, 1 slipped.");
+    expect(review.text).toContain("Oct 15");
+
+    const idle = await renderEmail("digest-weekly-review", {
+      ...fixtures["digest-weekly-review"].props,
+      review: {
+        ...fixtures["digest-weekly-review"].props.review,
+        completed: [],
+        completedCount: 0,
+      },
+    });
+    expect(idle.text).toContain("Nothing finished, 1 slipped.");
   });
 
   it("refuses to render a notification without an unsubscribe link", async () => {
@@ -145,7 +251,7 @@ describe("email templates", () => {
       category: "notification",
       idempotencyKey: "welcome:user_1",
     });
-    expect(outbox[0]!.headers?.["List-Unsubscribe"]).toContain("/settings#notifications");
+    expect(outbox[0]!.headers?.["List-Unsubscribe"]).toContain("/settings/notifications");
 
     await sendTemplate("verify-email", {
       to: "ana@example.com",

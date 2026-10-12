@@ -382,6 +382,122 @@ export interface InviteCodeRepo {
   listRedemptionsForUser(userId: string): Promise<InviteRedemption[]>;
 }
 
+export type DigestKind = "morning_plan" | "due_reminder" | "weekly_review";
+export type NotificationChannel = "email" | "push";
+
+/** Everything the user can set; hours are local to `timezone`. */
+export interface NotificationPreferencesInput {
+  timezone: string;
+  emailEnabled: boolean;
+  pushEnabled: boolean;
+  morningPlanEnabled: boolean;
+  morningPlanHour: number;
+  dueRemindersEnabled: boolean;
+  dueReminderHour: number;
+  weeklyReviewEnabled: boolean;
+  weeklyReviewDay: number;
+  quietHoursStart: number | null;
+  quietHoursEnd: number | null;
+}
+
+export interface NotificationPreferencesRecord extends NotificationPreferencesInput {
+  userId: string;
+  updatedAt: string;
+}
+
+export interface NotificationPreferencesRepo {
+  get(userId: string): Promise<NotificationPreferencesRecord | null>;
+  upsert(
+    userId: string,
+    input: NotificationPreferencesInput,
+  ): Promise<NotificationPreferencesRecord>;
+  /**
+   * Saved preference rows in `userId` order, `limit` at a time, starting
+   * after `afterUserId`. Only users who saved preferences are candidates for
+   * digests: the defaults alone never trigger a send, because without a
+   * saved timezone the morning plan would land at the wrong hour.
+   */
+  list(limit: number, afterUserId?: string): Promise<NotificationPreferencesRecord[]>;
+}
+
+export interface PushSubscriptionInput {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  userAgent: string | null;
+}
+
+export interface PushSubscriptionRecord extends PushSubscriptionInput {
+  id: string;
+  userId: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+/** Devices per account; keeps the digest fan-out and the Settings list bounded. */
+export const MAX_PUSH_SUBSCRIPTIONS_PER_USER = 20;
+
+export interface PushSubscriptionRepo {
+  /** Oldest first, capped at `MAX_PUSH_SUBSCRIPTIONS_PER_USER`. */
+  listForUser(userId: string): Promise<PushSubscriptionRecord[]>;
+  /**
+   * Idempotent on `endpoint`: the same browser re-subscribing updates keys
+   * in place, and an endpoint previously registered by another account on
+   * this browser moves to the caller.
+   */
+  upsert(userId: string, input: PushSubscriptionInput): Promise<PushSubscriptionRecord>;
+  deleteByEndpoint(userId: string, endpoint: string): Promise<boolean>;
+  /** Drop a subscription the push service reported gone (404/410), whoever owns it. */
+  remove(id: string): Promise<void>;
+  touch(id: string, at: Date): Promise<void>;
+}
+
+export type NotificationSendStatus = "pending" | "sent" | "skipped" | "failed";
+
+export interface NotificationSendRecord {
+  id: string;
+  userId: string;
+  kind: DigestKind;
+  channel: NotificationChannel;
+  periodKey: string;
+  status: NotificationSendStatus;
+  error: string | null;
+  createdAt: string;
+  sentAt: string | null;
+}
+
+/**
+ * How long a `pending` claim is honoured. A runner killed between claim
+ * and finalize (function timeout, crash) would otherwise block that period
+ * forever; after the lease the next run takes the claim over.
+ */
+export const NOTIFICATION_CLAIM_LEASE_MS = 10 * 60 * 1000;
+
+export interface NotificationSendRepo {
+  /**
+   * Reserve (user, kind, channel, period) before sending. Returns null when
+   * a row already exists — finalized in any status, or still `pending`
+   * within its lease — so a rerun or a concurrent run leaves the first
+   * claimant as the only sender. A `pending` row older than the lease is
+   * taken over (same id, fresh `createdAt`).
+   */
+  claim(
+    input: {
+      userId: string;
+      kind: DigestKind;
+      channel: NotificationChannel;
+      periodKey: string;
+    },
+    now?: Date,
+  ): Promise<{ id: string } | null>;
+  finalize(
+    id: string,
+    outcome: { status: Exclude<NotificationSendStatus, "pending">; error?: string | null },
+  ): Promise<void>;
+  /** Newest first. */
+  listForUser(userId: string, limit?: number): Promise<NotificationSendRecord[]>;
+}
+
 export interface Repos {
   users: UserRepo;
   entitlements: EntitlementRepo;
@@ -392,4 +508,7 @@ export interface Repos {
   taskEvents: TaskEventRepo;
   stripeEvents: StripeEventRepo;
   inviteCodes: InviteCodeRepo;
+  notificationPreferences: NotificationPreferencesRepo;
+  pushSubscriptions: PushSubscriptionRepo;
+  notificationSends: NotificationSendRepo;
 }

@@ -1,5 +1,6 @@
 import { AppFrame } from "@/components/app-shell/app-frame";
 import { PaymentFailedBanner } from "@/components/billing/payment-failed-banner";
+import { ServiceWorkerRegistrar } from "@/components/notifications/service-worker-registrar";
 import { getSession } from "@/lib/auth/session";
 import { paymentProblem } from "@/lib/entitlements/entitlements";
 import { headers } from "next/headers";
@@ -25,6 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <AppFrame notice={problem ? <PaymentFailedBanner problem={problem} /> : null}>
       {children}
+      <ServiceWorkerRegistrar />
     </AppFrame>
   );
 }
