@@ -7,6 +7,7 @@ import {
   compareFingerprints,
   computeFingerprints,
 } from "./harness/fingerprints";
+import { recordsBaselines } from "./harness/mode";
 
 /**
  * Enforces the prompt version bump policy (`lib/ai/prompts.ts`): a prompt,
@@ -21,7 +22,9 @@ const update = process.env.EVAL_UPDATE_BASELINES === "1";
 const current = computeFingerprints();
 const recorded = readFingerprints();
 
-if (update) {
+// Fingerprints do not depend on which captures ran, but a filtered run is
+// never a baseline-recording run (same rule as the rubric and cost files).
+if (recordsBaselines({ update, only: process.env.EVAL_ONLY?.trim() || null })) {
   // Keep historical versions: `ai_runs.prompt_version` rows still reference them.
   writeFingerprints({ ...recorded, ...current });
 }

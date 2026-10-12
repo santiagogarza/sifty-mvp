@@ -10,9 +10,9 @@ import {
   writeRubricBaseline,
 } from "./harness/baselines";
 import { type CostWarning, compareCosts, registryPrices, summarizeCosts } from "./harness/cost";
-import { describeMode, resolveEvalMode } from "./harness/mode";
+import { describeMode, recordsBaselines, resolveEvalMode } from "./harness/mode";
 import { type CaptureResult, runGoldenSet } from "./harness/pipeline";
-import { type CheckRecord, collectChecks, passRates, publishReport } from "./harness/report";
+import { type CheckRecord, collectChecks, publishReport, softChecksBelow } from "./harness/report";
 import { INJECTION_CHECKED_STAGES, PASS_RATE, checkStage } from "./harness/rubrics";
 
 /**
@@ -49,9 +49,9 @@ afterAll(() => {
   const baseline = readCostBaseline();
   costWarnings = compareCosts(cost, baseline);
 
-  if (mode.update && mode.only) {
+  if (mode.update && !recordsBaselines(mode)) {
     console.log("evals: EVAL_ONLY is set; baselines not updated from a partial run");
-  } else if (mode.update) {
+  } else if (recordsBaselines(mode)) {
     if (mode.offline) writeRubricBaseline(nextRubrics);
     writeCostBaseline({
       prices: registryPrices(),
@@ -130,14 +130,7 @@ describe.each(captures.map((c) => [c.id, c] as const))("%s", (_id, capture) => {
 if (!mode.offline) {
   describe.each(SIFT_STAGES)("%s soft checks across the set", (stage) => {
     it(`hold for at least ${Math.round(PASS_RATE * 100)}% of captures`, () => {
-      const rates = passRates(checks.filter((c) => c.stage === stage && !c.hard));
-      const failing: string[] = [];
-      for (const [key, rate] of rates) {
-        if (rate.pass / rate.total >= PASS_RATE) continue;
-        failing.push(
-          `${key}: ${rate.pass}/${rate.total}\n    ${rate.fails.map((f) => `${f.captureId}: ${f.detail}`).join("\n    ")}`,
-        );
-      }
+      const failing = softChecksBelow(checks, stage, PASS_RATE);
       expect(failing, `soft checks below ${PASS_RATE * 100}%:\n  ${failing.join("\n  ")}`).toEqual(
         [],
       );

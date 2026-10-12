@@ -58,6 +58,22 @@ export function passRates(
   return rates;
 }
 
+/**
+ * The online gate: soft checks for one stage whose pass rate across the
+ * captures they applied to is below `rate`, each with its failing captures.
+ */
+export function softChecksBelow(checks: CheckRecord[], stage: SiftStage, rate: number): string[] {
+  const rates = passRates(checks.filter((c) => c.stage === stage && !c.hard));
+  const failing: string[] = [];
+  for (const [key, r] of rates) {
+    if (r.pass / r.total >= rate) continue;
+    failing.push(
+      `${key}: ${r.pass}/${r.total}\n    ${r.fails.map((f) => `${f.captureId}: ${f.detail}`).join("\n    ")}`,
+    );
+  }
+  return failing;
+}
+
 export function renderSummary(report: RunReport): string {
   const lines: string[] = [];
   const hardFails = report.checks.filter((c) => c.hard && !c.pass);

@@ -47,7 +47,7 @@ state:
 
 | Stage | Checks |
 | --- | --- |
-| enrich | `title-concise` (word cap, no emoji / all caps / trailing punctuation), `due-signal` (`none` / `any` / exact ISO), `due-not-injected`, `labels-sane` (≤ 3, distinct, optional allow-list), `next-action-imperative` |
+| enrich | `title-concise` (word cap, no emoji / all caps / trailing punctuation), `due-signal` (`none` / `any` / exact ISO), `due-not-injected`, `labels-sane` (distinct, no emoji, optional allow-list; the ≤ 3 cap is the schema's), `next-action-imperative` |
 | prioritize | `urgency-range`, `importance-range`, `effort-allowed` |
 | triage | `question-only-when-unsure` (question ⇔ confidence < 0.55), `question-expected` (required / forbidden), `routing-allowed`, `delegation-allowed` |
 | subtasks | `count-range`, `actionable` (each starts with a verb, distinct, not a question) |

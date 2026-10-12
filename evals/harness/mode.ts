@@ -38,6 +38,15 @@ export function resolveEvalMode(env: Env = process.env): EvalMode {
   return { offline, transport, update, concurrency, only };
 }
 
+/**
+ * Baselines are recorded only from a full-set update run: a filtered
+ * (`EVAL_ONLY`) run would replace whole-set averages and rubric results
+ * with a subset's.
+ */
+export function recordsBaselines(mode: Pick<EvalMode, "update" | "only">): boolean {
+  return mode.update && mode.only === null;
+}
+
 export function describeMode(mode: EvalMode): string {
   return mode.offline
     ? "offline (deterministic heuristic)"
