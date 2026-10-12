@@ -12,6 +12,10 @@ See [`BRANCHES.md`](./BRANCHES.md). In short:
   script. Never PR into them.
 - Never merge `production` into `master`. Never land production-only
   features on `master`. Never run demo reset scripts against `production`.
+- Merging: PRs into `production` are squash-merged by their author once CI
+  is green, Bugbot has no blocking comments, and the "Sifty Merge Gate"
+  review says ship. PRs into `master` (and any change to `demo-done` /
+  `dragging-bug`) are merged only by Santi, never by agents.
 
 Pick the target branch before you start; if the right branch is unclear, ask.
 

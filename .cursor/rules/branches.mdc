@@ -17,6 +17,11 @@ Never merge `production` into `master`. Never land production-only features
 on `master`. Never run demo reset scripts against `production`. Fixes flow
 `master` → `production` only.
 
+Merging: squash-merge your own PR into `production` only when CI is green,
+Bugbot has no blocking comments, and the "Sifty Merge Gate" review says
+ship. Never merge PRs into `master` or touch `demo-done` / `dragging-bug` —
+only Santi does that.
+
 Before creating a branch or PR, decide which base it belongs on. If the
 task does not say and it is not obvious, ask rather than defaulting to
 `master`.

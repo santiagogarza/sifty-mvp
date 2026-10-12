@@ -36,6 +36,14 @@ purposes and must not be mixed. Read this before opening a PR or pushing.
   them locally. Do not open PRs against them and do not rebase them onto
   `production`.
 
+## Merge policy
+
+- PRs into `production` are squash-merged by their author once all three
+  hold: GitHub Actions CI is green, Bugbot has no blocking comments, and the
+  "Sifty Merge Gate" review says ship.
+- PRs into `master`, and any change to `demo-done` / `dragging-bug`, are
+  never merged by agents. Only Santi merges those.
+
 ## Never
 
 - Never merge `production` into `master`. That destroys the demo baseline.
