@@ -5,6 +5,8 @@ import { PageShell } from "@/components/app-shell/page-shell";
 import { useTheme } from "@/components/app-shell/theme-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   DEFAULT_MODEL_PREFERENCE,
   MODELS,
@@ -19,7 +21,7 @@ import { tierLabel, tierSummary } from "@/lib/entitlements/entitlements";
 import { useStore } from "@/lib/store/store";
 import { resetLocalWorkspace } from "@/lib/store/sync";
 import { cn } from "@/lib/utils/cn";
-import { Check, Cpu, CreditCard, LogOut, Monitor, Moon, Sun } from "lucide-react";
+import { Check, Cpu, CreditCard, Download, LogOut, Monitor, Moon, Sun, Trash2 } from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
 import { SessionsPanel } from "./sessions-panel";
@@ -205,19 +207,41 @@ export function SettingsClient({ account }: { account: SettingsAccount }) {
         title="Data"
         description="Tasks, labels, and memories sync to your account. This browser also keeps a local cache for instant loads — resetting it does not delete synced data."
       >
-        <Button
-          variant="ghost"
-          onClick={() => {
-            if (confirm("Reset this browser's local Sifty cache? Synced data is unaffected.")) {
-              window.localStorage.removeItem("sifty-store-v1");
-              window.localStorage.removeItem("sifty-sync-ledger-v1");
-              window.location.reload();
-            }
-          }}
-        >
-          Reset local cache
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href="/api/account/export"
+            download
+            className="inline-flex h-9 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-strong)] bg-[var(--surface)] px-3.5 text-[14px] font-medium text-[var(--fg)] transition-colors hover:bg-[var(--surface-hover)]"
+          >
+            <Download size={14} />
+            Export your data
+          </a>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              if (confirm("Reset this browser's local Sifty cache? Synced data is unaffected.")) {
+                window.localStorage.removeItem("sifty-store-v1");
+                window.localStorage.removeItem("sifty-sync-ledger-v1");
+                window.location.reload();
+              }
+            }}
+          >
+            Reset local cache
+          </Button>
+        </div>
+        <p className="mt-2 text-[12px] text-[var(--fg-subtle)] max-w-prose">
+          The export is a JSON file with your tasks, labels, memories, task history, and AI runs.
+        </p>
       </SectionCard>
+
+      {account.authBypass ? null : (
+        <SectionCard
+          title="Delete account"
+          description="Permanently deletes your account, every task, label, memory, and AI run, and cancels any subscription. There is no undo — export first if you want a copy."
+        >
+          <DeleteAccount email={account.email} />
+        </SectionCard>
+      )}
     </PageShell>
   );
 }
@@ -229,6 +253,110 @@ function primaryProvider(p: ModelPreferenceOption): string {
 /** "Claude Haiku 4.5 → GPT-5 mini" */
 function routeLine(route: StageRoute): string {
   return [route.primary, ...route.fallbacks].map((slug) => MODELS[slug].label).join(" → ");
+}
+
+function DeleteAccount({ email }: { email: string }) {
+  const [open, setOpen] = React.useState(false);
+  const [typed, setTyped] = React.useState("");
+  const [pending, setPending] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const matches = typed.trim().toLowerCase() === email.toLowerCase();
+
+  const reset = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      setTyped("");
+      setError(null);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!matches || pending) return;
+    setPending(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/account", {
+        method: "DELETE",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirmEmail: typed.trim() }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? "Couldn't delete the account.");
+      }
+      // The server already dropped the session; clear this browser's copy
+      // of the workspace so nothing of it lingers for the next sign-in.
+      resetLocalWorkspace();
+      window.localStorage.removeItem("sifty-store-v1");
+      window.location.href = "/sign-in?deleted=1";
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't delete the account.");
+      setPending(false);
+    }
+  };
+
+  return (
+    <>
+      <Button
+        variant="secondary"
+        onClick={() => reset(true)}
+        className="border-[var(--warn)]/40 text-[var(--warn)] hover:bg-[var(--warn)]/10"
+      >
+        <Trash2 size={14} />
+        Delete account…
+      </Button>
+
+      <Dialog open={open} onOpenChange={reset}>
+        <DialogContent placement="center" className="w-[min(480px,calc(100vw-32px))]">
+          <div className="px-5 pt-5 pb-2">
+            <DialogTitle>Delete your account?</DialogTitle>
+            <DialogDescription className="mt-1.5 text-[13px] leading-[1.5]">
+              This removes everything in Sifty for <span className="text-[var(--fg)]">{email}</span>{" "}
+              and cancels any subscription. It cannot be undone.
+            </DialogDescription>
+          </div>
+          <div className="px-5 pb-4">
+            <label htmlFor="delete-account-confirm" className="text-eyebrow mb-1.5 block">
+              Type your email to confirm
+            </label>
+            <Input
+              id="delete-account-confirm"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={email}
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void confirmDelete();
+                }
+              }}
+            />
+            {error ? (
+              <p role="alert" className="mt-2 text-[12.5px] text-[var(--warn)]">
+                {error}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex items-center justify-end gap-2 border-t border-[var(--border)] px-5 py-3 bg-[var(--surface-muted)]">
+            <Button variant="ghost" onClick={() => reset(false)} disabled={pending}>
+              Keep account
+            </Button>
+            <Button
+              variant="primary"
+              onClick={confirmDelete}
+              disabled={!matches || pending}
+              className="bg-[var(--warn)] text-white"
+            >
+              {pending ? "Deleting…" : "Delete everything"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
 }
 
 function accountDescription(account: SettingsAccount): string {

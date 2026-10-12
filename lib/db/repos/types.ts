@@ -126,6 +126,12 @@ export interface UserRepo {
   getByEmail(email: string): Promise<UserProfile | null>;
   setStripeCustomerId(userId: string, customerId: string): Promise<void>;
   findByStripeCustomerId(customerId: string): Promise<UserProfile | null>;
+  /**
+   * Remove the user and everything they own (tasks, labels, memories,
+   * events, AI runs, sessions, entitlement). Returns false when no such
+   * user exists.
+   */
+  delete(userId: string): Promise<boolean>;
 }
 
 export interface EntitlementRepo {
@@ -188,6 +194,22 @@ export interface MemoryRepo {
   delete(userId: string, id: string): Promise<boolean>;
 }
 
+export interface AiRunRecord {
+  id: string;
+  taskId: string | null;
+  stage: string | null;
+  model: string;
+  transport: string;
+  status: "succeeded" | "failed";
+  durationMs: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  costCents: number | null;
+  offline: boolean;
+  error: string | null;
+  createdAt: string;
+}
+
 export interface AiRunRepo {
   insert(input: AiRunWriteInput): Promise<{ id: string; createdAt: string }>;
   countSucceededToday(userId: string, now?: Date): Promise<number>;
@@ -196,26 +218,20 @@ export interface AiRunRepo {
    * cross-instance sliding-window rate limit on AI routes.
    */
   countSince(userId: string, since: Date): Promise<number>;
-  list(
-    userId: string,
-    limit?: number,
-  ): Promise<
-    Array<{
-      id: string;
-      taskId: string | null;
-      stage: string | null;
-      model: string;
-      transport: string;
-      status: "succeeded" | "failed";
-      durationMs: number;
-      inputTokens: number | null;
-      outputTokens: number | null;
-      costCents: number | null;
-      offline: boolean;
-      error: string | null;
-      createdAt: string;
-    }>
-  >;
+  /** Newest first. `limit` undefined returns every run (data export). */
+  list(userId: string, limit?: number): Promise<AiRunRecord[]>;
+}
+
+export interface TaskEventRecord {
+  id: string;
+  taskId: string;
+  kind: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface TaskEventRepo {
+  list(userId: string): Promise<TaskEventRecord[]>;
 }
 
 export interface StripeEventRepo {
@@ -302,6 +318,7 @@ export interface Repos {
   labels: LabelRepo;
   memories: MemoryRepo;
   aiRuns: AiRunRepo;
+  taskEvents: TaskEventRepo;
   stripeEvents: StripeEventRepo;
   inviteCodes: InviteCodeRepo;
 }

@@ -25,6 +25,8 @@ import {
   type Repos,
   type StripeEventRepo,
   type TaskCreateInput,
+  type TaskEventRecord,
+  type TaskEventRepo,
   type TaskRepo,
   type UserCreateInput,
   type UserRepo,
@@ -64,6 +66,7 @@ interface State {
     error: string | null;
     createdAt: string;
   }>;
+  taskEvents: Array<TaskEventRecord & { userId: string }>;
   stripeEvents: Set<string>;
   inviteCodes: Map<string, InviteCode>;
   inviteRedemptions: InviteRedemption[];
@@ -79,6 +82,7 @@ function emptyState(): State {
     labels: new Map(),
     memories: new Map(),
     aiRuns: [],
+    taskEvents: [],
     stripeEvents: new Set(),
     inviteCodes: new Map(),
     inviteRedemptions: [],
@@ -130,6 +134,20 @@ export function createMemoryRepos(): MemoryReposHandle {
         if (u) return { ...u };
       }
       return null;
+    },
+    async delete(userId) {
+      const user = state.users.get(userId);
+      if (!user) return false;
+      // Mirrors the Postgres ON DELETE CASCADE chain from users.
+      state.users.delete(userId);
+      state.emails.delete(user.email.toLowerCase());
+      state.entitlements.delete(userId);
+      for (const [id, t] of state.tasks) if (t.userId === userId) state.tasks.delete(id);
+      for (const [id, l] of state.labels) if (l.userId === userId) state.labels.delete(id);
+      for (const [id, m] of state.memories) if (m.userId === userId) state.memories.delete(id);
+      state.aiRuns = state.aiRuns.filter((r) => r.userId !== userId);
+      state.taskEvents = state.taskEvents.filter((e) => e.userId !== userId);
+      return true;
     },
   };
 
@@ -400,11 +418,15 @@ export function createMemoryRepos(): MemoryReposHandle {
       return state.aiRuns.filter((r) => r.userId === userId && Date.parse(r.createdAt) >= start)
         .length;
     },
-    async list(userId, limit = 50) {
-      return state.aiRuns
-        .filter((r) => r.userId === userId)
-        .slice(-limit)
-        .reverse();
+    async list(userId, limit) {
+      const mine = state.aiRuns.filter((r) => r.userId === userId);
+      return (limit === undefined ? mine : mine.slice(-limit)).reverse();
+    },
+  };
+
+  const taskEvents: TaskEventRepo = {
+    async list(userId) {
+      return state.taskEvents.filter((e) => e.userId === userId).map(stripUserId);
     },
   };
 
@@ -504,6 +526,7 @@ export function createMemoryRepos(): MemoryReposHandle {
     labels,
     memories,
     aiRuns,
+    taskEvents,
     stripeEvents,
     inviteCodes,
     __reset: () => {
