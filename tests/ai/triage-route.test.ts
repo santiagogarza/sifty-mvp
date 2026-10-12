@@ -102,6 +102,7 @@ describe("POST /api/triage", () => {
       }),
     );
     expect(res.status).toBe(200);
+    expect(resolveProvider).toHaveBeenLastCalledWith("triage", { preference: "recommended" });
     const body = await res.json();
     expect(body.output.title).toBe("Draft email to investor");
     expect(body.meta.offline).toBe(false);
@@ -179,6 +180,9 @@ describe("POST /api/triage", () => {
     expect(runs).toHaveLength(1);
     expect(runs[0]!.status).toBe("failed");
     expect(runs[0]!.error).toBe("model unavailable");
+    expect(runs[0]!.stage).toBe("triage");
+    expect(runs[0]!.transport).toBe("unknown");
+    expect(runs[0]!.costCents).toBeNull();
   });
 
   it("offline=1 query param uses the heuristic and never calls the model", async () => {
