@@ -53,7 +53,10 @@ export async function POST(req: Request) {
     }
     reportError(err, { area: "stripe.portal" });
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Portal session failed" },
+      {
+        error: "We couldn't reach Stripe just now. Try again in a moment.",
+        detail: err instanceof Error ? err.message : "Portal session failed",
+      },
       { status: 500 },
     );
   }

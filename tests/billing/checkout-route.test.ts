@@ -260,6 +260,44 @@ describe("POST /api/stripe/checkout", () => {
     expect((await res.json()).detail).toMatch(/tax behavior is unspecified/);
   });
 
+  it("hides Stripe's raw error behind 'nothing was charged' copy when session creation fails", async () => {
+    const repos = getTestRepos();
+    fakeStripe();
+    const { cookie } = await createUserWithCookie(repos, { email: "down@example.com" });
+    setStripeForTesting({
+      customers: {
+        async create() {
+          return { id: "cus_down" };
+        },
+      },
+      prices: {
+        async retrieve() {
+          return {
+            active: true,
+            unit_amount: PRO_PRICES.monthly.amountCents,
+            currency: "usd",
+            tax_behavior: "exclusive",
+            recurring: { interval: "month", interval_count: 1 },
+          };
+        },
+      },
+      checkout: {
+        sessions: {
+          async create() {
+            throw new Error("An error occurred with our connection to Stripe.");
+          },
+        },
+      },
+    } as unknown as Stripe);
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await post(cookie);
+    errors.mockRestore();
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.error).toMatch(/Nothing was charged/);
+    expect(json.detail).toMatch(/connection to Stripe/);
+  });
+
   it("verifies each price once per process", async () => {
     const repos = getTestRepos();
     const calls = fakeStripe();

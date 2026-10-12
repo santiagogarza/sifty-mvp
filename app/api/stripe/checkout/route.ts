@@ -136,7 +136,10 @@ export async function POST(req: Request) {
     }
     reportError(err, { area: "stripe.checkout", tags: { cadence } });
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Checkout failed" },
+      {
+        error: "We couldn't reach Stripe just now. Nothing was charged; try again in a moment.",
+        detail: err instanceof Error ? err.message : "Checkout failed",
+      },
       { status: 500 },
     );
   }

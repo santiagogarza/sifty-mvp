@@ -92,6 +92,8 @@ describe("POST /api/stripe/portal", () => {
     const res = await post(cookie);
     errors.mockRestore();
     expect(res.status).toBe(500);
-    expect((await res.json()).error).toBe("stripe down");
+    const json = await res.json();
+    expect(json.error).toMatch(/couldn't reach Stripe/);
+    expect(json.detail).toBe("stripe down");
   });
 });
