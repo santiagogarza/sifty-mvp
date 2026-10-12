@@ -1,0 +1,70 @@
+{
+  "firewallEnabled": true,
+  "rules": [
+    {
+      "name": "Block scanner paths",
+      "description": "Deny probes for software Sifty does not run (WordPress, PHP, dotfiles, admin consoles, Exchange).",
+      "active": true,
+      "conditionGroup": [
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/wp-" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/xmlrpc.php" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/phpmyadmin" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/phpMyAdmin" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/.env" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/.git" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/.aws" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/.ssh" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/.svn" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/cgi-bin" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/vendor/" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/actuator" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/server-status" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/administrator" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/solr" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/_ignition" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/telescope" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/owa/" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/autodiscover" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/ecp/" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/HNAP1" }] },
+        { "conditions": [{ "type": "path", "op": "pre", "value": "/boaform" }] },
+        { "conditions": [{ "type": "path", "op": "suf", "value": ".php" }] },
+        { "conditions": [{ "type": "path", "op": "suf", "value": ".asp" }] },
+        { "conditions": [{ "type": "path", "op": "suf", "value": ".aspx" }] }
+      ],
+      "action": { "mitigate": { "action": "deny" } }
+    },
+    {
+      "name": "Block oversized request bodies",
+      "description": "Deny any request declaring a body over 1 MiB. Sifty's largest legitimate payload (task PATCH, Stripe webhook) is a few KB; Vercel's own cap is 4.5 MB.",
+      "active": true,
+      "conditionGroup": [
+        {
+          "conditions": [
+            { "type": "header", "key": "content-length", "op": "gt", "value": 1048576 }
+          ]
+        }
+      ],
+      "action": { "mitigate": { "action": "deny" } }
+    },
+    {
+      "name": "Block known attack tooling",
+      "description": "Deny requests whose User-Agent names a vulnerability scanner or brute-force tool.",
+      "active": true,
+      "conditionGroup": [
+        { "conditions": [{ "type": "user_agent", "op": "sub", "value": "sqlmap" }] },
+        { "conditions": [{ "type": "user_agent", "op": "sub", "value": "nikto" }] },
+        { "conditions": [{ "type": "user_agent", "op": "sub", "value": "nuclei" }] },
+        { "conditions": [{ "type": "user_agent", "op": "sub", "value": "masscan" }] },
+        { "conditions": [{ "type": "user_agent", "op": "sub", "value": "zgrab" }] },
+        { "conditions": [{ "type": "user_agent", "op": "sub", "value": "dirbuster" }] },
+        { "conditions": [{ "type": "user_agent", "op": "sub", "value": "gobuster" }] },
+        { "conditions": [{ "type": "user_agent", "op": "sub", "value": "wpscan" }] },
+        { "conditions": [{ "type": "user_agent", "op": "sub", "value": "acunetix" }] },
+        { "conditions": [{ "type": "user_agent", "op": "sub", "value": "nmap" }] },
+        { "conditions": [{ "type": "user_agent", "op": "sub", "value": "hydra" }] }
+      ],
+      "action": { "mitigate": { "action": "deny" } }
+    }
+  ]
+}
