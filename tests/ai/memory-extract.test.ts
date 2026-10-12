@@ -80,6 +80,13 @@ describe("offline memory extraction", () => {
       ctx(task({ sourceText: "Ask my lawyer Maja about the lease renewal" })),
     );
     expect(before.proposals[0]).toMatchObject({ text: "Maja = lawyer", kind: "fact" });
+    // Sentence punctuation after the role still terminates the match.
+    expect(
+      offlineMemoryExtraction(ctx(task({ sourceText: "Ask Luis, my coach?" }))).proposals[0],
+    ).toMatchObject({ text: "Luis = coach" });
+    expect(
+      offlineMemoryExtraction(ctx(task({ sourceText: "Thank Mia, my mentor!" }))).proposals[0],
+    ).toMatchObject({ text: "Mia = mentor" });
   });
 
   it("turns first-person habits into third-person preferences", () => {

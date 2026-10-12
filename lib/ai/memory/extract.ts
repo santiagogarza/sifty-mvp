@@ -129,7 +129,7 @@ function show(value: unknown): string {
 
 /** "Ana, my accountant" / "my accountant Ana" / "Ana (accountant)". */
 const ROLE_AFTER_RE =
-  /\b([A-Z][a-z]+)(?:,| \()\s*(?:my |our |the )?([a-z]+(?: [a-z]+)?)(?=\)|,|\.|;|\s+who\b|\s+and\b|\s*$)/gm;
+  /\b([A-Z][a-z]+)(?:,| \()\s*(?:my |our |the )?([a-z]+(?: [a-z]+)?)(?=\)|,|\.|;|\?|!|\s+who\b|\s+and\b|\s*$)/gm;
 const ROLE_BEFORE_RE = /\bmy ([a-z]+(?: [a-z]+)?) ([A-Z][a-z]+)\b/g;
 const ROLE_WORDS = new Set([
   "accountant",
