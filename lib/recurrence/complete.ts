@@ -2,8 +2,8 @@ import { resolveOfflineMode } from "@/lib/ai/ai-gate";
 import { type EnqueueResult, enqueueSift } from "@/lib/ai/sift/enqueue";
 import type { Session } from "@/lib/auth/session";
 import type { Repos } from "@/lib/db/repos";
-import { expireOpenDecisionsForTask } from "@/lib/decisions/service";
-import type { Lifecycle, Task } from "@/lib/domain/types";
+import { resolveDecision } from "@/lib/decisions/service";
+import type { Decision, Lifecycle, Task } from "@/lib/domain/types";
 import { spawnNextInstance } from "./spawn";
 
 /**
@@ -54,14 +54,16 @@ export async function completeRecurring(
   const userId = args.session.user.id;
   let parent = args.task;
 
-  const openQuestions = await repos.decisions.listOpenForTask(userId, parent.id, {
-    limit: OPEN_DECISIONS_PER_TASK,
-  });
+  // Only a clarifying question means the sift is still waiting on the
+  // parent; a memory proposal about the user is unrelated to the series.
+  const openQuestions = (
+    await repos.decisions.listOpenForTask(userId, parent.id, { limit: OPEN_DECISIONS_PER_TASK })
+  ).filter((d) => d.kind === "clarifying_question");
   const inFlight = parent.aiStatus === "pending" || parent.aiStatus === "running";
   const owesSift = inFlight || openQuestions.length > 0;
 
   if (owesSift) {
-    if (openQuestions.length > 0) await expireOpenDecisionsForTask(repos, userId, parent.id);
+    for (const question of openQuestions) await expireQuestion(repos, userId, question);
     parent =
       (await repos.tasks.update(
         userId,
@@ -108,4 +110,9 @@ export async function completeRecurring(
   }
 
   return { task: parent, spawned, sift };
+}
+
+/** Expire one question and release the run suspended on it; other decision kinds are untouched. */
+async function expireQuestion(repos: Repos, userId: string, question: Decision): Promise<void> {
+  await resolveDecision(userId, question.id, { status: "expired", answer: null }, repos);
 }

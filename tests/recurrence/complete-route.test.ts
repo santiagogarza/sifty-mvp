@@ -312,6 +312,49 @@ describe("completing a recurring task over the API", () => {
     }
   });
 
+  it("an open memory proposal on the parent is not a reason to re-sift the successor", async () => {
+    const { setWorkflowClientForTesting } = await import("@/lib/workflows/dispatch");
+    const start = vi.fn();
+    setWorkflowClientForTesting({ start, wait: vi.fn(), resume: vi.fn() });
+    try {
+      const repos = getTestRepos();
+      const { user, cookie } = await createUserWithCookie(repos, { email: "memo@example.com" });
+      const created = await repos.tasks.create(user.id, {
+        sourceText: "Water the plants",
+        sourceContext: null,
+      });
+      await repos.tasks.update(user.id, created.id, {
+        lifecycle: "active",
+        aiStatus: "ready",
+        recurrence: { freq: "daily", mode: "fixed" },
+        seriesId: created.id,
+      });
+      const proposal = await repos.decisions.create(user.id, {
+        kind: "memory_proposal",
+        taskId: created.id,
+        payload: {
+          kind: "memory_proposal",
+          text: "Waters plants daily",
+          memoryKind: "fact",
+          rationale: null,
+        },
+        resumeToken: null,
+        expiresAt: null,
+      });
+      const body = (await (await patch(created.id, cookie, { lifecycle: "done" })).json()) as {
+        task: { aiStatus: string };
+        spawned: { aiStatus: string; siftId: string | null };
+      };
+      // The organized parent's copy is organized too; nothing is spent, and the proposal stays open.
+      expect(body.task.aiStatus).toBe("ready");
+      expect(body.spawned).toMatchObject({ aiStatus: "ready", siftId: null });
+      expect(start).not.toHaveBeenCalled();
+      expect((await repos.decisions.get(user.id, proposal.id))?.status).toBe("open");
+    } finally {
+      setWorkflowClientForTesting(null);
+    }
+  });
+
   it("a successor whose owed sift failed to enqueue is retried by the next completion attempt", async () => {
     const { setWorkflowClientForTesting } = await import("@/lib/workflows/dispatch");
     const start = vi
