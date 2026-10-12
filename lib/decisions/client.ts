@@ -37,7 +37,12 @@ interface DecisionsState {
   /** First fetch has settled (ok or not). */
   loaded: boolean;
   error: string | null;
-  refresh: () => Promise<void>;
+  /**
+   * Fetch the inbox. Resolves with a fetch that *started after this call*
+   * (a request already in flight is awaited, then a fresh one runs), so a
+   * caller that needs "the server's view as of now" can trust `ok: true`.
+   */
+  refresh: () => Promise<{ ok: boolean }>;
   answer: (
     id: string,
     answer: Pick<DecisionAnswer, "text" | "option">,
@@ -45,7 +50,7 @@ interface DecisionsState {
   dismiss: (id: string) => Promise<{ ok: true } | { ok: false; error: string }>;
 }
 
-let inFlight: Promise<void> | null = null;
+let inFlight: Promise<{ ok: boolean }> | null = null;
 /**
  * Decisions resolved from this client and not yet confirmed gone by a
  * fetch that started after the resolution. A `GET` that was already in
@@ -63,14 +68,16 @@ export const useDecisionsStore = create<DecisionsState>()((set, get) => ({
   error: null,
 
   async refresh() {
-    if (inFlight) return inFlight;
-    inFlight = (async () => {
+    // Never hand a caller a response older than its request: wait out the
+    // in-flight fetch, then run one of our own.
+    while (inFlight) await inFlight;
+    const run = (async (): Promise<{ ok: boolean }> => {
       try {
         const seqAtStart = mutationSeq;
         const res = await fetch("/api/decisions", { credentials: "include" });
         if (res.status === 401) {
           set({ decisions: [], tasks: {}, count: 0, loaded: true, error: null });
-          return;
+          return { ok: true };
         }
         if (!res.ok) throw new Error(`decisions ${res.status}`);
         const body = (await res.json()) as DecisionsResponse;
@@ -86,13 +93,16 @@ export const useDecisionsStore = create<DecisionsState>()((set, get) => ({
           loaded: true,
           error: null,
         });
+        return { ok: true };
       } catch (err) {
         set({ loaded: true, error: err instanceof Error ? err.message : "Could not load" });
+        return { ok: false };
       } finally {
         inFlight = null;
       }
     })();
-    return inFlight;
+    inFlight = run;
+    return run;
   },
 
   async answer(id, answer) {

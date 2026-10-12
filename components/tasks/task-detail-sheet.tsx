@@ -270,7 +270,7 @@ function DetailBody({
             exists; the sheet offers it once the sift has settled so a reply
             always resumes the run that asked. */}
         {task.clarifyingQuestion && !siftInProgress(task) ? (
-          <ClarifyingQuestion task={task} />
+          <ClarifyingQuestion key={task.id} task={task} />
         ) : null}
         {!task.clarifyingQuestion && task.siftedWithAssumptions ? (
           <SiftedWithAssumptions task={task} />
@@ -741,8 +741,10 @@ function ClarifyingQuestion({ task }: { task: Task }) {
   const refresh = useDecisionsStore((s) => s.refresh);
   const [answer, setAnswer] = React.useState("");
   const [busy, setBusy] = React.useState(false);
-  // Until a fetch made for this question comes back, a missing decision
-  // means "not loaded yet", never "legacy task".
+  // A missing decision means "legacy task" only once a fetch made for this
+  // question — started after it was shown, and successful — says so. A
+  // fetch that failed, or that was already in flight, proves nothing, and
+  // the controls stay disabled rather than risk re-sifting a parked run.
   const [checked, setChecked] = React.useState(false);
   React.useEffect(() => {
     if (decision) {
@@ -750,8 +752,8 @@ function ClarifyingQuestion({ task }: { task: Task }) {
       return;
     }
     let cancelled = false;
-    void refresh().then(() => {
-      if (!cancelled) setChecked(true);
+    void refresh().then(({ ok }) => {
+      if (!cancelled && ok) setChecked(true);
     });
     return () => {
       cancelled = true;

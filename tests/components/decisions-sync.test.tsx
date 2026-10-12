@@ -26,7 +26,7 @@ const refresh = vi.fn();
 
 beforeEach(() => {
   serverReady = true;
-  refresh.mockReset().mockResolvedValue(undefined);
+  refresh.mockReset().mockResolvedValue({ ok: true });
   useDecisionsStore.setState({ refresh });
 });
 

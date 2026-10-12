@@ -86,7 +86,7 @@ beforeEach(() => {
   resiftTask.mockReset();
   answer.mockReset().mockResolvedValue({ ok: true, mode: "resumed" });
   dismiss.mockReset().mockResolvedValue({ ok: true });
-  refresh.mockReset().mockResolvedValue(undefined);
+  refresh.mockReset().mockResolvedValue({ ok: true });
   useStore.setState({ tasks: [task], labels: [] });
   useDecisionsStore.setState({
     decisions: [decision],
@@ -129,9 +129,9 @@ describe("TaskDetailSheet clarifying question", () => {
 
   it("with no decision in the cache it fetches first, then falls back to append-and-re-sift", async () => {
     useDecisionsStore.setState({ decisions: [], count: 0 });
-    let release!: () => void;
+    let release!: (result: { ok: boolean }) => void;
     refresh.mockReturnValue(
-      new Promise<void>((r) => {
+      new Promise<{ ok: boolean }>((r) => {
         release = r;
       }),
     );
@@ -144,7 +144,7 @@ describe("TaskDetailSheet clarifying question", () => {
     expect(reply).toBeDisabled();
     expect(resiftTask).not.toHaveBeenCalled();
 
-    release();
+    release({ ok: true });
     await waitFor(() => expect(reply).toBeEnabled());
     await userEvent.click(reply);
     expect(resiftTask).toHaveBeenCalledWith(task.id);
@@ -152,6 +152,43 @@ describe("TaskDetailSheet clarifying question", () => {
     expect(updated.sourceContext).toBe("Answer: File the federal return");
     expect(updated.clarifyingQuestion).toBeNull();
     expect(answer).not.toHaveBeenCalled();
+  });
+
+  it("a failed fetch never unlocks the legacy path", async () => {
+    useDecisionsStore.setState({ decisions: [], count: 0 });
+    refresh.mockResolvedValue({ ok: false });
+    render(<TaskDetailSheet taskId={task.id} onClose={vi.fn()} />);
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+    await userEvent.type(screen.getByPlaceholderText("Answer briefly…"), "Something");
+    expect(screen.getByRole("button", { name: "Reply" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Let Sifty decide" })).toBeDisabled();
+    expect(resiftTask).not.toHaveBeenCalled();
+  });
+
+  it("switching to another task re-checks instead of inheriting the previous verdict", async () => {
+    const other: Task = {
+      ...task,
+      id: "task_other",
+      title: "Budget",
+      siftId: "sift_other",
+      clarifyingQuestion: "Is there a deadline I should know about?",
+    };
+    // The first task is legacy (no decision); the second has a live one.
+    useStore.setState({ tasks: [task, other], labels: [] });
+    useDecisionsStore.setState({
+      decisions: [{ ...decision, id: "dec_other", taskId: other.id }],
+      count: 1,
+    });
+    const { rerender } = render(<TaskDetailSheet taskId={task.id} onClose={vi.fn()} />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Let Sifty decide" })).toBeEnabled(),
+    );
+
+    rerender(<TaskDetailSheet taskId={other.id} onClose={vi.fn()} />);
+    expect(screen.getByTestId("clarifying-question")).toHaveTextContent(/deadline/);
+    await userEvent.click(screen.getByRole("button", { name: "A decision" }));
+    expect(answer).toHaveBeenCalledWith("dec_other", { text: null, option: "A decision" });
+    expect(resiftTask).not.toHaveBeenCalled();
   });
 
   it("the legacy fallback for 'Let Sifty decide' just clears the question", async () => {
