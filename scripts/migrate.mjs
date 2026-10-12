@@ -6,7 +6,7 @@
  * unconditionally:
  *
  * - DATABASE_URL_UNPOOLED (direct) is preferred, DATABASE_URL otherwise.
- *   Empty values count as unset.
+ *   Empty or whitespace-only values count as unset.
  * - `.env.local` then `.env` are loaded (without overriding the process
  *   env), matching the documented local workflow.
  * - No URL on Vercel production: exit 1. A production build must never
@@ -27,7 +27,7 @@ import { pathToFileURL } from "node:url";
  * @returns {Plan}
  */
 export function planMigration(env) {
-  const url = env.DATABASE_URL_UNPOOLED || env.DATABASE_URL || "";
+  const url = (env.DATABASE_URL_UNPOOLED ?? "").trim() || (env.DATABASE_URL ?? "").trim();
   if (url) return { action: "run", url };
   if (env.VERCEL_ENV === "production") {
     return {

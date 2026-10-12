@@ -16,11 +16,15 @@ describe("planMigration", () => {
     expect(planMigration({ DATABASE_URL_UNPOOLED: "", DATABASE_URL: "postgres://pooled" })).toEqual(
       { action: "run", url: "postgres://pooled" },
     );
+    expect(
+      planMigration({ DATABASE_URL_UNPOOLED: "  ", DATABASE_URL: " postgres://pooled " }),
+    ).toEqual({ action: "run", url: "postgres://pooled" });
   });
 
   it("skips without a URL outside production", () => {
     expect(planMigration({}).action).toBe("skip");
     expect(planMigration({ VERCEL_ENV: "preview", DATABASE_URL: "" }).action).toBe("skip");
+    expect(planMigration({ DATABASE_URL: "   " }).action).toBe("skip");
   });
 
   it("fails without a URL on Vercel production", () => {
