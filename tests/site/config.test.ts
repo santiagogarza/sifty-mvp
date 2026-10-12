@@ -2,7 +2,13 @@ import { GET as securityTxtRoute } from "@/app/.well-known/security.txt/route";
 import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
 import { CREATOR_EMAIL } from "@/lib/auth/session-shared";
-import { LEGAL_ENTITY, PROCESSORS, getSiteUrl, getSupportEmail } from "@/lib/site/config";
+import {
+  LEGAL_ENTITY,
+  PROCESSORS,
+  getSiteUrl,
+  getSupportEmail,
+  pageMetadata,
+} from "@/lib/site/config";
 import { buildSecurityTxt } from "@/lib/site/security-txt";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -52,6 +58,17 @@ describe("legal constants", () => {
     for (const required of ["Vercel", "Neon", "Stripe", "Resend", "Vercel AI Gateway", "Sentry"]) {
       expect(names).toContain(required);
     }
+  });
+});
+
+describe("pageMetadata", () => {
+  it("restates the share-card fields Next would otherwise drop", () => {
+    const meta = pageMetadata({ title: "Pricing", description: "Plans.", path: "/pricing" });
+    expect(meta.alternates.canonical).toBe("/pricing");
+    expect(meta.openGraph.title).toBe("Pricing — Sifty");
+    expect(meta.openGraph.siteName).toBe("Sifty");
+    expect(meta.openGraph.images[0]?.url).toBe("/opengraph-image");
+    expect(meta.twitter.images).toContain("/opengraph-image");
   });
 });
 

@@ -56,5 +56,33 @@ export const PROCESSORS: Processor[] = [
   { name: "Sentry", purpose: "Error monitoring and crash reports", region: "US" },
 ];
 
+/**
+ * Metadata for a public page. Next replaces (not merges) a child's
+ * `openGraph`/`twitter` objects, so each page must restate the shared
+ * fields or share cards lose the image and site name.
+ */
+export function pageMetadata(input: { title: string; description: string; path: string }) {
+  const ogTitle = `${input.title} — ${SITE_NAME}`;
+  return {
+    title: input.title,
+    description: input.description,
+    alternates: { canonical: input.path },
+    openGraph: {
+      type: "website" as const,
+      siteName: SITE_NAME,
+      url: input.path,
+      title: ogTitle,
+      description: input.description,
+      images: [{ url: "/opengraph-image", width: 1200, height: 630 }],
+    },
+    twitter: {
+      card: "summary_large_image" as const,
+      title: ogTitle,
+      description: input.description,
+      images: ["/opengraph-image"],
+    },
+  };
+}
+
 /** Public routes listed in the sitemap, in display order. */
 export const PUBLIC_ROUTES = ["/", "/pricing", "/privacy", "/terms", "/sign-in", "/sign-up"];

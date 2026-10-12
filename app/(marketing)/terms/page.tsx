@@ -1,16 +1,13 @@
 import { LegalPage, Section } from "@/components/marketing/legal-page";
-import { LEGAL_ENTITY, getSupportEmail } from "@/lib/site/config";
+import { LEGAL_ENTITY, getSupportEmail, pageMetadata } from "@/lib/site/config";
 import type { Metadata } from "next";
 import Link from "next/link";
 
-const DESCRIPTION = `The terms under which ${LEGAL_ENTITY} provides Sifty.`;
-
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Terms of service",
-  description: DESCRIPTION,
-  alternates: { canonical: "/terms" },
-  openGraph: { title: "Sifty terms of service", description: DESCRIPTION, url: "/terms" },
-};
+  description: `The terms under which ${LEGAL_ENTITY} provides Sifty.`,
+  path: "/terms",
+});
 
 const UPDATED = "2026-10-12";
 

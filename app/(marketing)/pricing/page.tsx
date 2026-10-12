@@ -1,16 +1,14 @@
 import { PricingCards } from "@/components/marketing/pricing-cards";
 import { FREE_SIFTS_PER_DAY, PRO_TRIAL_DAYS } from "@/lib/billing/plans";
+import { pageMetadata } from "@/lib/site/config";
 import type { Metadata } from "next";
 import Link from "next/link";
 
-const DESCRIPTION = `Sifty is free to capture, organize, and sync, with ${FREE_SIFTS_PER_DAY} AI sifts a day. Pro removes the cap and adds autonomous execution.`;
-
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Pricing",
-  description: DESCRIPTION,
-  alternates: { canonical: "/pricing" },
-  openGraph: { title: "Sifty pricing", description: DESCRIPTION, url: "/pricing" },
-};
+  description: `Sifty is free to capture, organize, and sync, with ${FREE_SIFTS_PER_DAY} AI sifts a day. Pro removes the cap and adds autonomous execution.`,
+  path: "/pricing",
+});
 
 const FAQ = [
   {

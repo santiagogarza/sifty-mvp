@@ -1,16 +1,13 @@
 import { LegalPage, Section } from "@/components/marketing/legal-page";
-import { LEGAL_ENTITY, PROCESSORS, getSupportEmail } from "@/lib/site/config";
+import { LEGAL_ENTITY, PROCESSORS, getSupportEmail, pageMetadata } from "@/lib/site/config";
 import type { Metadata } from "next";
 import Link from "next/link";
 
-const DESCRIPTION = `How ${LEGAL_ENTITY} collects, uses, and protects your data when you use Sifty.`;
-
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Privacy policy",
-  description: DESCRIPTION,
-  alternates: { canonical: "/privacy" },
-  openGraph: { title: "Sifty privacy policy", description: DESCRIPTION, url: "/privacy" },
-};
+  description: `How ${LEGAL_ENTITY} collects, uses, and protects your data when you use Sifty.`,
+  path: "/privacy",
+});
 
 const UPDATED = "2026-10-12";
 
