@@ -1,5 +1,11 @@
-import { type ReducibleEvent, applyStripeEvent } from "@/lib/billing/events";
+import { sendPaymentFailedEmail } from "@/lib/billing/dunning";
+import {
+  type ReducibleEvent,
+  type StripeInvoiceLike,
+  applyStripeEvent,
+} from "@/lib/billing/events";
 import { StripeNotConfiguredError, verifyAndParseEvent } from "@/lib/billing/stripe";
+import { HANDLED_EVENTS } from "@/lib/billing/webhook-events";
 import { getRepos } from "@/lib/db/repos";
 import { emptySnapshot } from "@/lib/entitlements/entitlements";
 import { reportError } from "@/lib/observability/report-error";
@@ -9,14 +15,6 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 
 export const runtime = "nodejs";
-
-const HANDLED_EVENTS = new Set([
-  "customer.subscription.created",
-  "customer.subscription.updated",
-  "customer.subscription.deleted",
-  "invoice.paid",
-  "invoice.payment_failed",
-]);
 
 /**
  * Stripe webhook.
@@ -90,6 +88,11 @@ async function processEvent(
   event: Stripe.Event,
   repos: ReturnType<typeof getRepos>,
 ): Promise<void> {
+  if (event.type === "checkout.session.completed") {
+    await linkCustomerFromCheckout(event, repos);
+    return;
+  }
+
   const customerId = extractCustomerId(event);
   if (!customerId) {
     // Cannot route without a customer link; record-without-act.
@@ -98,7 +101,7 @@ async function processEvent(
 
   const user = await repos.users.findByStripeCustomerId(customerId);
   const userId = user?.id ?? null;
-  if (!userId) {
+  if (!user || !userId) {
     // No matching user — this can happen if a webhook arrives before the
     // app records the Stripe customer linkage. Throw so the caller drops
     // the dedupe record and returns 5xx; Stripe will retry and the next
@@ -108,13 +111,52 @@ async function processEvent(
     );
   }
 
+  const reducible = event as unknown as ReducibleEvent;
   // Locked read-modify-write: an invite redemption or checkout committing
   // concurrently is seen by the reducer instead of being overwritten.
-  await repos.entitlements.update(userId, (current) => {
+  const next = await repos.entitlements.update(userId, (current) => {
     const base = current ?? { ...emptySnapshot(), stripeCustomerId: customerId };
-    const next = applyStripeEvent(base, event as unknown as ReducibleEvent);
-    return { ...next, stripeCustomerId: customerId };
+    const reduced = applyStripeEvent(base, reducible);
+    return { ...reduced, stripeCustomerId: customerId };
   });
+
+  if (reducible.type === "invoice.payment_failed" && next.tier !== "creator") {
+    await sendPaymentFailedEmail({
+      user,
+      invoice: reducible.data.object as StripeInvoiceLike,
+      graceEndsAt: next.graceEndsAt,
+      eventId: event.id,
+    });
+  }
+}
+
+/**
+ * Checkout pins the customer id on the user before redirecting, so this is
+ * normally a no-op. It exists for the case where that write failed or the
+ * customer was created outside the app: `client_reference_id` carries our
+ * user id, so the subscription events that follow can find their owner.
+ */
+async function linkCustomerFromCheckout(
+  event: Stripe.Event,
+  repos: ReturnType<typeof getRepos>,
+): Promise<void> {
+  const session = event.data.object as {
+    client_reference_id?: string | null;
+    customer?: string | { id?: string } | null;
+  };
+  const userId = session.client_reference_id ?? null;
+  const customerId =
+    typeof session.customer === "string" ? session.customer : (session.customer?.id ?? null);
+  if (!userId || !customerId) return;
+  const user = await repos.users.getById(userId);
+  if (!user) return;
+  const ent = await repos.entitlements.get(userId);
+  if (ent?.stripeCustomerId === customerId) return;
+  await repos.users.setStripeCustomerId(userId, customerId);
+  await repos.entitlements.update(userId, (current) => ({
+    ...(current ?? emptySnapshot()),
+    stripeCustomerId: customerId,
+  }));
 }
 
 function extractCustomerId(event: Stripe.Event): string | null {

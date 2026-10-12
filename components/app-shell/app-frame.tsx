@@ -20,17 +20,30 @@ import { ThemeProvider } from "./theme-context";
  * Opening a task is a shallow navigation; this keeps deep links honest and
  * makes the back button do the right thing on mobile.
  */
-export function AppFrame({ children }: { children: React.ReactNode }) {
+export function AppFrame({
+  children,
+  notice,
+}: {
+  children: React.ReactNode;
+  /** Account-wide notice (failed payment) rendered above every page. */
+  notice?: React.ReactNode;
+}) {
   return (
     <ThemeProvider>
       <React.Suspense fallback={null}>
-        <AppFrameInner>{children}</AppFrameInner>
+        <AppFrameInner notice={notice}>{children}</AppFrameInner>
       </React.Suspense>
     </ThemeProvider>
   );
 }
 
-function AppFrameInner({ children }: { children: React.ReactNode }) {
+function AppFrameInner({
+  children,
+  notice,
+}: {
+  children: React.ReactNode;
+  notice?: React.ReactNode;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const search = useSearchParams();
@@ -74,6 +87,7 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
         {/* @container lets the board view size itself against the main pane
             (100cqw) instead of the viewport, which the sidebar offsets. */}
         <main className="relative z-0 flex-1 flex flex-col min-w-0 pb-[80px] md:pb-0 @container">
+          {notice}
           {children}
         </main>
       </div>
