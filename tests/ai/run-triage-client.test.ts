@@ -155,6 +155,62 @@ describe("resiftTask", () => {
     registerSyncHooks(null);
   });
 
+  it("a re-sift that lands while the watcher is adopting a settled, dirty snapshot is not wiped", async () => {
+    vi.useFakeTimers();
+    let dirty = true;
+    const { useStore, registerSyncHooks } = await setup({
+      dirty: () => dirty,
+      // The push "drains" slowly: the user re-sifts while the watcher waits.
+      waitForTask: () => new Promise((r) => setTimeout(r, 2_000)),
+    });
+    const { resiftTask, watchSift } = await import("@/lib/ai/run-triage");
+    const task = useStore.getState().createTask({ sourceText: "Call the bank" });
+    useStore.getState().updateTask(task.id, { title: "Mine" }, { editedFields: ["title"] });
+
+    let posts = 0;
+    let newRunPolls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/triage") {
+          posts += 1;
+          return json(
+            { task: serverTask(task, { aiStatus: "pending" }), siftId: "s2", runId: "r2" },
+            202,
+          );
+        }
+        if (posts === 0) {
+          return json({
+            task: serverTask(task, { aiStatus: "ready", aiAttempts: 1, siftId: "s1" }),
+            labels: [],
+          });
+        }
+        newRunPolls += 1;
+        const state: Partial<Task> =
+          newRunPolls < 2
+            ? { aiStatus: "running", siftStage: "plan", aiAttempts: 1, siftId: "s2" }
+            : { aiStatus: "ready", siftStage: null, aiAttempts: 2, siftId: "s2" };
+        return json({ task: serverTask(task, state), labels: [] });
+      }),
+    );
+
+    const watch = watchSift(task.id);
+    // First poll (old run, ready) is adopted while dirty → the watcher waits
+    // on the push; the re-sift lands during that wait.
+    await vi.advanceTimersByTimeAsync(2_500);
+    const resift = resiftTask(task.id);
+    await vi.advanceTimersByTimeAsync(3_000);
+    dirty = false; // the edit has been pushed by now
+    await vi.advanceTimersByTimeAsync(30_000);
+    await Promise.all([watch, resift]);
+
+    expect(posts).toBe(1);
+    const updated = useStore.getState().tasks.find((t) => t.id === task.id);
+    expect(updated?.aiAttempts).toBe(2);
+    expect(updated?.aiStatus).toBe("ready");
+    registerSyncHooks(null);
+  });
+
   it("a denial while local edits are unpushed keeps the edits and adopts only the status", async () => {
     const { useStore, registerSyncHooks } = await setup({ dirty: () => true });
     const { resiftTask } = await import("@/lib/ai/run-triage");

@@ -150,6 +150,16 @@ describe("POST /api/tasks enqueues siftTask", () => {
     expect(body.task.aiStatus).toBe("ready");
     expect(body.task.nextAction).toBe("Open last quarter's doc");
     expect(body.task.editedFields).toEqual(["nextAction"]);
+
+    // The capture-default lifecycle never undoes routing; a user move does land.
+    const kept = await (
+      await create({ id: "task_stale", sourceText: "Draft the update", lifecycle: "inbox" })
+    ).json();
+    expect(kept.task.lifecycle).toBe("waiting");
+    const moved = await (
+      await create({ id: "task_stale", sourceText: "Draft the update", lifecycle: "active" })
+    ).json();
+    expect(moved.task.lifecycle).toBe("active");
   });
 
   it("the per-IP AI limit covers capture: the task is created, the sift is refused", async () => {

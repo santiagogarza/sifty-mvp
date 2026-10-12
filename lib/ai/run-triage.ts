@@ -93,6 +93,9 @@ export async function watchSift(taskId: string): Promise<void> {
         }
         await adopt(data);
         if (settled(data.task.aiStatus)) {
+          // `adopt` may have awaited a push; a re-sift that started in the
+          // meantime must not be wiped by this (now stale) snapshot.
+          if (expectedSift.get(taskId) !== awaiting) continue;
           expectedSift.delete(taskId);
           return;
         }

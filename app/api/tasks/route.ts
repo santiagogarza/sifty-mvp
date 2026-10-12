@@ -77,6 +77,11 @@ export async function POST(req: Request) {
           enrichment[key] = undefined;
         }
       }
+      // The triage stage routes inbox tasks to waiting/someday. A replay
+      // still carrying the capture default must not undo that; a move the
+      // user made (any other lifecycle) is not in `editedFields` and must
+      // still land.
+      if (enrichment.lifecycle === "inbox") enrichment.lifecycle = undefined;
     }
 
     let task = await repos.tasks.create(userId, {
