@@ -71,6 +71,21 @@ describe("BillingPanel", () => {
     expect(screen.getByText(/Redeem it here/)).toBeInTheDocument();
   });
 
+  it("trialing copy matches checkout: carry-over with 48h+ left, immediate billing otherwise", () => {
+    const { unmount } = renderPanel({
+      entitlement: ent("trialing", {
+        trialEndsAt: new Date(Date.now() + 10 * 864e5).toISOString(),
+      }),
+    });
+    expect(screen.getByText(/first charged when the trial ends/)).toBeInTheDocument();
+    unmount();
+    renderPanel({
+      entitlement: ent("trialing", { trialEndsAt: new Date(Date.now() + 864e5).toISOString() }),
+    });
+    expect(screen.getByText(/billing starts right away/)).toBeInTheDocument();
+    expect(screen.queryByText(/first charged when the trial ends/)).toBeNull();
+  });
+
   it("pro: no upgrade buttons, portal available", () => {
     renderPanel({ entitlement: ent("pro"), stripe: paying });
     expect(screen.queryByRole("button", { name: /Upgrade/ })).toBeNull();
