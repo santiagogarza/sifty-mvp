@@ -264,8 +264,9 @@ AI routes answer `402` with `code: "free_cap"` (upgrade path) or
   inside the 30-day app trial, `trial_end` set to that date so the card is
   first charged when the trial ends. Prices come from
   `STRIPE_PRICE_MONTHLY` / `STRIPE_PRICE_YEARLY` and are checked once per
-  process against `lib/billing/plans.ts` (amount, currency, interval);
-  a drift is a 503, never a wrong charge. A user Stripe already bills or is
+  process against `lib/billing/plans.ts` (amount, currency, interval, and
+  a tax behavior set — Stripe Tax rejects `unspecified`); a drift is a 503,
+  never a wrong charge. A user Stripe already bills or is
   chasing (`past_due`, `unpaid`, `incomplete`) gets 409 and the portal.
 - Portal: `/api/stripe/portal` (POST) opens the Stripe Customer Portal for
   anyone with a Stripe customer. Configure the portal once in the
