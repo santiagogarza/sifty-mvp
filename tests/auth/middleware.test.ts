@@ -68,6 +68,13 @@ describe("middleware", () => {
     expect(location.searchParams.get("next")).toBe("/redeem?code=sifty-abc");
   });
 
+  it("gates /admin so a signed-out creator returns to the cost view after sign-in", async () => {
+    const res = await middleware(new NextRequest("http://localhost/admin/costs"));
+    expect(res.status).toBe(307);
+    const location = new URL(res.headers.get("location") ?? "", "http://localhost");
+    expect(location.searchParams.get("next")).toBe("/admin/costs");
+  });
+
   it("leaves the public site pages open to signed-out visitors", async () => {
     for (const path of ["/", "/pricing", "/privacy", "/terms"]) {
       const res = await middleware(new NextRequest(`http://localhost${path}`));

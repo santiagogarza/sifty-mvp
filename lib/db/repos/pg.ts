@@ -30,6 +30,7 @@ import {
   type PushSubscriptionRecord,
   type PushSubscriptionRepo,
   type Repos,
+  SIFT_ACCOUNTING_STAGE,
   type StripeEventRepo,
   type TaskCreateInput,
   type TaskEventRepo,
@@ -98,6 +99,13 @@ export function createPostgresRepos(): Repos {
         isCreator: row.isCreator,
         createdAt: row.createdAt.toISOString(),
       };
+    },
+    async setCreator(userId, isCreator) {
+      const db = getDb();
+      await db
+        .update(schema.users)
+        .set({ isCreator, updatedAt: new Date() })
+        .where(eq(schema.users.id, userId));
     },
     async setStripeCustomerId(userId, customerId) {
       const db = getDb();
@@ -444,6 +452,13 @@ export function createPostgresRepos(): Repos {
     },
   };
 
+  // See `AiRunRepo.countSucceededToday`: legacy single-shot rows and the
+  // `sift` accounting row count; per-stage rows of a workflow sift do not.
+  const billingUnit = or(
+    isNull(schema.aiRuns.siftId),
+    eq(schema.aiRuns.stage, SIFT_ACCOUNTING_STAGE),
+  );
+
   const aiRuns: AiRunRepo = {
     async insert(input: AiRunWriteInput) {
       const db = getDb();
@@ -455,6 +470,8 @@ export function createPostgresRepos(): Repos {
         taskId: input.taskId,
         promptVersion: input.promptVersion,
         stage: input.stage ?? null,
+        siftId: input.siftId ?? null,
+        workflowRunId: input.workflowRunId ?? null,
         model: input.model,
         transport: input.transport,
         status: input.status,
@@ -468,6 +485,13 @@ export function createPostgresRepos(): Repos {
       });
       return { id, createdAt: createdAt.toISOString() };
     },
+    async setStatus(userId, id, status, error) {
+      const db = getDb();
+      await db
+        .update(schema.aiRuns)
+        .set({ status, ...(error !== undefined ? { error } : {}) })
+        .where(and(eq(schema.aiRuns.id, id), eq(schema.aiRuns.userId, userId)));
+    },
     async countSucceededToday(userId, now = new Date()) {
       const db = getDb();
       const dayStart = new Date(now);
@@ -478,6 +502,7 @@ export function createPostgresRepos(): Repos {
         .where(
           and(
             eq(schema.aiRuns.userId, userId),
+            billingUnit,
             eq(schema.aiRuns.status, "succeeded"),
             eq(schema.aiRuns.offline, false),
             gte(schema.aiRuns.createdAt, dayStart),
@@ -490,8 +515,45 @@ export function createPostgresRepos(): Repos {
       const [row] = await db
         .select({ value: count() })
         .from(schema.aiRuns)
-        .where(and(eq(schema.aiRuns.userId, userId), gte(schema.aiRuns.createdAt, since)));
+        .where(
+          and(eq(schema.aiRuns.userId, userId), billingUnit, gte(schema.aiRuns.createdAt, since)),
+        );
       return row?.value ?? 0;
+    },
+    async rollup({ since, by }) {
+      const db = getDb();
+      const key =
+        by === "day"
+          ? sql<string>`to_char(${schema.aiRuns.createdAt} at time zone 'UTC', 'YYYY-MM-DD')`
+          : by === "stage"
+            ? sql<string>`coalesce(${schema.aiRuns.stage}, 'legacy')`
+            : by === "model"
+              ? sql<string>`${schema.aiRuns.model}`
+              : sql<string>`${schema.aiRuns.userId}`;
+      const rows = await db
+        .select({
+          key,
+          runs: count(),
+          failed: sql<number>`count(*) filter (where ${schema.aiRuns.status} = 'failed')`,
+          inputTokens: sql<number>`coalesce(sum(${schema.aiRuns.inputTokens}), 0)`,
+          outputTokens: sql<number>`coalesce(sum(${schema.aiRuns.outputTokens}), 0)`,
+          costCents: sql<number>`coalesce(sum(${schema.aiRuns.costCents}), 0)`,
+        })
+        .from(schema.aiRuns)
+        .where(gte(schema.aiRuns.createdAt, since))
+        .groupBy(key);
+      // postgres-js returns bigint sums and counts as strings.
+      const normalized = rows.map((r) => ({
+        key: r.key,
+        runs: Number(r.runs),
+        failed: Number(r.failed),
+        inputTokens: Number(r.inputTokens),
+        outputTokens: Number(r.outputTokens),
+        costCents: Number(r.costCents),
+      }));
+      return normalized.sort((a, b) =>
+        by === "day" ? b.key.localeCompare(a.key) : b.costCents - a.costCents || b.runs - a.runs,
+      );
     },
     async list(userId, limit) {
       const db = getDb();
@@ -505,6 +567,9 @@ export function createPostgresRepos(): Repos {
         id: r.id,
         taskId: r.taskId,
         stage: r.stage,
+        promptVersion: r.promptVersion,
+        siftId: r.siftId,
+        workflowRunId: r.workflowRunId,
         model: r.model,
         transport: r.transport,
         status: r.status,

@@ -14,7 +14,9 @@
       "drizzle/**",
       "playwright-report/**",
       "test-results/**",
-      "coverage/**"
+      "coverage/**",
+      "app/.well-known/workflow/**",
+      ".swc/**"
     ]
   },
   "formatter": {

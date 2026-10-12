@@ -57,6 +57,16 @@ function AppFrameInner({
   // no-op when the user isn't authenticated (the hook handles 401s).
   const sync = useServerSync();
 
+  // Marks the shell interactive (keyboard shortcuts attached). The e2e
+  // suite waits for this before pressing keys: `networkidle` can resolve a
+  // few hundred ms before React hydrates under a cold dev server.
+  React.useEffect(() => {
+    document.documentElement.dataset.appReady = "1";
+    return () => {
+      delete document.documentElement.dataset.appReady;
+    };
+  }, []);
+
   const detailTaskId = search.get("task");
 
   // Capture and the palette replace the cheat sheet rather than stacking a
@@ -89,9 +99,14 @@ function AppFrameInner({
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [router, pathname, search]);
 
+  // The first server pull settling (ok or not) is what makes the local
+  // store trustworthy as "the workspace"; before that an empty store is
+  // just "not loaded yet", and views should not flash their empty state.
+  const serverReady = sync.hydrated;
+
   const value = React.useMemo(
-    () => ({ openDetail, openCapture, openCommand }),
-    [openDetail, openCapture, openCommand],
+    () => ({ openDetail, openCapture, openCommand, serverReady }),
+    [openDetail, openCapture, openCommand, serverReady],
   );
 
   return (
@@ -152,6 +167,8 @@ interface FrameApi {
   openDetail: (id: string) => void;
   openCapture: () => void;
   openCommand: () => void;
+  /** First server pull has settled (successfully or not). */
+  serverReady: boolean;
 }
 
 const FrameContext = React.createContext<FrameApi | null>(null);

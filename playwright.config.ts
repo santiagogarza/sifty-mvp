@@ -29,8 +29,21 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   projects: [
+    // First-run onboarding must see the bypass user before any other test
+    // touches the workspace, so it runs first and alone; the smoke suite
+    // waits for it. The test skips itself against a non-pristine server.
+    {
+      name: "onboarding",
+      testMatch: /onboarding\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(executablePath ? { launchOptions: { executablePath } } : {}),
+      },
+    },
     {
       name: "chromium",
+      testIgnore: /onboarding\.spec\.ts/,
+      dependencies: ["onboarding"],
       use: {
         ...devices["Desktop Chrome"],
         ...(executablePath ? { launchOptions: { executablePath } } : {}),

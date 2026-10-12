@@ -22,6 +22,7 @@ import { useStore } from "@/lib/store/store";
 import { resetLocalWorkspace } from "@/lib/store/sync";
 import { cn } from "@/lib/utils/cn";
 import {
+  Activity,
   Bell,
   Check,
   Cpu,
@@ -104,6 +105,15 @@ export function SettingsClient({ account }: { account: SettingsAccount }) {
               <Bell size={13} />
               Notifications
             </Link>
+            {account.entitlement.tier === "creator" ? (
+              <Link
+                href="/admin/costs"
+                className="inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] px-2 py-1.5 text-[12.5px] text-[var(--fg-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--fg)] transition-colors"
+              >
+                <Activity size={13} />
+                AI costs
+              </Link>
+            ) : null}
             {account.authBypass ? null : (
               <Button variant="ghost" size="sm" onClick={signOut} disabled={signingOut}>
                 <LogOut size={13} />

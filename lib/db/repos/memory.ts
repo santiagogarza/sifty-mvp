@@ -12,6 +12,7 @@ import { id as makeId } from "@/lib/utils/ids";
 import { nanoid } from "nanoid";
 import {
   type AiRunRepo,
+  type AiRunRollupRow,
   type AiRunWriteInput,
   type EntitlementRepo,
   type EntitlementSnapshot,
@@ -31,6 +32,7 @@ import {
   type PushSubscriptionRecord,
   type PushSubscriptionRepo,
   type Repos,
+  SIFT_ACCOUNTING_STAGE,
   type StripeEventRepo,
   type TaskCreateInput,
   type TaskEventRecord,
@@ -63,6 +65,8 @@ interface State {
     taskId: string | null;
     promptVersion: string;
     stage: string | null;
+    siftId: string | null;
+    workflowRunId: string | null;
     model: string;
     transport: string;
     status: "succeeded" | "failed";
@@ -103,6 +107,14 @@ function emptyState(): State {
   };
 }
 
+/**
+ * The rows caps count: a legacy single-shot run, or the `sift` accounting
+ * row of a workflow sift. Per-stage rows carry cost detail only.
+ */
+function isBillingUnit(r: { siftId: string | null; stage: string | null }): boolean {
+  return r.siftId === null || r.stage === SIFT_ACCOUNTING_STAGE;
+}
+
 export interface MemoryReposHandle extends Repos {
   __reset(): void;
   __state(): Readonly<State>;
@@ -135,6 +147,10 @@ export function createMemoryRepos(): MemoryReposHandle {
       if (!id) return null;
       const u = state.users.get(id);
       return u ? { ...u } : null;
+    },
+    async setCreator(userId, isCreator) {
+      const u = state.users.get(userId);
+      if (u) state.users.set(userId, { ...u, isCreator });
     },
     async setStripeCustomerId(userId, customerId) {
       state.stripeCustomers.set(userId, customerId);
@@ -419,8 +435,21 @@ export function createMemoryRepos(): MemoryReposHandle {
     async insert(input: AiRunWriteInput) {
       const id = nanoid(12);
       const createdAt = new Date().toISOString();
-      state.aiRuns.push({ id, ...input, stage: input.stage ?? null, createdAt });
+      state.aiRuns.push({
+        id,
+        ...input,
+        stage: input.stage ?? null,
+        siftId: input.siftId ?? null,
+        workflowRunId: input.workflowRunId ?? null,
+        createdAt,
+      });
       return { id, createdAt };
+    },
+    async setStatus(userId, id, status, error) {
+      const run = state.aiRuns.find((r) => r.id === id && r.userId === userId);
+      if (!run) return;
+      run.status = status;
+      if (error !== undefined) run.error = error;
     },
     async countSucceededToday(userId, now = new Date()) {
       const dayStart = new Date(now);
@@ -429,6 +458,7 @@ export function createMemoryRepos(): MemoryReposHandle {
       return state.aiRuns.filter(
         (r) =>
           r.userId === userId &&
+          isBillingUnit(r) &&
           r.status === "succeeded" &&
           !r.offline &&
           Date.parse(r.createdAt) >= start,
@@ -436,16 +466,49 @@ export function createMemoryRepos(): MemoryReposHandle {
     },
     async countSince(userId, since) {
       const start = since.getTime();
-      return state.aiRuns.filter((r) => r.userId === userId && Date.parse(r.createdAt) >= start)
-        .length;
+      return state.aiRuns.filter(
+        (r) => r.userId === userId && isBillingUnit(r) && Date.parse(r.createdAt) >= start,
+      ).length;
     },
     async list(userId, limit) {
       const mine = state.aiRuns.filter((r) => r.userId === userId);
-      // Same projection as the Postgres mapper: no tenant id, no prompt
-      // version — this shape is what the data export ships.
+      // Same projection as the Postgres mapper: no tenant id — this shape
+      // is what the data export ships.
       return (limit === undefined ? mine : mine.slice(-limit))
         .reverse()
-        .map(({ userId: _u, promptVersion: _p, ...record }) => record);
+        .map(({ userId: _u, ...record }) => record);
+    },
+    async rollup({ since, by }) {
+      const start = since.getTime();
+      const groups = new Map<string, AiRunRollupRow>();
+      for (const r of state.aiRuns) {
+        if (Date.parse(r.createdAt) < start) continue;
+        const key =
+          by === "day"
+            ? r.createdAt.slice(0, 10)
+            : by === "stage"
+              ? (r.stage ?? "legacy")
+              : by === "model"
+                ? r.model
+                : r.userId;
+        const row = groups.get(key) ?? {
+          key,
+          runs: 0,
+          failed: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          costCents: 0,
+        };
+        row.runs += 1;
+        if (r.status === "failed") row.failed += 1;
+        row.inputTokens += r.inputTokens ?? 0;
+        row.outputTokens += r.outputTokens ?? 0;
+        row.costCents += r.costCents ?? 0;
+        groups.set(key, row);
+      }
+      return Array.from(groups.values()).sort((a, b) =>
+        by === "day" ? b.key.localeCompare(a.key) : b.costCents - a.costCents || b.runs - a.runs,
+      );
     },
   };
 
