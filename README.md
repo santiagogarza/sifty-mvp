@@ -331,8 +331,10 @@ them. Backed by the Decisions inbox (`memory_proposal` decisions):
   gate sift, plan, and brief apply; unpinned notes stay local and only
   dedupe), and the user's edit; it answers with at most three proposals (text, kind,
   quoted evidence, confidence) and is told that an empty list is the usual
-  answer. The `ai_runs` row carries the task's `siftId`, so it is a detail
-  row of that sift, never a billing unit.
+  answer. A sift-triggered run's `ai_runs` row carries the task's `siftId`
+  (a detail row of that sift, one cap unit for the whole pipeline); an
+  edit-triggered run passes `admitAiRun` like every AI route and is billed
+  as its own unit.
 - **Dedupe and negatives** (`propose.ts`). Proposals below 0.6 confidence
   or matching an existing memory (normalized text) are dropped. The sink
   then checks the user's past `memory_proposal` decisions in any status:

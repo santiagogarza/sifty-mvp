@@ -49,7 +49,8 @@ export async function PATCH(req: Request, ctx: RouteContext) {
   if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (before) {
     await maybeExtractFromEdit(repos, {
-      userId: session.user.id,
+      req,
+      session,
       before,
       patch,
       editedFields,

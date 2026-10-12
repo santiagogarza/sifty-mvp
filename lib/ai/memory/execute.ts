@@ -16,9 +16,10 @@ import { failedMemoryMeta, runMemoryExtraction } from "./run";
  *
  * Cost control: a sift-triggered run only calls the model when the
  * capture looks like it carries something durable (`looksMemoryWorthy`);
- * an edit-triggered run always does, but the route fires it at most once
- * per task and sift. The `ai_runs` row carries the task's `siftId`, so it
- * is a detail row of that sift — never a billing unit of its own.
+ * its `ai_runs` row carries the task's `siftId`, a detail row of that sift
+ * (one cap unit covers the whole pipeline). An edit-triggered run passes
+ * `admitAiRun` in the route, fires at most once per task and sift, and is
+ * billed as its own unit (`siftId` null), so the cap sees it.
  */
 
 export interface MemoryExtractInput {
@@ -78,7 +79,7 @@ export async function extractMemories(
       taskId: input.taskId,
       meta,
       status: "succeeded",
-      siftId: input.siftId,
+      siftId: billingSiftId(input),
       workflowRunId,
     });
     const proposals = filterProposals(output.proposals, existing);
@@ -105,10 +106,15 @@ export async function extractMemories(
       meta: failedMemoryMeta(input.offline),
       status: "failed",
       error: message,
-      siftId: input.siftId,
+      siftId: billingSiftId(input),
       workflowRunId,
     });
     if (err instanceof AiConfigError) throw new FatalError(message);
     throw err;
   }
+}
+
+/** Sift-triggered rows belong to their sift; edit-triggered rows are their own cap unit. */
+function billingSiftId(input: MemoryExtractInput): string | null {
+  return input.trigger === "sift" ? input.siftId : null;
 }

@@ -3,6 +3,7 @@ import { MIN_MEMORY_CONFIDENCE, type MemoryProposal } from "@/lib/ai/memory/extr
 import { type MemoryProposalSource, setMemorySinkForTesting } from "@/lib/ai/memory/propose";
 import type { Repos } from "@/lib/db/repos";
 import { SIFT_ACCOUNTING_STAGE } from "@/lib/db/repos/types";
+import { FREE_SIFTS_PER_DAY, emptySnapshot } from "@/lib/entitlements/entitlements";
 import { __resetRateLimits } from "@/lib/ratelimit/limiter";
 import { type WorkflowClient, setWorkflowClientForTesting } from "@/lib/workflows/dispatch";
 import { memoryFromEdit } from "@/lib/workflows/memory-from-edit";
@@ -290,6 +291,7 @@ describe("PATCH /api/tasks/:id starts memoryFromEdit on a contradicting edit", (
 
   beforeEach(() => {
     __resetRateLimits();
+    vi.stubEnv("RATELIMIT_TRIAGE_PER_MIN", "100000");
     client.start.mockReset();
     client.start.mockResolvedValue({ runId: "wrun_edit" });
     setWorkflowClientForTesting(client);
@@ -350,5 +352,73 @@ describe("PATCH /api/tasks/:id starts memoryFromEdit on a contradicting edit", (
     expect(
       (await patch(cookie, other.id, { effort: "quick", editedFields: ["effort"] })).status,
     ).toBe(200);
+  });
+
+  it("an edit at the daily cap starts nothing, and the edit still succeeds", async () => {
+    const repos = getTestRepos();
+    const { user, cookie } = await createUserWithCookie(repos, { email: "capped@example.com" });
+    await repos.entitlements.upsert(user.id, emptySnapshot());
+    for (let i = 0; i < FREE_SIFTS_PER_DAY; i += 1) {
+      await repos.aiRuns.insert({
+        userId: user.id,
+        taskId: null,
+        promptVersion: "sift.v1",
+        stage: SIFT_ACCOUNTING_STAGE,
+        siftId: `sift_cap_${i}`,
+        model: "sifty.workflow",
+        transport: "workflow",
+        status: "succeeded",
+        durationMs: 0,
+        inputTokens: null,
+        outputTokens: null,
+        costCents: 0,
+        offline: false,
+        error: null,
+      });
+    }
+    const task = await seedSifted(repos, user.id, "Pay the October invoice", "sift_c");
+    const res = await patch(cookie, task.id, { urgency: 0.2, editedFields: ["urgency"] });
+    expect(res.status).toBe(200);
+    expect(client.start).not.toHaveBeenCalled();
+    // No marker either: the next edit after the cap resets may still extract.
+    expect(await repos.taskEvents.listForTask(user.id, task.id, 10)).toEqual([]);
+  });
+
+  it("two first-time edits racing on the same sift start exactly one run", async () => {
+    const repos = getTestRepos();
+    const { user, cookie } = await createUserWithCookie(repos, { email: "race-edit@example.com" });
+    const task = await seedSifted(repos, user.id, "Pay the October invoice", "sift_r");
+    const [a, b] = await Promise.all([
+      patch(cookie, task.id, { urgency: 0.2, editedFields: ["urgency"] }),
+      patch(cookie, task.id, { importance: 0.1, editedFields: ["importance"] }),
+    ]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+    expect(client.start).toHaveBeenCalledTimes(1);
+    expect(await repos.taskEvents.listForTask(user.id, task.id, 10)).toHaveLength(1);
+  });
+
+  it("an edit-triggered run is billed as its own unit; a sift-triggered one is not", async () => {
+    const repos = getTestRepos();
+    const user = await repos.users.create({
+      email: "bill@example.com",
+      displayName: "B",
+      isCreator: false,
+    });
+    const task = await seedSifted(repos, user.id, "Pay the October invoice");
+    const before = await repos.aiRuns.countSucceededToday(user.id);
+    await extractMemories(
+      input(user.id, task.id, {
+        trigger: "edit",
+        offline: false,
+        contradictions: [{ field: "urgency", aiValue: 0.8, userValue: 0.2 }],
+      }),
+      null,
+    ).catch(() => undefined);
+    const rows = (await repos.aiRuns.list(user.id)).filter((r) => r.stage === "memory");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.siftId).toBeNull();
+    if (rows[0]!.status === "succeeded") {
+      expect(await repos.aiRuns.countSucceededToday(user.id)).toBe(before + 1);
+    }
   });
 });
