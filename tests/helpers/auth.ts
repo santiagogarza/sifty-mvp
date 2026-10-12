@@ -3,7 +3,7 @@ import { SESSION_COOKIE_NAME } from "@/lib/auth/session";
 import { isCreatorEmail } from "@/lib/auth/session-shared";
 import type { Repos } from "@/lib/db/repos/types";
 import type { UserProfile } from "@/lib/domain/types";
-import { TRIAL_DAYS } from "@/lib/entitlements/entitlements";
+import { TRIAL_DAYS, creatorSnapshot } from "@/lib/entitlements/entitlements";
 
 /**
  * Test helpers — create a user, mint a real JWT session cookie, and return
@@ -24,17 +24,7 @@ export async function createUserWithCookie(
     isCreator,
   });
   if (isCreator) {
-    await repos.entitlements.upsert(user.id, {
-      tier: "creator",
-      trialStartedAt: null,
-      trialEndsAt: null,
-      subscriptionActive: true,
-      stripeCustomerId: null,
-      stripeSubscriptionId: null,
-      stripeStatus: null,
-      currentPeriodEnd: null,
-      aiRunsLimitDay: 1_000_000,
-    });
+    await repos.entitlements.upsert(user.id, creatorSnapshot());
   } else {
     await repos.entitlements.startTrialIfMissing(user.id, TRIAL_DAYS);
   }

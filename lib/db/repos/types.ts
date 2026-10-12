@@ -5,6 +5,7 @@ import type {
   Subtask,
   Task,
   TaskEditableField,
+  Tier,
   UserProfile,
 } from "@/lib/domain/types";
 
@@ -29,16 +30,31 @@ export interface UserCreateInput {
   isCreator: boolean;
 }
 
+/**
+ * Persisted billing facts for one user.
+ *
+ * `tier` is the tier that was effective when the row was last written. Trial
+ * and comp expiry are time-based, so readers never trust it directly: they
+ * call `deriveEntitlement()` which re-resolves the tier from the facts
+ * (`trialEndsAt`, `subscriptionActive`, `compedAt`/`compedUntil`, the
+ * creator flag on the profile) using the precedence
+ * `creator > comped > pro > trialing > free`. Writers set `tier` with
+ * `resolveTier()` so the stored value is a usable cache for reporting.
+ */
 export interface EntitlementSnapshot {
-  tier: "creator" | "trialing" | "active" | "expired";
+  tier: Tier;
   trialStartedAt: string | null;
   trialEndsAt: string | null;
+  /** Stripe says there is a paying subscription (active or in Stripe's own trial). */
   subscriptionActive: boolean;
+  /** Set when an invite code granted Pro; null when never comped. */
+  compedAt: string | null;
+  /** Comp end; null means forever (when `compedAt` is set). */
+  compedUntil: string | null;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   stripeStatus: string | null;
   currentPeriodEnd: string | null;
-  aiRunsLimitDay: number;
 }
 
 export interface TaskCreateInput {

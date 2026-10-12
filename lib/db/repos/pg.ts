@@ -1,5 +1,6 @@
 import { LABEL_TONES, type Label, type LabelTone } from "@/lib/domain/types";
 import type { Memory, Subtask, Task, TaskEditableField } from "@/lib/domain/types";
+import { trialSnapshot } from "@/lib/entitlements/entitlements";
 import { id as makeId } from "@/lib/utils/ids";
 import { and, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
@@ -124,42 +125,32 @@ export function createPostgresRepos(): Repos {
         tier: ent.tier,
         trialStartedAt: user.trialStartedAt?.toISOString() ?? null,
         trialEndsAt: ent.trialEndsAt?.toISOString() ?? null,
-        subscriptionActive: ent.tier === "active" || ent.tier === "creator",
+        subscriptionActive: ent.subscriptionActive,
+        compedAt: ent.compedAt?.toISOString() ?? null,
+        compedUntil: ent.compedUntil?.toISOString() ?? null,
         stripeCustomerId: user.stripeCustomerId,
         stripeSubscriptionId: ent.stripeSubscriptionId,
         stripeStatus: ent.stripeStatus,
         currentPeriodEnd: ent.currentPeriodEnd?.toISOString() ?? null,
-        aiRunsLimitDay: ent.aiRunsLimitDay,
       };
     },
     async upsert(userId, snapshot) {
       const db = getDb();
+      const columns = {
+        tier: snapshot.tier,
+        trialEndsAt: toDate(snapshot.trialEndsAt),
+        subscriptionActive: snapshot.subscriptionActive,
+        compedAt: toDate(snapshot.compedAt),
+        compedUntil: toDate(snapshot.compedUntil),
+        stripeSubscriptionId: snapshot.stripeSubscriptionId,
+        stripeStatus: snapshot.stripeStatus,
+        currentPeriodEnd: toDate(snapshot.currentPeriodEnd),
+        updatedAt: new Date(),
+      };
       await db
         .insert(schema.entitlements)
-        .values({
-          userId,
-          tier: snapshot.tier,
-          trialEndsAt: snapshot.trialEndsAt ? new Date(snapshot.trialEndsAt) : null,
-          stripeSubscriptionId: snapshot.stripeSubscriptionId,
-          stripeStatus: snapshot.stripeStatus,
-          currentPeriodEnd: snapshot.currentPeriodEnd ? new Date(snapshot.currentPeriodEnd) : null,
-          aiRunsLimitDay: snapshot.aiRunsLimitDay,
-          updatedAt: new Date(),
-        })
-        .onConflictDoUpdate({
-          target: schema.entitlements.userId,
-          set: {
-            tier: snapshot.tier,
-            trialEndsAt: snapshot.trialEndsAt ? new Date(snapshot.trialEndsAt) : null,
-            stripeSubscriptionId: snapshot.stripeSubscriptionId,
-            stripeStatus: snapshot.stripeStatus,
-            currentPeriodEnd: snapshot.currentPeriodEnd
-              ? new Date(snapshot.currentPeriodEnd)
-              : null,
-            aiRunsLimitDay: snapshot.aiRunsLimitDay,
-            updatedAt: new Date(),
-          },
-        });
+        .values({ userId, ...columns })
+        .onConflictDoUpdate({ target: schema.entitlements.userId, set: columns });
       if (snapshot.trialStartedAt || snapshot.stripeCustomerId) {
         await db
           .update(schema.users)
@@ -175,20 +166,7 @@ export function createPostgresRepos(): Repos {
     async startTrialIfMissing(userId, days) {
       const existing = await entitlements.get(userId);
       if (existing) return existing;
-      const now = new Date();
-      const end = new Date(now);
-      end.setDate(end.getDate() + days);
-      return entitlements.upsert(userId, {
-        tier: "trialing",
-        trialStartedAt: now.toISOString(),
-        trialEndsAt: end.toISOString(),
-        subscriptionActive: false,
-        stripeCustomerId: null,
-        stripeSubscriptionId: null,
-        stripeStatus: null,
-        currentPeriodEnd: null,
-        aiRunsLimitDay: 50,
-      });
+      return entitlements.upsert(userId, trialSnapshot(days));
     },
   };
 
@@ -549,6 +527,10 @@ export function createPostgresRepos(): Repos {
   };
 
   return { users, entitlements, tasks, labels, memories, aiRuns, sessions, stripeEvents };
+}
+
+function toDate(iso: string | null): Date | null {
+  return iso ? new Date(iso) : null;
 }
 
 function groupLabelIds(rows: Array<{ taskId: string; labelId: string }>): Map<string, string[]> {

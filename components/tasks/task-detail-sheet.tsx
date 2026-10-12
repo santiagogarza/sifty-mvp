@@ -25,6 +25,7 @@ import {
   type Task,
   type TaskEditableField,
 } from "@/lib/domain/types";
+import { isSiftCapMessage } from "@/lib/entitlements/entitlements";
 import { getSyncHooks, useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import { formatExactTime, formatRelativeDay, isOverdue } from "@/lib/utils/dates";
@@ -43,6 +44,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import * as React from "react";
 import { AiThinking } from "./ai-status";
 import { PriorityGlyph } from "./priority-glyph";
@@ -413,13 +415,26 @@ function AiFillSlot({ className }: { className?: string }) {
 }
 
 function OrganizeFailed({ task }: { task: Task }) {
+  const capped = isSiftCapMessage(task.aiError);
   return (
     <div className="mt-4 flex items-center justify-between gap-3 rounded-[var(--radius-md)] bg-[var(--surface-muted)] px-3.5 py-2">
-      <span className="text-[12.5px] text-[var(--fg-muted)]">Sifty couldn't organize this.</span>
-      <Button variant="ghost" size="sm" onClick={() => runTriage(task.id)}>
-        <RotateCw size={12} />
-        Retry
-      </Button>
+      <span className="text-[12.5px] text-[var(--fg-muted)]">
+        {capped ? task.aiError : "Sifty couldn't organize this."}
+      </span>
+      {capped && /upgrade/i.test(task.aiError ?? "") ? (
+        <Link
+          href="/settings/billing"
+          className="shrink-0 inline-flex items-center gap-1 text-[12.5px] text-[var(--accent)] hover:underline"
+        >
+          See plans
+          <ArrowRight size={12} />
+        </Link>
+      ) : (
+        <Button variant="ghost" size="sm" onClick={() => runTriage(task.id)}>
+          <RotateCw size={12} />
+          Retry
+        </Button>
+      )}
     </div>
   );
 }

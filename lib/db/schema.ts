@@ -50,14 +50,22 @@ export const entitlements = pgTable("entitlements", {
   userId: text("user_id")
     .primaryKey()
     .references(() => users.id, { onDelete: "cascade" }),
-  tier: text("tier", { enum: ["creator", "trialing", "active", "expired"] }).notNull(),
+  /**
+   * Effective tier when the row was last written. Readers re-derive it
+   * (`deriveEntitlement`) because trial and comp expiry are time-based.
+   */
+  tier: text("tier", { enum: ["free", "trialing", "pro", "comped", "creator"] }).notNull(),
   trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
+  /** Mirror of Stripe: a paying subscription exists. */
+  subscriptionActive: boolean("subscription_active").notNull().default(false),
+  /** Invite-code comp: when it was granted, and when it ends (null = forever). */
+  compedAt: timestamp("comped_at", { withTimezone: true }),
+  compedUntil: timestamp("comped_until", { withTimezone: true }),
   /** Stripe subscription id, set when subscribed. */
   stripeSubscriptionId: text("stripe_subscription_id"),
   /** "active" | "trialing" | "past_due" | "canceled" | etc. raw from Stripe. */
   stripeStatus: text("stripe_status"),
   currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
-  aiRunsLimitDay: integer("ai_runs_limit_day").notNull().default(0),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
