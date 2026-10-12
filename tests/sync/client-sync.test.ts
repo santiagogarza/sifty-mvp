@@ -109,6 +109,39 @@ describe("recurring completion", () => {
     );
     expect(series).toHaveLength(2);
   });
+
+  it("does not adopt a spawned successor this browser already deleted", async () => {
+    const client = await bootAndPull();
+    const id = await captureSynced(client, "Water the plants");
+    client.store.getState().setRecurrence(id, { freq: "daily", mode: "fixed" });
+    await settle(client);
+
+    // Hold the completion PATCH so the successor can be deleted here first
+    // (the id is derived from the completion, so it is knowable).
+    let release: (() => void) | null = null;
+    const held = new Promise<void>((r) => {
+      release = r;
+    });
+    const stop = client.intercept(async (method, path, proceed) => {
+      if (method !== "PATCH" || path !== `/api/tasks/${id}`) return null;
+      const res = await proceed();
+      await held;
+      return res;
+    });
+    client.store.getState().updateTask(id, { lifecycle: "done" });
+    await vi.advanceTimersByTimeAsync(500);
+    const { nextInstanceId } = await import("@/lib/recurrence/spawn");
+    const serverParent = await client.repos.tasks.get(client.userId, id);
+    const successorId = nextInstanceId(id, serverParent!.completedAt);
+    expect(await client.repos.tasks.get(client.userId, successorId)).toBeTruthy();
+    client.store.getState().deleteTask(successorId);
+    release!();
+    await settle(client);
+    stop();
+
+    expect(client.store.getState().tasks.some((t) => t.id === successorId)).toBe(false);
+    expect(await client.repos.tasks.get(client.userId, successorId)).toBeNull();
+  });
 });
 
 describe("narrow patches", () => {

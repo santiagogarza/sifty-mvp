@@ -211,6 +211,13 @@ export function describeRepoContract(getRepos: () => Repos): void {
 
       const done = await repos.tasks.update(u.id, task.id, { lifecycle: "done" });
       expect(done?.lifecycle).toBe("done");
+      expect(done?.completedAt).toBeTruthy();
+      // A repeated completion keeps the first completion time.
+      const again = await repos.tasks.update(u.id, task.id, { lifecycle: "done" });
+      expect(again?.completedAt).toBe(done?.completedAt);
+      const reopened = await repos.tasks.update(u.id, task.id, { lifecycle: "active" });
+      expect(reopened?.completedAt).toBeNull();
+      await repos.tasks.update(u.id, task.id, { lifecycle: "done" });
 
       const withSub = await repos.tasks.addSubtask(u.id, task.id, {
         id: "sub_1",

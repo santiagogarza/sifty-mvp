@@ -78,7 +78,13 @@ export function RecurrenceRow({ task }: { task: Task }) {
           ) : null}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-[300px]">
+      {/* The weekly editor is tall; on a short window it scrolls inside the
+          space Radix leaves it instead of running off the bottom. */}
+      <PopoverContent
+        align="start"
+        collisionPadding={8}
+        className="w-[300px] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto"
+      >
         <div className="flex flex-col gap-0.5">
           <OptionButton selected={!rule} onClick={() => pickFreq(null)}>
             Doesn't repeat

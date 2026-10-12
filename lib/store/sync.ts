@@ -579,6 +579,10 @@ async function pushTaskPatchJob(id: string): Promise<boolean> {
 function adoptSpawnedTask(task: Task): void {
   if (ledger.deleted.tasks.includes(task.id) || isDirty("tasks", task.id)) return;
   useStore.getState().adoptTaskFromServer(task);
+  // A successor that inherited an owed sift is being organized right now.
+  if (task.aiStatus === "pending" || task.aiStatus === "running") {
+    queueMicrotask(() => void watchSift(task.id));
+  }
 }
 
 async function pushTaskDeleteJob(id: string): Promise<boolean> {

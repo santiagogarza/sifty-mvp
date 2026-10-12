@@ -1,5 +1,5 @@
 import { nextInstanceId } from "@/lib/recurrence/spawn";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createUserWithCookie } from "../helpers/auth";
 import { getTestRepos } from "../setup";
 
@@ -142,6 +142,55 @@ describe("completing a recurring task over the API", () => {
     expect(
       (await repos.tasks.list(user.id)).filter((t) => t.seriesId === "task_offline1"),
     ).toHaveLength(2);
+  });
+
+  it("a done recurring capture that still owes a sift hands it to the successor, not the finished row", async () => {
+    const { setWorkflowClientForTesting } = await import("@/lib/workflows/dispatch");
+    const start = vi.fn().mockResolvedValue({ runId: "wrun_successor" });
+    setWorkflowClientForTesting({ start, wait: vi.fn() });
+    vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
+    vi.stubEnv("RATELIMIT_TRIAGE_PER_MIN", "100000");
+    try {
+      const repos = getTestRepos();
+      const { user, cookie } = await createUserWithCookie(repos, { email: "owed@example.com" });
+      const { POST } = await import("@/app/api/tasks/route");
+      const res = await POST(
+        new Request("http://localhost/api/tasks", {
+          method: "POST",
+          headers: { "content-type": "application/json", cookie },
+          body: JSON.stringify({
+            id: "task_owed1",
+            sourceText: "Stretch for ten minutes",
+            lifecycle: "done",
+            aiStatus: "pending",
+            recurrence: { freq: "daily", mode: "after_completion" },
+            seriesId: "task_owed1",
+            completedOn: "2026-10-12",
+          }),
+        }),
+      );
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as {
+        task: { aiStatus: string; siftId: string | null };
+        spawned: { id: string; aiStatus: string; siftId: string | null; due: string };
+        sift: { enqueued: boolean; siftId?: string };
+      };
+      // The finished row is left alone; the live successor is being sifted.
+      expect(body.task.aiStatus).toBe("idle");
+      expect(body.task.siftId).toBeNull();
+      expect(body.spawned.aiStatus).toBe("pending");
+      expect(body.spawned.siftId).toBeTruthy();
+      expect(body.spawned.due).toBe("2026-10-13");
+      expect(body.sift).toMatchObject({ enqueued: true, siftId: body.spawned.siftId });
+      expect(start).toHaveBeenCalledTimes(1);
+      expect(start.mock.calls[0]![1][0]).toMatchObject({ taskId: body.spawned.id });
+      // Exactly one sift was billed, for the successor.
+      const runs = await repos.aiRuns.list(user.id);
+      expect(runs).toHaveLength(1);
+      expect(runs[0]!.taskId).toBe(body.spawned.id);
+    } finally {
+      setWorkflowClientForTesting(null);
+    }
   });
 
   it("spawns nothing for a one-off task or a non-completing patch", async () => {

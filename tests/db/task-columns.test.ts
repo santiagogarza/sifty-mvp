@@ -1,5 +1,7 @@
 import { taskPatchColumns } from "@/lib/db/repos/task-columns";
 import type { Task } from "@/lib/domain/types";
+import { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -103,7 +105,14 @@ describe("taskPatchColumns", () => {
   });
 
   it("tracks completedAt across lifecycle transitions", () => {
-    expect(taskPatchColumns(existing, { lifecycle: "done" }, { now }).completedAt).toEqual(now);
+    // Into done: the database keeps an existing completion time, so two
+    // concurrent completions agree on one (the recurring successor's id
+    // derives from it).
+    const intoDone = taskPatchColumns(existing, { lifecycle: "done" }, { now }).completedAt;
+    expect(intoDone).toBeInstanceOf(SQL);
+    const query = new PgDialect().sqlToQuery(intoDone as SQL);
+    expect(query.sql).toBe('coalesce("tasks"."completed_at", $1::timestamptz)');
+    expect(query.params).toEqual([now.toISOString()]);
     const done = { ...existing, lifecycle: "done" as const, completedAt: "2026-10-05T00:00:00Z" };
     expect(taskPatchColumns(done, { lifecycle: "done" }, { now })).not.toHaveProperty(
       "completedAt",

@@ -30,6 +30,10 @@ export async function GET(req: Request) {
  * state (`pending`, or `failed` with the cap message when the tier's daily
  * sifts are used up) plus a `sift` summary; the client polls
  * `GET /api/tasks/:id` for stage progress.
+ *
+ * A recurring task that arrives already done spawns its successor
+ * (`spawned`); when it still owed a sift, the successor gets it and the
+ * `sift` summary describes that run.
  */
 const CreateBody = TaskPatchSchema.extend({
   id: ClientId.optional(),
@@ -107,35 +111,39 @@ export async function POST(req: Request) {
       task = (await repos.tasks.update(userId, task.id, patch, { editedFields })) ?? task;
     }
 
-    let sift: SiftSummary = { enqueued: false, reason: "not_wanted" };
-    // `task.siftId` is read after create/update; a concurrent duplicate that
-    // also sees null loses the atomic claim inside `enqueueSift`.
-    if (!task.siftId && wantsSift(task)) {
+    const sift_ = async (target: Task): Promise<{ task: Task; sift: SiftSummary }> => {
       const result = await enqueueSift({
         req,
         session,
-        task,
+        task: target,
         modelPreference: modelPreference ?? null,
         offline: resolveOfflineMode(req),
         // /api/triage applies the per-IP limit before parsing; capture is
         // the default sifting path, so it applies the same limit here.
         checkIp: true,
       });
-      task = result.task;
-      sift = result.ok
+      const summary: SiftSummary = result.ok
         ? { enqueued: true, siftId: result.siftId, runId: result.runId }
         : result.reason === "denied"
           ? { enqueued: false, reason: "denied", code: String(result.admission.body.code ?? "") }
           : { enqueued: false, reason: result.reason };
-    } else if (task.siftId) {
-      sift = { enqueued: false, reason: "already_sifting" };
-    }
+      return { task: result.task, sift: summary };
+    };
+
+    let sift: SiftSummary = { enqueued: false, reason: "not_wanted" };
+    let spawned: Task | null = null;
 
     // A recurring task that arrives already completed (captured and done
     // offline, or a PATCH that 404'd and fell back to create) still owes
-    // its series the next instance. Idempotent, like the PATCH path.
-    let spawned: Task | null = null;
-    if (task.lifecycle === "done" && task.recurrence) {
+    // its series the next instance. Idempotent, like the PATCH path. The
+    // sift, if one is still owed, goes to the live successor: spending it
+    // on the finished row would organize nothing the user will look at.
+    const completedRecurring = task.lifecycle === "done" && !!task.recurrence;
+    if (completedRecurring) {
+      const owesSift = !task.siftId && wantsSift(task);
+      if (owesSift) {
+        task = (await repos.tasks.update(userId, task.id, { aiStatus: "idle" })) ?? task;
+      }
       const next = await spawnNextInstance(repos, userId, {
         parent: task,
         previousLifecycle: "active",
@@ -143,6 +151,19 @@ export async function POST(req: Request) {
         timeZone,
       });
       spawned = next?.task ?? null;
+      if (spawned && next?.created && owesSift && !spawned.siftId) {
+        const sifted = await sift_(spawned);
+        spawned = sifted.task;
+        sift = sifted.sift;
+      }
+    } else if (!task.siftId && wantsSift(task)) {
+      // `task.siftId` is read after create/update; a concurrent duplicate
+      // that also sees null loses the atomic claim inside `enqueueSift`.
+      const sifted = await sift_(task);
+      task = sifted.task;
+      sift = sifted.sift;
+    } else if (task.siftId) {
+      sift = { enqueued: false, reason: "already_sifting" };
     }
 
     return NextResponse.json({ task, sift, spawned }, { status: 201 });

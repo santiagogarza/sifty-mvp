@@ -142,6 +142,17 @@ describe("duplicateTask", () => {
     expect(hooks.taskUpserted).toHaveBeenCalledWith(copy, { created: true });
   });
 
+  it("a copy is a one-off: the repeat rule and series stay behind", () => {
+    seed({
+      id: "task_rep",
+      recurrence: { freq: "weekly", mode: "fixed", weekdays: [5] },
+      seriesId: "task_rep",
+    });
+    const copy = useStore.getState().duplicateTask("task_rep")!;
+    expect(copy.recurrence).toBeNull();
+    expect(copy.seriesId).toBeNull();
+  });
+
   it("a done or dropped original copies into the Inbox", () => {
     seed({ id: "task_done", lifecycle: "done", completedAt: "2026-10-11T00:00:00.000Z" });
     seed({ id: "task_dropped", lifecycle: "dropped" });
