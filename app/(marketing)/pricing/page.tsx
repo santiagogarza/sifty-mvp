@@ -3,10 +3,13 @@ import { FREE_SIFTS_PER_DAY, PRO_TRIAL_DAYS } from "@/lib/billing/plans";
 import type { Metadata } from "next";
 import Link from "next/link";
 
+const DESCRIPTION = `Sifty is free to capture, organize, and sync, with ${FREE_SIFTS_PER_DAY} AI sifts a day. Pro removes the cap and adds autonomous execution.`;
+
 export const metadata: Metadata = {
   title: "Pricing",
-  description: `Sifty is free to capture, organize, and sync, with ${FREE_SIFTS_PER_DAY} AI sifts a day. Pro removes the cap and adds autonomous execution.`,
+  description: DESCRIPTION,
   alternates: { canonical: "/pricing" },
+  openGraph: { title: "Sifty pricing", description: DESCRIPTION, url: "/pricing" },
 };
 
 const FAQ = [

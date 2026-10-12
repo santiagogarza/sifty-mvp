@@ -71,6 +71,7 @@ describe("security.txt", () => {
     const res = securityTxtRoute();
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/plain");
+    expect(res.headers.get("cache-control")).toContain("max-age=3600");
     expect(await res.text()).toMatch(/^Contact: mailto:/);
   });
 });

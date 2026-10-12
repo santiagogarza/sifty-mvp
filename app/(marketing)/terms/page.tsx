@@ -3,10 +3,13 @@ import { LEGAL_ENTITY, getSupportEmail } from "@/lib/site/config";
 import type { Metadata } from "next";
 import Link from "next/link";
 
+const DESCRIPTION = `The terms under which ${LEGAL_ENTITY} provides Sifty.`;
+
 export const metadata: Metadata = {
   title: "Terms of service",
-  description: `The terms under which ${LEGAL_ENTITY} provides Sifty.`,
+  description: DESCRIPTION,
   alternates: { canonical: "/terms" },
+  openGraph: { title: "Sifty terms of service", description: DESCRIPTION, url: "/terms" },
 };
 
 const UPDATED = "2026-10-12";
