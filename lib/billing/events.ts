@@ -154,6 +154,12 @@ export function applyStripeEvent(
         return resolve({ ...ids, subscriptionActive: true, graceEndsAt: null });
       }
       if (DUNNING_STATUSES.has(sub.status)) {
+        // A late dunning update must not reopen grace on an ended
+        // subscription or clobber a different, newer one.
+        if (ENDED_STATUSES.has(current.stripeStatus ?? "")) return current;
+        if (current.stripeSubscriptionId && current.stripeSubscriptionId !== sub.id) {
+          return current;
+        }
         return resolve({ ...ids, subscriptionActive: false, graceEndsAt: keepOrOpenGrace() });
       }
       // incomplete (first payment never succeeded), paused (Stripe trial ended

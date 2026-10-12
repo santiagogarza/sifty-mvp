@@ -222,7 +222,7 @@ function upgradeCopy(ent: Entitlement): string {
         ? "Your invite covers Pro for now. Add a subscription to keep Pro after it ends, or wait until then."
         : "Your invite covers Pro permanently. No card needed.";
     case "trialing":
-      return "You're on the Pro trial: unlimited sifting. Subscribe now and your card is first charged when the trial ends; or drop to Free and keep capturing with a few sifts a day. Promo codes work at checkout.";
+      return "You're on the Pro trial: unlimited sifting. Subscribe now and your card is first charged when the trial ends (or right away in its last 48 hours); or drop to Free and keep capturing with a few sifts a day. Promo codes work at checkout.";
     default:
       return `Free includes capture, organize, sync, reminders, and ${FREE_SIFTS_PER_DAY} sifts a day. Pro removes the sifting cap and adds autonomous execution and connectors. Promo codes work at checkout.`;
   }
