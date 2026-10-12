@@ -7,7 +7,7 @@ import {
 import { StripeNotConfiguredError, verifyAndParseEvent } from "@/lib/billing/stripe";
 import { HANDLED_EVENTS } from "@/lib/billing/webhook-events";
 import { getRepos } from "@/lib/db/repos";
-import { emptySnapshot } from "@/lib/entitlements/entitlements";
+import { emptySnapshot, isGraceActive } from "@/lib/entitlements/entitlements";
 import { reportError } from "@/lib/observability/report-error";
 import { buildRateLimitKey, consumeToken, rateLimitResponseInit } from "@/lib/ratelimit/limiter";
 import { STRIPE_WEBHOOK_POLICY, clientIdFromRequest } from "@/lib/ratelimit/policies";
@@ -112,19 +112,28 @@ async function processEvent(
   }
 
   const reducible = event as unknown as ReducibleEvent;
+  const at = event.created ? new Date(event.created * 1000) : new Date();
   // Locked read-modify-write: an invite redemption or checkout committing
   // concurrently is seen by the reducer instead of being overwritten.
+  let noop = false;
   const next = await repos.entitlements.update(userId, (current) => {
     const base = current ?? { ...emptySnapshot(), stripeCustomerId: customerId };
-    const reduced = applyStripeEvent(base, reducible);
+    const reduced = applyStripeEvent(base, reducible, at);
+    noop = reduced === base;
     return { ...reduced, stripeCustomerId: customerId };
   });
 
-  if (reducible.type === "invoice.payment_failed" && next.tier !== "creator") {
+  // Dunning mail only when the failure actually put a live subscription into
+  // dunning: never for the creator, and never for leftover retries on a
+  // subscription that already ended (the reducer leaves those untouched).
+  if (reducible.type === "invoice.payment_failed" && !noop) {
     await sendPaymentFailedEmail({
       user,
       invoice: reducible.data.object as StripeInvoiceLike,
-      graceEndsAt: next.graceEndsAt,
+      graceEndsAt: isGraceActive(next.graceEndsAt, at) ? next.graceEndsAt : null,
+      // Comped users keep Pro through the comp; everyone else has it only
+      // while the window is open.
+      accessPaused: next.tier !== "pro" && next.tier !== "comped",
       eventId: event.id,
     });
   }

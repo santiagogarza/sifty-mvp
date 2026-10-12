@@ -17,7 +17,10 @@ import { reportError } from "@/lib/observability/report-error";
 export async function sendPaymentFailedEmail(args: {
   user: Pick<UserProfile, "email" | "displayName">;
   invoice: StripeInvoiceLike;
+  /** Open grace deadline, or null when no window is open. */
   graceEndsAt: string | null;
+  /** Pro is already off (grace consumed or never opened); the copy must say so. */
+  accessPaused: boolean;
   eventId: string;
 }): Promise<boolean> {
   try {
@@ -28,6 +31,7 @@ export async function sendPaymentFailedEmail(args: {
         name: args.user.displayName,
         amount: formatMoney(args.invoice.amount_due, args.invoice.currency),
         retryUntil: args.graceEndsAt,
+        accessPaused: args.accessPaused,
         billingUrl: `${appUrl()}/settings/billing`,
       },
     });
