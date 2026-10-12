@@ -1,4 +1,3 @@
-import { DatabaseNotConfiguredError } from "@/lib/db/client";
 import { getPersistenceMode, getRepos, setReposForTesting } from "@/lib/db/repos";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -19,12 +18,15 @@ describe("repository factory", () => {
     expect(getRepos()).toBeDefined();
   });
 
-  it("refuses the memory fallback on Vercel production", () => {
+  it("falls back to memory on Vercel production but logs an error", () => {
     vi.stubEnv("DATABASE_URL", "");
     vi.stubEnv("VERCEL_ENV", "production");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     setReposForTesting(null);
-    expect(() => getRepos()).toThrow(DatabaseNotConfiguredError);
-    expect(() => getPersistenceMode()).toThrow(DatabaseNotConfiguredError);
+    expect(getPersistenceMode()).toBe("memory");
+    expect(getRepos()).toBeDefined();
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("DATABASE_URL is not configured"));
+    error.mockRestore();
   });
 
   it("selects postgres when DATABASE_URL is set (no connection is opened)", () => {

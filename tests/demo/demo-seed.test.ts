@@ -71,8 +71,7 @@ describe("SIFTY_DEMO_SEED", () => {
   it("the flag is ignored on Vercel production", async () => {
     vi.stubEnv("VERCEL_ENV", "production");
     const repos = getTestRepos();
-    const result = await signUp({ email: "prod@example.com", password: "password123" });
-    const userId = ("user" in result ? result.user : null)!.id;
+    const userId = await signUp("prod@example.com");
 
     expect(await repos.tasks.list(userId)).toHaveLength(0);
     expect(await repos.memories.list(userId)).toHaveLength(0);

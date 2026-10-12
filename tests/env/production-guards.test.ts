@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const SAFE_PRODUCTION = {
   VERCEL_ENV: "production",
   DATABASE_URL: "postgres://user:pw@host/db",
-  AUTH_SECRET: "x".repeat(32),
+  BETTER_AUTH_SECRET: "x".repeat(32),
 };
 
 describe("production guards", () => {
@@ -40,8 +40,8 @@ describe("production guards", () => {
   });
 
   it("a complete production env has no problems", () => {
-    expect(findProductionEnvProblems(SAFE_PRODUCTION)).toEqual([]);
-    expect(() => assertProductionEnv(SAFE_PRODUCTION)).not.toThrow();
+    expect(findProductionEnvProblems(SAFE_PRODUCTION)).toEqual({ blocking: [], warnings: [] });
+    expect(assertProductionEnv(SAFE_PRODUCTION)).toEqual([]);
   });
 
   it("reports every demo flag that is set, without echoing its value", () => {
@@ -52,22 +52,40 @@ describe("production guards", () => {
       SIFTY_AI_OFFLINE: "0",
       SIFTY_USER_EMAIL: "someone@example.com",
     };
-    const problems = findProductionEnvProblems(env);
-    expect(problems).toHaveLength(4);
+    const { blocking, warnings } = findProductionEnvProblems(env);
+    expect(blocking).toHaveLength(4);
+    expect(warnings).toEqual([]);
     for (const flag of DEMO_FLAGS) {
-      expect(problems.some((p) => p.startsWith(flag))).toBe(true);
+      expect(blocking.some((p) => p.startsWith(flag))).toBe(true);
     }
-    expect(problems.join("\n")).not.toContain("someone@example.com");
+    expect(blocking.join("\n")).not.toContain("someone@example.com");
   });
 
   it("an empty-string flag is treated as unset", () => {
-    expect(findProductionEnvProblems({ ...SAFE_PRODUCTION, SIFTY_DISABLE_AUTH: "" })).toEqual([]);
+    expect(findProductionEnvProblems({ ...SAFE_PRODUCTION, SIFTY_DISABLE_AUTH: "" })).toEqual({
+      blocking: [],
+      warnings: [],
+    });
   });
 
-  it("requires DATABASE_URL and a long enough AUTH_SECRET", () => {
-    const problems = findProductionEnvProblems({ VERCEL_ENV: "production", AUTH_SECRET: "short" });
-    expect(problems.some((p) => p.startsWith("DATABASE_URL"))).toBe(true);
-    expect(problems.some((p) => p.startsWith("AUTH_SECRET"))).toBe(true);
+  it("a short BETTER_AUTH_SECRET blocks; a missing DATABASE_URL only warns", () => {
+    const { blocking, warnings } = findProductionEnvProblems({
+      VERCEL_ENV: "production",
+      BETTER_AUTH_SECRET: "short",
+    });
+    expect(blocking).toHaveLength(1);
+    expect(blocking[0]).toMatch(/^BETTER_AUTH_SECRET/);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/^DATABASE_URL/);
+  });
+
+  it("assertProductionEnv boots without DATABASE_URL but logs the warning", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { DATABASE_URL: _omit, ...noDb } = SAFE_PRODUCTION;
+    const warnings = assertProductionEnv(noDb);
+    expect(warnings).toHaveLength(1);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("DATABASE_URL is not set"));
+    error.mockRestore();
   });
 
   it("assertProductionEnv throws a ProductionEnvError listing the problems", () => {
@@ -115,7 +133,9 @@ describe("snapshotEnv", () => {
     const literalReads = source.match(/process\.env\.[A-Z_]+/g) ?? [];
     expect(new Set(literalReads)).toEqual(
       new Set(
-        [...DEMO_FLAGS, "VERCEL_ENV", "DATABASE_URL", "AUTH_SECRET"].map((k) => `process.env.${k}`),
+        [...DEMO_FLAGS, "VERCEL_ENV", "DATABASE_URL", "BETTER_AUTH_SECRET"].map(
+          (k) => `process.env.${k}`,
+        ),
       ),
     );
     expect(source).not.toMatch(/process\.env\[/);
@@ -131,6 +151,7 @@ describe("instrumentation.register", () => {
   it("refuses to boot on Vercel production with a demo flag set", async () => {
     vi.stubEnv("VERCEL_ENV", "production");
     vi.stubEnv("DATABASE_URL", "postgres://user:pw@host/db");
+    vi.stubEnv("BETTER_AUTH_SECRET", "x".repeat(32));
     vi.stubEnv("SIFTY_DEMO_SEED", "1");
     await expect(register()).rejects.toBeInstanceOf(ProductionEnvError);
   });
@@ -138,6 +159,7 @@ describe("instrumentation.register", () => {
   it("boots on Vercel production with a complete env", async () => {
     vi.stubEnv("VERCEL_ENV", "production");
     vi.stubEnv("DATABASE_URL", "postgres://user:pw@host/db");
+    vi.stubEnv("BETTER_AUTH_SECRET", "x".repeat(32));
     await expect(register()).resolves.toBeUndefined();
   });
 });

@@ -9,17 +9,20 @@
  *   Empty or whitespace-only values count as unset.
  * - `.env.local` then `.env` are loaded (without overriding the process
  *   env), matching the documented local workflow.
- * - No URL on Vercel production: exit 1. A production build must never
- *   succeed against no database.
- * - No URL anywhere else (local dev, previews without a Neon branch, CI
- *   lint job): skip with a notice so the in-memory fallback keeps working.
+ * - Preview deployments skip migrations unless SIFTY_MIGRATE_PREVIEWS=1:
+ *   without Neon preview branching they share the production database, and
+ *   an unmerged branch must never alter the production schema.
+ * - No URL: skip. Outside production that is routine (local dev, CI lint
+ *   job). On Vercel production it is logged as an error so the first deploy
+ *   can render in memory mode before Neon exists; the app's boot guard and
+ *   /api/health flag the same condition.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-/** @typedef {{ action: "run", url: string } | { action: "skip" | "fail", message: string }} Plan */
+/** @typedef {{ action: "run", url: string } | { action: "skip", loud: boolean, message: string }} Plan */
 
 /**
  * Pure decision, so tests can cover every branch without a database.
@@ -28,16 +31,26 @@ import { pathToFileURL } from "node:url";
  */
 export function planMigration(env) {
   const url = (env.DATABASE_URL_UNPOOLED ?? "").trim() || (env.DATABASE_URL ?? "").trim();
+  if (env.VERCEL_ENV === "preview" && env.SIFTY_MIGRATE_PREVIEWS !== "1") {
+    return {
+      action: "skip",
+      loud: false,
+      message:
+        "[migrate] preview deployment; skipping migrations (set SIFTY_MIGRATE_PREVIEWS=1 once Neon preview branching is on).",
+    };
+  }
   if (url) return { action: "run", url };
   if (env.VERCEL_ENV === "production") {
     return {
-      action: "fail",
+      action: "skip",
+      loud: true,
       message:
-        "[migrate] DATABASE_URL is not set on a production build. Provision Neon (Vercel Marketplace) and redeploy.",
+        "[migrate] DATABASE_URL is not set on a production build; skipping migrations. The app runs on the in-memory store until Neon (Vercel Marketplace) is provisioned.",
     };
   }
   return {
     action: "skip",
+    loud: false,
     message: "[migrate] DATABASE_URL is not set; skipping migrations (in-memory mode).",
   };
 }
@@ -53,12 +66,8 @@ export function loadEnvFiles(cwd = process.cwd()) {
 function main() {
   loadEnvFiles();
   const plan = planMigration(process.env);
-  if (plan.action === "fail") {
-    console.error(plan.message);
-    process.exit(1);
-  }
   if (plan.action === "skip") {
-    console.log(plan.message);
+    (plan.loud ? console.error : console.log)(plan.message);
     process.exit(0);
   }
   const result = spawnSync("pnpm", ["exec", "drizzle-kit", "migrate"], {

@@ -7,8 +7,12 @@
  *
  * - `assertProductionEnv()` runs at build time (`next.config.ts`) and at
  *   server start (`instrumentation.ts`) and throws when `VERCEL_ENV` is
- *   `production` and a demo flag is set or a required variable is missing.
+ *   `production` and a demo flag is set or the auth secret is missing.
  *   A bad deploy therefore fails before it serves a request.
+ * - A missing `DATABASE_URL` in production is reported, not fatal: the app
+ *   boots on the in-memory store so the first deploy can render before Neon
+ *   exists, `register()` logs the problem, and `/api/health` answers 503.
+ *   Move it into `blocking` once the database is provisioned.
  * - `demoFlagEnabled()` is what every flag consumer reads. It is false on
  *   Vercel production regardless of the variable, so even if the boot
  *   guard were bypassed, auth, seeding, and offline AI stay off.
@@ -44,7 +48,7 @@ export function snapshotEnv(): Env {
     SIFTY_AI_OFFLINE: process.env.SIFTY_AI_OFFLINE,
     SIFTY_USER_EMAIL: process.env.SIFTY_USER_EMAIL,
     DATABASE_URL: process.env.DATABASE_URL,
-    AUTH_SECRET: process.env.AUTH_SECRET,
+    BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
   };
 }
 
@@ -58,31 +62,43 @@ export function demoFlagEnabled(flag: DemoFlag, env: Env = snapshotEnv()): boole
   return env[flag] === "1";
 }
 
+export interface ProductionEnvProblems {
+  /** Refuse to build or boot. */
+  blocking: string[];
+  /** Boot, but say so loudly (logs, `/api/health` 503). */
+  warnings: string[];
+}
+
 /**
- * Human-readable problems that make `env` unfit for production. Empty when
- * the environment is acceptable. Pure, so it is unit-testable and can be
- * surfaced from `/api/health`.
+ * Problems that make `env` unfit for production, split by severity. Both
+ * lists are empty when the environment is acceptable. Pure, so it is
+ * unit-testable and can be surfaced from `/api/health`.
  */
-export function findProductionEnvProblems(env: Env = snapshotEnv()): string[] {
-  const problems: string[] = [];
+export function findProductionEnvProblems(env: Env = snapshotEnv()): ProductionEnvProblems {
+  const blocking: string[] = [];
+  const warnings: string[] = [];
 
   for (const flag of DEMO_FLAGS) {
     const value = env[flag];
     if (value !== undefined && value !== "") {
-      problems.push(`${flag} is set (${describe(value)}); demo flags are refused in production.`);
+      blocking.push(`${flag} is set (${describe(value)}); demo flags are refused in production.`);
     }
   }
 
-  if (!env.DATABASE_URL) {
-    problems.push("DATABASE_URL is not set; the in-memory store is refused in production.");
-  }
-
-  const secret = env.AUTH_SECRET ?? "";
+  const secret = env.BETTER_AUTH_SECRET ?? "";
   if (secret.length < MIN_AUTH_SECRET_LENGTH) {
-    problems.push(`AUTH_SECRET is missing or shorter than ${MIN_AUTH_SECRET_LENGTH} characters.`);
+    blocking.push(
+      `BETTER_AUTH_SECRET is missing or shorter than ${MIN_AUTH_SECRET_LENGTH} characters.`,
+    );
   }
 
-  return problems;
+  if (!env.DATABASE_URL) {
+    warnings.push(
+      "DATABASE_URL is not set; running on the in-memory store, which loses all data on every restart. Provision Neon (Vercel Marketplace) and redeploy.",
+    );
+  }
+
+  return { blocking, warnings };
 }
 
 export class ProductionEnvError extends Error {
@@ -101,11 +117,16 @@ export class ProductionEnvError extends Error {
   }
 }
 
-/** Throws `ProductionEnvError` on Vercel production when the env is unsafe. No-op elsewhere. */
-export function assertProductionEnv(env: Env = snapshotEnv()): void {
-  if (!isVercelProduction(env)) return;
-  const problems = findProductionEnvProblems(env);
-  if (problems.length > 0) throw new ProductionEnvError(problems);
+/**
+ * Throws `ProductionEnvError` on Vercel production when the env is unsafe;
+ * logs and returns the warnings otherwise. No-op off production.
+ */
+export function assertProductionEnv(env: Env = snapshotEnv()): string[] {
+  if (!isVercelProduction(env)) return [];
+  const { blocking, warnings } = findProductionEnvProblems(env);
+  if (blocking.length > 0) throw new ProductionEnvError(blocking);
+  for (const warning of warnings) console.error(`[production-guards] ${warning}`);
+  return warnings;
 }
 
 function describe(value: string): string {
