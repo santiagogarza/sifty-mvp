@@ -31,6 +31,26 @@ pnpm build
 Keyless local dev: `SIFTY_DISABLE_AUTH=1 SIFTY_AI_OFFLINE=1 pnpm dev`. See
 `README.md` for the full setup, architecture, and testing philosophy.
 
+## Prompts: version bump policy
+
+Every prompt in `lib/ai/` has a `promptVersion` (`enrich.v1`, `triage.v2`,
+`brief.v1`, …) recorded on each `ai_runs` row. Full policy in
+`lib/ai/prompts.ts`; the short form:
+
+- Any change to a system prompt, user prompt template, output schema, or
+  temperature bumps that prompt's version in the same change. No exceptions
+  for wording.
+- Every bump ships with an eval run: `SIFTY_AI_OFFLINE=1 pnpm eval:update`
+  (re-records `evals/baselines/`, commit the result) plus a real-model run
+  (`AI_TRANSPORT=gateway AI_GATEWAY_API_KEY=… pnpm eval`, or the "Evals
+  (real models)" workflow by hand) whose pass-rate table goes in the PR.
+- CI runs `pnpm eval` offline on every `production` PR and fails on a
+  prompt whose fingerprint moved without a bump, a schema miss, or a rubric
+  regression against the recorded baseline. Cost drift is a warning.
+- Never hand-edit files under `evals/baselines/`. Add captures to
+  `evals/golden/captures.json` when a prompt bug is found; see
+  `evals/README.md`.
+
 ## Linear
 
 Use the `linear-sifty` MCP server only (workspace sifty-demo, team SIF). See
