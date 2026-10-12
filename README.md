@@ -198,8 +198,8 @@ production boots on the in-memory store, logs the problem at build and boot,
 and `/api/health` answers 503 until Neon is connected. On Vercel the build
 command is `pnpm build:vercel`, which runs `pnpm db:migrate` (skips when no
 database is configured, and always on preview deployments) before
-`next build`. `vercel.json` carries the security headers, the crons
-placeholder, and the Ignored Build Step (`scripts/vercel-ignore-build.sh`:
+`next build`. `vercel.json` carries the security headers, the cron schedule
+(daily `expire-grace-periods`; Hobby allows daily crons only), and the Ignored Build Step (`scripts/vercel-ignore-build.sh`:
 only `production` and `cursor/prod-*` build). `GET /api/health` is the
 uptime probe (200/503, reports persistence, DB reachability, Sentry).
 
