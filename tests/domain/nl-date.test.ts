@@ -133,6 +133,17 @@ describe("parseNaturalDate: weekdays", () => {
     expect(due("Groceries next Monday", at(2026, 10, 18))).toBe("2026-10-19");
   });
 
+  it("last <weekday> is history, not a deadline", () => {
+    expect(parseNaturalDate("Call Ana about last Friday", now)).toBeNull();
+    expect(parseNaturalDate("Finish what we did last month", now)).toBeNull();
+    expect(parseNaturalDate("Review last week's notes", now)).toBeNull();
+    // …while a later deadline still parses.
+    expect(parseNaturalDate("Follow up on last Friday's call by Monday", now)).toMatchObject({
+      due: "2026-10-19",
+      text: "by Monday",
+    });
+  });
+
   it("abbreviations only after a preposition", () => {
     expect(due("Ship it by fri", now)).toBe("2026-10-16");
     expect(due("Ship it on thurs", now)).toBe("2026-10-15");

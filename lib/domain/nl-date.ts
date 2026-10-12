@@ -182,7 +182,11 @@ const RULES: Rule[] = [
     },
   },
   {
-    re: new RegExp(`\\b${PREP}(?:this\\s+)?(${WEEKDAY_FULL})\\b${NOT_POSSESSIVE}`, "gi"),
+    // "last Friday" is history, not a deadline.
+    re: new RegExp(
+      `(?<!\\blast\\s)\\b${PREP}(?:this\\s+)?(${WEEKDAY_FULL})\\b${NOT_POSSESSIVE}`,
+      "gi",
+    ),
     resolve: (m, today) => {
       const weekday = weekdayIndex(m[1]!);
       return weekday === null ? null : nextWeekday(today, weekday, { allowToday: true });
