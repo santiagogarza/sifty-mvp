@@ -190,6 +190,14 @@ describe("approval cards", () => {
     await userEvent.click(screen.getByRole("button", { name: "Stop this" }));
     expect(dismiss).toHaveBeenCalledWith("dec_q");
   });
+
+  it("Enter on an executor question focuses its answer field", async () => {
+    renderInbox([question]);
+    const list = screen.getByRole("listbox", { name: "Decisions" });
+    list.focus();
+    fireEvent.keyDown(list, { key: "Enter" });
+    expect(screen.getByRole("textbox", { name: "Your answer" })).toHaveFocus();
+  });
 });
 
 describe("draft review cards", () => {
@@ -334,6 +342,23 @@ describe("batch approve", () => {
         "Approved 1; 1 could not be approved and is still open.",
       ),
     );
+  });
+
+  it("clearing or changing the selection disarms a pending confirm", async () => {
+    renderInbox([approval, review]);
+    await userEvent.click(screen.getByRole("button", { name: "Select all" }));
+    const approve = screen.getByTestId("batch-approve");
+    await userEvent.click(approve);
+    expect(approve).toHaveTextContent("Confirm: approve 2");
+    await userEvent.click(screen.getByRole("button", { name: "Clear" }));
+    await userEvent.click(screen.getByRole("button", { name: "Select all" }));
+    expect(screen.getByTestId("batch-approve")).toHaveTextContent("Approve 2");
+    expect(approveMany).not.toHaveBeenCalled();
+    // Unticking one card while armed disarms as well.
+    await userEvent.click(screen.getByTestId("batch-approve"));
+    await userEvent.click(screen.getAllByTestId("decision-select")[0]!);
+    expect(screen.getByTestId("batch-approve")).toHaveTextContent("Approve 1");
+    expect(approveMany).not.toHaveBeenCalled();
   });
 
   it("does not appear for a single approvable item", () => {

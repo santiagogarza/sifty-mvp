@@ -32,6 +32,7 @@ export default function DecisionsPage() {
 const LINK_MESSAGES: Record<string, string> = {
   answered: "Done — Sifty has your answer.",
   approved: "Approved — Sifty is on it.",
+  done: "Approved — that one is done.",
   rejected: "Rejected — Sifty stopped.",
   dismissed: "Dismissed.",
   used: "That question was already answered.",
