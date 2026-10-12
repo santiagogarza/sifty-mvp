@@ -73,6 +73,12 @@ export const entitlements = pgTable("entitlements", {
   /** "active" | "trialing" | "past_due" | "canceled" | etc. raw from Stripe. */
   stripeStatus: text("stripe_status"),
   currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+  /**
+   * Dunning grace: Pro stays on until this moment after a failed payment.
+   * Set by the first failure, cleared by recovery, cancellation, or
+   * `expireGracePeriods()`.
+   */
+  graceEndsAt: timestamp("grace_ends_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

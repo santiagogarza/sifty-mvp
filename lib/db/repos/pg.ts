@@ -2,7 +2,7 @@ import { LABEL_TONES, type Label, type LabelTone } from "@/lib/domain/types";
 import type { Memory, Subtask, Task, TaskEditableField } from "@/lib/domain/types";
 import { emptySnapshot, trialSnapshot } from "@/lib/entitlements/entitlements";
 import { id as makeId } from "@/lib/utils/ids";
-import { and, count, desc, eq, gt, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "../client";
 import * as schema from "../schema";
@@ -171,6 +171,16 @@ export function createPostgresRepos(): Repos {
       const existing = await entitlements.get(userId);
       if (existing) return existing;
       return entitlements.upsert(userId, trialSnapshot(days));
+    },
+    async listExpiredGracePeriods(now, limit) {
+      const db = getDb();
+      const rows = await db
+        .select({ userId: schema.entitlements.userId })
+        .from(schema.entitlements)
+        .where(lte(schema.entitlements.graceEndsAt, now))
+        .orderBy(schema.entitlements.graceEndsAt)
+        .limit(limit);
+      return rows.map((r) => r.userId);
     },
   };
 
@@ -716,6 +726,7 @@ function entitlementRowToSnapshot(
     stripeSubscriptionId: ent.stripeSubscriptionId,
     stripeStatus: ent.stripeStatus,
     currentPeriodEnd: ent.currentPeriodEnd?.toISOString() ?? null,
+    graceEndsAt: ent.graceEndsAt?.toISOString() ?? null,
   };
 }
 
@@ -729,6 +740,7 @@ function entitlementColumns(snapshot: EntitlementSnapshot, now: Date) {
     stripeSubscriptionId: snapshot.stripeSubscriptionId,
     stripeStatus: snapshot.stripeStatus,
     currentPeriodEnd: toDate(snapshot.currentPeriodEnd),
+    graceEndsAt: toDate(snapshot.graceEndsAt),
     updatedAt: now,
   };
 }

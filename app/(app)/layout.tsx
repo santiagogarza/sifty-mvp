@@ -1,4 +1,5 @@
 import { AppFrame } from "@/components/app-shell/app-frame";
+<<<<<<< HEAD
 import { getSession } from "@/lib/auth/session";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -20,4 +21,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect(path ? `/sign-in?next=${encodeURIComponent(path)}` : "/sign-in");
   }
   return <AppFrame>{children}</AppFrame>;
+=======
+import { PaymentFailedBanner } from "@/components/billing/payment-failed-banner";
+import { getSession } from "@/lib/auth/session";
+import { paymentProblem } from "@/lib/entitlements/entitlements";
+
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  const session = await getSession();
+  const problem = paymentProblem(session?.entitlement ?? null, session?.user.isCreator ?? false);
+  return (
+    <AppFrame notice={problem ? <PaymentFailedBanner problem={problem} /> : null}>
+      {children}
+    </AppFrame>
+  );
+>>>>>>> 71a95fd (billing: dunning grace period, failed-payment email and banner, expireGracePeriods cron)
 }

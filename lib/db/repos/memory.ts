@@ -152,6 +152,13 @@ export function createMemoryRepos(): MemoryReposHandle {
       state.entitlements.set(userId, snap);
       return { ...snap };
     },
+    async listExpiredGracePeriods(now, limit) {
+      return Array.from(state.entitlements.entries())
+        .filter(([, e]) => e.graceEndsAt && Date.parse(e.graceEndsAt) <= now.getTime())
+        .sort(([, a], [, b]) => Date.parse(a.graceEndsAt!) - Date.parse(b.graceEndsAt!))
+        .slice(0, limit)
+        .map(([userId]) => userId);
+    },
   };
 
   const tasks: TaskRepo = {
