@@ -15,6 +15,8 @@ import {
   type AiRunRepo,
   type AiRunRollupRow,
   type AiRunWriteInput,
+  type ConnectionRecord,
+  type ConnectionRepo,
   DAILY_PLAN_LEASE_MS,
   type DailyPlanRecord,
   type DailyPlanRepo,
@@ -93,6 +95,7 @@ interface State {
   pushSubscriptions: Map<string, PushSubscriptionRecord>;
   notificationSends: NotificationSendRecord[];
   dailyPlans: Map<string, DailyPlanRecord>;
+  connections: Map<string, ConnectionRecord>;
 }
 
 function emptyState(): State {
@@ -114,6 +117,7 @@ function emptyState(): State {
     pushSubscriptions: new Map(),
     notificationSends: [],
     dailyPlans: new Map(),
+    connections: new Map(),
   };
 }
 
@@ -212,6 +216,8 @@ export function createMemoryRepos(): MemoryReposHandle {
         if (s.userId === userId) state.pushSubscriptions.delete(id);
       }
       state.notificationSends = state.notificationSends.filter((s) => s.userId !== userId);
+      for (const [id, c] of state.connections)
+        if (c.userId === userId) state.connections.delete(id);
       return true;
     },
   };
@@ -950,6 +956,61 @@ export function createMemoryRepos(): MemoryReposHandle {
     },
   };
 
+  const connections: ConnectionRepo = {
+    async list(userId) {
+      return Array.from(state.connections.values())
+        .filter((c) => c.userId === userId)
+        .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+        .map((c) => ({ ...c, scopes: [...c.scopes] }));
+    },
+    async get(userId, provider) {
+      const row = findConnection(userId, provider);
+      return row ? { ...row, scopes: [...row.scopes] } : null;
+    },
+    async upsert(userId, provider, input) {
+      const existing = findConnection(userId, provider);
+      const now = new Date().toISOString();
+      const row: ConnectionRecord = {
+        id: existing?.id ?? makeId("conn"),
+        userId,
+        provider,
+        broker: input.broker,
+        status: input.status,
+        connectorUid: input.connectorUid,
+        scopes: [...input.scopes],
+        externalAccount: input.externalAccount ?? null,
+        authState: input.authState ?? null,
+        encryptedSecret: input.encryptedSecret ?? null,
+        lastCheckedAt: null,
+        lastError: input.lastError ?? null,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      };
+      state.connections.set(row.id, row);
+      return { ...row, scopes: [...row.scopes] };
+    },
+    async update(userId, provider, patch) {
+      const row = findConnection(userId, provider);
+      if (!row) return null;
+      Object.assign(row, patch, { updatedAt: new Date().toISOString() });
+      if (patch.scopes) row.scopes = [...patch.scopes];
+      return { ...row, scopes: [...row.scopes] };
+    },
+    async delete(userId, provider) {
+      const row = findConnection(userId, provider);
+      if (!row) return false;
+      state.connections.delete(row.id);
+      return true;
+    },
+  };
+
+  function findConnection(userId: string, provider: ConnectionRecord["provider"]) {
+    for (const c of state.connections.values()) {
+      if (c.userId === userId && c.provider === provider) return c;
+    }
+    return undefined;
+  }
+
   return {
     users,
     entitlements,
@@ -965,6 +1026,7 @@ export function createMemoryRepos(): MemoryReposHandle {
     pushSubscriptions,
     notificationSends,
     dailyPlans,
+    connections,
     __reset: () => {
       state = emptyState();
     },

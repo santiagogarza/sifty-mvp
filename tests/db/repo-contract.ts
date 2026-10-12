@@ -1045,6 +1045,87 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect(await repos.notificationSends.listForUser(a.id)).toHaveLength(1);
     });
 
+    it("connections: one row per provider, tenant-scoped, replaced on restart", async () => {
+      const repos = getRepos();
+      const a = await createUser(repos, "conn-a@example.com");
+      const b = await createUser(repos, "conn-b@example.com");
+
+      const first = await repos.connections.upsert(a.id, "mock", {
+        broker: "mock",
+        status: "pending",
+        connectorUid: "mock/local",
+        scopes: ["notes:read"],
+        authState: "state-1",
+      });
+      expect(first.status).toBe("pending");
+      expect(first.encryptedSecret).toBeNull();
+
+      const connected = await repos.connections.update(a.id, "mock", {
+        status: "connected",
+        authState: null,
+        externalAccount: "mock@sifty.local",
+        encryptedSecret: "v1.iv.ct.tag",
+        lastCheckedAt: "2026-10-12T10:00:00.000Z",
+      });
+      expect(connected).toMatchObject({
+        id: first.id,
+        status: "connected",
+        authState: null,
+        externalAccount: "mock@sifty.local",
+        encryptedSecret: "v1.iv.ct.tag",
+        lastCheckedAt: "2026-10-12T10:00:00.000Z",
+      });
+
+      // B sees and touches nothing of A's.
+      expect(await repos.connections.list(b.id)).toEqual([]);
+      expect(await repos.connections.get(b.id, "mock")).toBeNull();
+      expect(await repos.connections.update(b.id, "mock", { status: "error" })).toBeNull();
+      expect(await repos.connections.delete(b.id, "mock")).toBe(false);
+      expect((await repos.connections.get(a.id, "mock"))?.status).toBe("connected");
+
+      // A restart replaces the row in place (same id, secret cleared).
+      const restarted = await repos.connections.upsert(a.id, "mock", {
+        broker: "mock",
+        status: "pending",
+        connectorUid: "mock/local",
+        scopes: ["notes:read", "notes:write"],
+        authState: "state-2",
+      });
+      expect(restarted.id).toBe(first.id);
+      expect(restarted.status).toBe("pending");
+      expect(restarted.encryptedSecret).toBeNull();
+      expect(restarted.lastCheckedAt).toBeNull();
+      expect(restarted.scopes).toEqual(["notes:read", "notes:write"]);
+      expect(await repos.connections.list(a.id)).toHaveLength(1);
+
+      await repos.connections.upsert(a.id, "github", {
+        broker: "vercel-connect",
+        status: "connected",
+        connectorUid: "github/sifty",
+        scopes: [],
+      });
+      expect((await repos.connections.list(a.id)).map((c) => c.provider)).toEqual([
+        "mock",
+        "github",
+      ]);
+      expect(await repos.connections.delete(a.id, "mock")).toBe(true);
+      expect((await repos.connections.list(a.id)).map((c) => c.provider)).toEqual(["github"]);
+    });
+
+    it("users.delete cascades connections", async () => {
+      const repos = getRepos();
+      const a = await createUser(repos, "conn-cascade@example.com");
+      await repos.connections.upsert(a.id, "mock", {
+        broker: "mock",
+        status: "connected",
+        connectorUid: "mock/local",
+        scopes: [],
+        encryptedSecret: "v1.a.b.c",
+      });
+      expect(await repos.users.delete(a.id)).toBe(true);
+      expect(await repos.connections.list(a.id)).toEqual([]);
+    });
+
     it("users.delete cascades notification rows", async () => {
       const repos = getRepos();
       const a = await createUser(repos, "cascade@example.com");

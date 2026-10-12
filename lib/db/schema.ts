@@ -569,6 +569,48 @@ export const dailyPlans = pgTable(
   ],
 );
 
+/**
+ * One row per (user, provider) connection to a third-party service. The
+ * provider's OAuth tokens are held by the credential broker (Vercel
+ * Connect) and requested at use time; this row keeps only the reference
+ * (`connector_uid` + the user's id as the Connect subject), the granted
+ * scopes, and status. `encrypted_secret` is for brokers that must hold a
+ * credential themselves (today only `mock`): always an AES-GCM envelope
+ * from `lib/crypto/aes-gcm`, never plaintext.
+ */
+export const connections = pgTable(
+  "connections",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider", {
+      enum: ["google", "slack", "linear", "github", "notion", "mock"],
+    }).notNull(),
+    broker: text("broker", { enum: ["vercel-connect", "mock"] }).notNull(),
+    status: text("status", { enum: ["pending", "connected", "error", "revoked"] })
+      .notNull()
+      .default("pending"),
+    /** Vercel Connect connector UID (e.g. `google/sifty`); null for `mock`. */
+    connectorUid: text("connector_uid"),
+    scopes: jsonb("scopes").$type<string[]>().notNull().default([]),
+    /** Human label of the account on the provider side (email, workspace). */
+    externalAccount: text("external_account"),
+    /** One-time nonce for the in-flight authorization; cleared on completion. */
+    authState: text("auth_state"),
+    encryptedSecret: text("encrypted_secret"),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("connections_user_provider_idx").on(t.userId, t.provider),
+    index("connections_user_idx").on(t.userId),
+  ],
+);
+
 export type DbUser = typeof users.$inferSelect;
 export type DbEntitlement = typeof entitlements.$inferSelect;
 export type DbTask = typeof tasks.$inferSelect;

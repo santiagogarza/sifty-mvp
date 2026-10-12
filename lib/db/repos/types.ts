@@ -674,6 +674,99 @@ export interface NotificationSendRepo {
   listForUser(userId: string, limit?: number): Promise<NotificationSendRecord[]>;
 }
 
+export const CONNECTOR_PROVIDERS = [
+  "google",
+  "slack",
+  "linear",
+  "github",
+  "notion",
+  "mock",
+] as const;
+export type ConnectorProvider = (typeof CONNECTOR_PROVIDERS)[number];
+
+export function isConnectorProvider(value: unknown): value is ConnectorProvider {
+  return typeof value === "string" && (CONNECTOR_PROVIDERS as readonly string[]).includes(value);
+}
+
+/** Who holds the provider credential. */
+export type ConnectionBroker = "vercel-connect" | "mock";
+
+export type ConnectionStatus =
+  /** Authorization started; the user has not come back from consent. */
+  | "pending"
+  | "connected"
+  /** The last token request or health check failed; `lastError` says why. */
+  | "error"
+  /** Disconnected by the user or revoked at the provider; kept for the audit line. */
+  | "revoked";
+
+export interface ConnectionRecord {
+  id: string;
+  userId: string;
+  provider: ConnectorProvider;
+  broker: ConnectionBroker;
+  status: ConnectionStatus;
+  connectorUid: string | null;
+  scopes: string[];
+  externalAccount: string | null;
+  authState: string | null;
+  /** AES-GCM envelope (`lib/crypto/aes-gcm`), never plaintext. */
+  encryptedSecret: string | null;
+  lastCheckedAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConnectionUpsertInput {
+  broker: ConnectionBroker;
+  status: ConnectionStatus;
+  connectorUid: string | null;
+  scopes: string[];
+  externalAccount?: string | null;
+  authState?: string | null;
+  encryptedSecret?: string | null;
+  lastError?: string | null;
+}
+
+export type ConnectionPatch = Partial<
+  Pick<
+    ConnectionRecord,
+    | "status"
+    | "scopes"
+    | "externalAccount"
+    | "authState"
+    | "encryptedSecret"
+    | "lastCheckedAt"
+    | "lastError"
+  >
+>;
+
+/** One row per provider at most, so every per-user read is bounded by this. */
+export const MAX_CONNECTIONS_PER_USER = CONNECTOR_PROVIDERS.length;
+
+export interface ConnectionRepo {
+  /** Every connection of the user, oldest first; at most one per provider. */
+  list(userId: string): Promise<ConnectionRecord[]>;
+  get(userId: string, provider: ConnectorProvider): Promise<ConnectionRecord | null>;
+  /**
+   * Insert or replace the (user, provider) row. Restarting a connect flow
+   * overwrites the previous attempt rather than creating a second row.
+   */
+  upsert(
+    userId: string,
+    provider: ConnectorProvider,
+    input: ConnectionUpsertInput,
+  ): Promise<ConnectionRecord>;
+  /** Narrow update; null when the user has no row for the provider. */
+  update(
+    userId: string,
+    provider: ConnectorProvider,
+    patch: ConnectionPatch,
+  ): Promise<ConnectionRecord | null>;
+  delete(userId: string, provider: ConnectorProvider): Promise<boolean>;
+}
+
 export interface Repos {
   users: UserRepo;
   entitlements: EntitlementRepo;
@@ -689,4 +782,5 @@ export interface Repos {
   pushSubscriptions: PushSubscriptionRepo;
   notificationSends: NotificationSendRepo;
   dailyPlans: DailyPlanRepo;
+  connections: ConnectionRepo;
 }
