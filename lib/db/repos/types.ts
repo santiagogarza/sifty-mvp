@@ -707,7 +707,9 @@ export interface ExecutionCreateInput {
 export type ExecutionCreateResult =
   | { created: true; execution: Execution }
   /** `(userId, idempotencyKey)` already exists: the earlier row, untouched. */
-  | { created: false; execution: Execution };
+  | { created: false; reason: "replay"; execution: Execution }
+  /** The task already has a non-terminal execution (a different key): that row. */
+  | { created: false; reason: "live"; execution: Execution };
 
 /** The columns a transition may set alongside `status`. */
 export type ExecutionTransitionPatch = Partial<
@@ -760,8 +762,11 @@ export interface ExecutionStepAppendInput {
 export interface ExecutionRepo {
   /**
    * Idempotent on `(userId, idempotencyKey)`: a replayed enqueue (double
-   * click, retried request, workflow retry) gets the existing row with
-   * `created: false` and starts nothing.
+   * click, retried request, workflow retry) gets the existing row
+   * (`reason: "replay"`) and starts nothing. Also enforces one live
+   * execution per task atomically (per-task advisory lock in Postgres):
+   * a different key while one is in flight gets that row (`reason:
+   * "live"`) instead of a second insert.
    */
   create(userId: string, input: ExecutionCreateInput): Promise<ExecutionCreateResult>;
   get(userId: string, id: string): Promise<Execution | null>;

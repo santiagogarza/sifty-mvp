@@ -559,6 +559,20 @@ describe("applyExecutionDecision / resolveExecutionDecision", () => {
     expect(kinds).toContain("execution.edited");
     expect(kinds).toContain("execution.done");
     expect(kinds).not.toContain("execution.approved");
+    // Clearing the title is an edit too, and the cleared title sticks.
+    const cleared = await parked("draft_review");
+    const noTitle = (await cleared.resolve("answered", APPROVE_OPTION, {
+      title: null,
+      body: "original body",
+      format: "markdown",
+    }))!;
+    const applied2 = await applyExecutionDecision(cleared.repos, cleared.userId, noTitle);
+    expect(applied2.mode).toBe("edited");
+    expect(applied2.execution?.result?.draft).toEqual({
+      title: null,
+      body: "original body",
+      format: "markdown",
+    });
     // An "edit" identical to the draft is an acceptance.
     const again = await parked("draft_review");
     const same = (await again.resolve("answered", APPROVE_OPTION, {

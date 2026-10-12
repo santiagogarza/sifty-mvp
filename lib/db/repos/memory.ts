@@ -1008,15 +1008,27 @@ export function createMemoryRepos(): MemoryReposHandle {
 
   const executions: ExecutionRepo = {
     async create(userId, input) {
+      // No await before the insert: the replay and live checks and the
+      // write are one tick, like the locked transaction in Postgres.
       for (const e of state.executions.values()) {
         if (e.userId === userId && e.idempotencyKey === input.idempotencyKey) {
-          return { created: false, execution: cloneExecution(e) };
+          return { created: false, reason: "replay", execution: cloneExecution(e) };
         }
       }
       if (input.id) {
         const existing = state.executions.get(input.id);
         if (existing && existing.userId !== userId) throw new IdConflictError(input.id);
-        if (existing) return { created: false, execution: cloneExecution(existing) };
+        if (existing)
+          return { created: false, reason: "replay", execution: cloneExecution(existing) };
+      }
+      for (const e of state.executions.values()) {
+        if (
+          e.userId === userId &&
+          e.taskId === input.taskId &&
+          !TERMINAL_EXECUTION_STATUSES.has(e.status)
+        ) {
+          return { created: false, reason: "live", execution: cloneExecution(e) };
+        }
       }
       const now = new Date().toISOString();
       const execution: Execution & { userId: string } = {

@@ -175,6 +175,48 @@ describe("POST /api/tasks/:id/execute", () => {
     expect(client.start).not.toHaveBeenCalled();
   });
 
+  it("deleting the task cancels its live execution and closes its decision", async () => {
+    const started = await execute(taskId, { idempotencyKey: "del", policy: "ask_first" });
+    expect(started.status).toBe(202);
+    const { execution } = await started.json();
+    const repos = getTestRepos();
+    // Park it the way the run would.
+    const { openApprovalDecision } = await import("@/lib/executions/service");
+    const { researchExecutor } = await import("@/lib/executions/executors");
+    const decision = await openApprovalDecision(repos, userId, {
+      id: "dec_del",
+      execution,
+      executor: researchExecutor,
+      action: "Research it",
+      question: "Research it?",
+      options: ["Approve", "Reject"],
+      reason: "ask_first",
+      estimateCents: 5,
+    });
+    await repos.executions.transition(userId, execution.id, {
+      from: ["queued"],
+      to: "needs_approval",
+      patch: { decisionId: decision.id },
+    });
+    const { DELETE } = await import("@/app/api/tasks/[id]/route");
+    const res = await DELETE(
+      new Request(`http://localhost/api/tasks/${taskId}`, {
+        method: "DELETE",
+        headers: { cookie },
+      }),
+      { params: Promise.resolve({ id: taskId }) },
+    );
+    expect(res.status).toBe(200);
+    // The run was released before the cascade removed its rows.
+    expect(client.resume).toHaveBeenCalledWith("decision:dec_del", { status: "expired" });
+    expect(await repos.executions.get(userId, execution.id)).toBeNull();
+    expect(await repos.decisions.countOpen(userId)).toBe(0);
+    expect(await repos.executions.monthlyUsage(userId)).toEqual({
+      committedCents: 0,
+      reservedCents: 0,
+    });
+  });
+
   it("an executor that is not available yet is a 400", async () => {
     const res = await execute(taskId, { executor: "cursor_agent" });
     expect(res.status).toBe(400);

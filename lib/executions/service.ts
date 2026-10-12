@@ -129,15 +129,9 @@ export async function enqueueExecution(args: {
   }
 
   // One live execution per task: a second "Run now" while the first is
-  // working (or waiting on the user) would double the work.
-  const active = (
-    await repos.executions.listForTask(userId, args.task.id, { limit: ACTIVE_PER_TASK_LIMIT })
-  ).find((e) => !isTerminal(e.status));
+  // working (or waiting on the user) would double the work. The repo
+  // enforces it atomically together with the idempotency key.
   const idempotencyKey = args.idempotencyKey?.trim() || makeId("run");
-  if (active && active.idempotencyKey !== idempotencyKey) {
-    return { ok: false, reason: "already_running", execution: active };
-  }
-
   const created = await repos.executions.create(userId, {
     taskId: args.task.id,
     executor: def.kind,
@@ -146,6 +140,9 @@ export async function enqueueExecution(args: {
     idempotencyKey,
   });
   if (!created.created) {
+    if (created.reason === "live") {
+      return { ok: false, reason: "already_running", execution: created.execution };
+    }
     return { ok: true, execution: created.execution, created: false, runId: null, policy };
   }
   let execution = created.execution;
@@ -488,13 +485,18 @@ export async function applyExecutionDecision(
   return { execution: settled, mode: edited ? "edited" : "accepted", needsRun: false };
 }
 
+/**
+ * The draft the user signed off: the edit when one was sent (a cleared
+ * title stays cleared — the editor sends `null` for it), the original
+ * otherwise. A blank body is not an edit.
+ */
 function acceptedDraft(
   payload: DraftReviewPayload,
   edit: ExecutionDraft | null | undefined,
 ): ExecutionDraft {
   if (!edit || !edit.body.trim()) return payload.draft;
   return {
-    title: edit.title?.trim() || payload.draft.title,
+    title: edit.title?.trim() || null,
     body: edit.body,
     format: payload.draft.format,
   };

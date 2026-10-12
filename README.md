@@ -391,8 +391,9 @@ Secrets Sifty must hold itself (a connector credential, a user's Cursor
 API key) go through `lib/crypto/aes-gcm.ts` (shared with the connector
 framework): AES-256-GCM under `DATA_ENCRYPTION_KEY`, a versioned
 `v1.<iv>.<ciphertext>.<tag>` envelope, and required associated data that
-binds a value to its row. Production refuses to start without the key;
-elsewhere a fixed development key keeps the keyless setup working.
+binds a value to its row. On Vercel production the helper refuses to
+seal or open anything without the key; elsewhere a fixed development key
+keeps the keyless setup working.
 
 ## Configuration
 

@@ -1293,39 +1293,85 @@ export function createPostgresRepos(): Repos {
       const db = getDb();
       const id = input.id ?? makeId("exec");
       const now = new Date();
-      // Both unique keys (`id`, `(user_id, idempotency_key)`) are covered by
-      // one `ON CONFLICT DO NOTHING`; a losing insert returns no row and the
-      // caller gets whichever existing row matched.
-      const inserted = await db
-        .insert(schema.executions)
-        .values({
-          id,
-          userId,
-          taskId: input.taskId,
-          status: "queued",
-          executor: input.executor,
-          policy: input.policy,
-          connector: input.connector,
-          idempotencyKey: input.idempotencyKey,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .onConflictDoNothing()
-        .returning();
-      if (inserted.length) return { created: true, execution: rowToExecution(inserted[0]!) };
-      const [byKey] = await db
-        .select()
-        .from(schema.executions)
-        .where(
-          and(
-            eq(schema.executions.userId, userId),
-            eq(schema.executions.idempotencyKey, input.idempotencyKey),
-          ),
+      return db.transaction(async (tx) => {
+        // One live execution per task: serialize creates per task so two
+        // overlapping "Run now" requests cannot both pass the check.
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext(${`execution_task:${userId}:${input.taskId}`}))`,
         );
-      if (byKey) return { created: false, execution: rowToExecution(byKey) };
-      const existing = await executions.get(userId, id);
-      if (existing) return { created: false, execution: existing };
-      throw new IdConflictError(id);
+        const [live] = await tx
+          .select()
+          .from(schema.executions)
+          .where(
+            and(
+              eq(schema.executions.userId, userId),
+              eq(schema.executions.taskId, input.taskId),
+              sql`${schema.executions.status} not in ('done', 'failed', 'cancelled')`,
+            ),
+          )
+          .orderBy(desc(schema.executions.createdAt))
+          .limit(1);
+        if (live && live.idempotencyKey === input.idempotencyKey) {
+          return {
+            created: false as const,
+            reason: "replay" as const,
+            execution: rowToExecution(live),
+          };
+        }
+        if (live)
+          return {
+            created: false as const,
+            reason: "live" as const,
+            execution: rowToExecution(live),
+          };
+        // Both unique keys (`id`, `(user_id, idempotency_key)`) are covered by
+        // one `ON CONFLICT DO NOTHING`; a losing insert returns no row and the
+        // caller gets whichever existing row matched.
+        const inserted = await tx
+          .insert(schema.executions)
+          .values({
+            id,
+            userId,
+            taskId: input.taskId,
+            status: "queued",
+            executor: input.executor,
+            policy: input.policy,
+            connector: input.connector,
+            idempotencyKey: input.idempotencyKey,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoNothing()
+          .returning();
+        if (inserted.length)
+          return { created: true as const, execution: rowToExecution(inserted[0]!) };
+        const [byKey] = await tx
+          .select()
+          .from(schema.executions)
+          .where(
+            and(
+              eq(schema.executions.userId, userId),
+              eq(schema.executions.idempotencyKey, input.idempotencyKey),
+            ),
+          );
+        if (byKey)
+          return {
+            created: false as const,
+            reason: "replay" as const,
+            execution: rowToExecution(byKey),
+          };
+        const [byId] = await tx
+          .select()
+          .from(schema.executions)
+          .where(and(eq(schema.executions.id, id), eq(schema.executions.userId, userId)));
+        if (byId)
+          return {
+            created: false as const,
+            reason: "replay" as const,
+            execution: rowToExecution(byId),
+          };
+        throw new IdConflictError(id);
+      });
     },
     async get(userId, id) {
       const db = getDb();

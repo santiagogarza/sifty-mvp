@@ -1100,16 +1100,43 @@ export function describeRepoContract(getRepos: () => Repos): void {
         finishedAt: null,
       });
       const replay = await repos.executions.create(a.id, create(task.id, "k1"));
-      expect(replay.created).toBe(false);
+      expect(replay).toMatchObject({ created: false, reason: "replay" });
       expect(replay.execution.id).toBe(first.execution.id);
       expect(replay.execution.policy).toBe("ask_first");
+      // A different key while that one is live: the live row, no insert.
+      const second = await repos.executions.create(a.id, create(task.id, "k2"));
+      expect(second).toMatchObject({ created: false, reason: "live" });
+      expect(second.execution.id).toBe(first.execution.id);
+      // Concurrent creates for one task with distinct keys: exactly one row.
+      const burstTask = await repos.tasks.create(a.id, {
+        sourceText: "Burst",
+        sourceContext: null,
+      });
+      const burst = await Promise.all(
+        Array.from({ length: 5 }, (_, i) =>
+          repos.executions.create(a.id, create(burstTask.id, `burst-${i}`)),
+        ),
+      );
+      expect(burst.filter((r) => r.created)).toHaveLength(1);
+      expect(new Set(burst.map((r) => r.execution.id)).size).toBe(1);
+      expect(await repos.executions.listForTask(a.id, burstTask.id, { limit: 10 })).toHaveLength(1);
+      // Once it is terminal, a new key creates again.
+      await repos.executions.transition(a.id, burst[0]!.execution.id, {
+        from: ["queued"],
+        to: "cancelled",
+        patch: { cancelReason: "user" },
+      });
+      expect((await repos.executions.create(a.id, create(burstTask.id, "after"))).created).toBe(
+        true,
+      );
       // Same key, other tenant: their own row.
       const theirs = await repos.executions.create(b.id, create(bTask.id, "k1"));
       expect(theirs.created).toBe(true);
       expect(theirs.execution.id).not.toBe(first.execution.id);
       // A caller-fixed id that belongs to someone else is refused.
+      const bOther = await repos.tasks.create(b.id, { sourceText: "Other", sourceContext: null });
       await expect(
-        repos.executions.create(b.id, { ...create(bTask.id, "k9"), id: first.execution.id }),
+        repos.executions.create(b.id, { ...create(bOther.id, "k9"), id: first.execution.id }),
       ).rejects.toBeInstanceOf(IdConflictError);
 
       expect(await repos.executions.get(b.id, first.execution.id)).toBeNull();
@@ -1276,14 +1303,16 @@ export function describeRepoContract(getRepos: () => Repos): void {
       const repos = getRepos();
       const a = await createUser(repos, "exec-budget@example.com");
       const b = await createUser(repos, "exec-budget-b@example.com");
-      const task = await repos.tasks.create(a.id, { sourceText: "Lease", sourceContext: null });
-      const bTask = await repos.tasks.create(b.id, { sourceText: "Theirs", sourceContext: null });
+      // One live execution per task, so each row gets its own task.
+      const taskFor = async (owner: string, text: string) =>
+        (await repos.tasks.create(owner, { sourceText: text, sourceContext: null })).id;
+      const bTask = await taskFor(b.id, "Theirs");
       const now = new Date();
 
-      const one = await repos.executions.create(a.id, create(task.id, "b1"));
-      const two = await repos.executions.create(a.id, create(task.id, "b2"));
-      const three = await repos.executions.create(a.id, create(task.id, "b3"));
-      const theirs = await repos.executions.create(b.id, create(bTask.id, "b1"));
+      const one = await repos.executions.create(a.id, create(await taskFor(a.id, "one"), "b1"));
+      const two = await repos.executions.create(a.id, create(await taskFor(a.id, "two"), "b2"));
+      const three = await repos.executions.create(a.id, create(await taskFor(a.id, "three"), "b3"));
+      const theirs = await repos.executions.create(b.id, create(bTask, "b1"));
 
       const r1 = await repos.executions.reserve(a.id, one.execution.id, {
         cents: 6,
@@ -1368,11 +1397,11 @@ export function describeRepoContract(getRepos: () => Repos): void {
 
       // Concurrent reservations never overshoot the cap together.
       const c = await createUser(repos, "exec-race@example.com");
-      const cTask = await repos.tasks.create(c.id, { sourceText: "Race", sourceContext: null });
+      const cTasks = await Promise.all(
+        Array.from({ length: 6 }, (_, i) => taskFor(c.id, `Race ${i}`)),
+      );
       const rows = await Promise.all(
-        Array.from({ length: 6 }, (_, i) =>
-          repos.executions.create(c.id, create(cTask.id, `race-${i}`)),
-        ),
+        cTasks.map((id, i) => repos.executions.create(c.id, create(id, `race-${i}`))),
       );
       const results = await Promise.all(
         rows.map((r) =>
@@ -1392,17 +1421,7 @@ export function describeRepoContract(getRepos: () => Repos): void {
       const task = await repos.tasks.create(a.id, { sourceText: "Lease", sourceContext: null });
       const other = await repos.tasks.create(a.id, { sourceText: "Other", sourceContext: null });
       const before = new Date(Date.now() - 60_000);
-      const queued = await repos.executions.create(a.id, create(task.id, "l1"));
-      const parked = await repos.executions.create(a.id, create(other.id, "l2"));
       const finished = await repos.executions.create(a.id, create(task.id, "l3"));
-      await repos.executions.transition(a.id, parked.execution.id, {
-        from: ["queued"],
-        to: "running",
-      });
-      await repos.executions.transition(a.id, parked.execution.id, {
-        from: ["running"],
-        to: "drafted",
-      });
       await repos.executions.transition(a.id, finished.execution.id, {
         from: ["queued"],
         to: "running",
@@ -1410,6 +1429,17 @@ export function describeRepoContract(getRepos: () => Repos): void {
       await repos.executions.transition(a.id, finished.execution.id, {
         from: ["running"],
         to: "done",
+      });
+      // A terminal row no longer blocks the task.
+      const queued = await repos.executions.create(a.id, create(task.id, "l1"));
+      const parked = await repos.executions.create(a.id, create(other.id, "l2"));
+      await repos.executions.transition(a.id, parked.execution.id, {
+        from: ["queued"],
+        to: "running",
+      });
+      await repos.executions.transition(a.id, parked.execution.id, {
+        from: ["running"],
+        to: "drafted",
       });
 
       const active = await repos.executions.listActive(a.id, { limit: 10 });
