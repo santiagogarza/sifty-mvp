@@ -70,6 +70,36 @@ describe("TaskDetailSheet header", () => {
   });
 });
 
+describe("TaskDetailSheet focus", () => {
+  it("returns focus to whoever opened it when it closes", async () => {
+    const onClose = vi.fn();
+    const view = render(
+      <>
+        <button type="button">Row stand-in</button>
+        <TaskDetailSheet taskId={null} onClose={onClose} />
+      </>,
+    );
+    const opener = screen.getByRole("button", { name: "Row stand-in" });
+    opener.focus();
+
+    view.rerender(
+      <>
+        <button type="button">Row stand-in</button>
+        <TaskDetailSheet taskId="task_src" onClose={onClose} />
+      </>,
+    );
+    await waitFor(() => expect(screen.getByRole("dialog")).toHaveFocus());
+
+    view.rerender(
+      <>
+        <button type="button">Row stand-in</button>
+        <TaskDetailSheet taskId={null} onClose={onClose} />
+      </>,
+    );
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
+});
+
 describe("TaskDetailSheet duplicate", () => {
   it("the Duplicate button creates the copy and opens it", async () => {
     const user = userEvent.setup();

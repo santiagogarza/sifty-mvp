@@ -88,6 +88,11 @@ export function TaskDetailSheet({
     if (copy) openDetail(copy.id);
   };
 
+  // The sheet has no DialogTrigger (it opens from the URL), so Radix would
+  // hand focus to nobody on close. Remember who had it and give it back —
+  // usually the task row, so Enter → Escape → j/k is one continuous flow.
+  const openerRef = React.useRef<HTMLElement | null>(null);
+
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
       {/* Focus the panel itself on open, not its first control: the header's
@@ -99,7 +104,15 @@ export function TaskDetailSheet({
         tabIndex={-1}
         onOpenAutoFocus={(e) => {
           e.preventDefault();
+          const active = document.activeElement;
+          openerRef.current = active instanceof HTMLElement ? active : null;
           (e.currentTarget as HTMLElement | null)?.focus({ preventScroll: true });
+        }}
+        onCloseAutoFocus={(e) => {
+          e.preventDefault();
+          const opener = openerRef.current;
+          openerRef.current = null;
+          if (opener?.isConnected) opener.focus({ preventScroll: true });
         }}
         onKeyDown={(e) => {
           // Shift+D duplicates — only when not typing, so a capital D in a
