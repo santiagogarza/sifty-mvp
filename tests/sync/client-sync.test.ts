@@ -100,8 +100,14 @@ describe("reconcile", () => {
     const client = await bootAndPull();
     const id = await captureSynced(client, "Renew the passport");
 
-    // Another device sets a due date while this one is offline editing the title.
-    await client.repos.tasks.update(client.userId, id, { due: "2026-12-01" });
+    // Another device sets (and protects) a due date while this one is
+    // offline editing the title.
+    await client.repos.tasks.update(
+      client.userId,
+      id,
+      { due: "2026-12-01" },
+      { editedFields: ["due"] },
+    );
     const offline = client.intercept((method) => {
       if (method === "PATCH") throw new TypeError("Failed to fetch");
       return null;
@@ -116,10 +122,12 @@ describe("reconcile", () => {
     const local = reloaded.store.getState().tasks.find((t) => t.id === id);
     expect(local?.title).toBe("Renew passport");
     expect(local?.due).toBe("2026-12-01");
+    expect(local?.editedFields.sort()).toEqual(["due", "title"]);
 
     const server = await reloaded.repos.tasks.get(reloaded.userId, id);
     expect(server?.title).toBe("Renew passport");
     expect(server?.due).toBe("2026-12-01");
+    expect(server?.editedFields.sort()).toEqual(["due", "title"]);
   });
 
   it("shares one pull between concurrent mounts", async () => {

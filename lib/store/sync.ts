@@ -829,7 +829,14 @@ function reconcile(serverTasks: Task[], serverLabels: Label[], serverMemories: M
     .map((serverTask) => {
       const localTask = localTaskById.get(serverTask.id);
       const keys = localTask ? dirtyKeys("tasks", serverTask.id) : null;
-      return localTask && keys ? overlayDirty(serverTask, localTask, keys) : serverTask;
+      if (!localTask || !keys) return serverTask;
+      // Protections are a set that only grows (the server unions them the
+      // same way): an edit protected on another device must survive here,
+      // or a re-triage from this device would overwrite it.
+      return {
+        ...overlayDirty(serverTask, localTask, keys),
+        editedFields: Array.from(new Set([...serverTask.editedFields, ...localTask.editedFields])),
+      };
     });
   for (const localTask of local.tasks) {
     if (serverTaskIds.has(localTask.id)) continue;
