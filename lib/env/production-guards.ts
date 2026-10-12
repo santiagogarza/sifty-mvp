@@ -15,6 +15,11 @@
  *
  * `VERCEL_ENV` is set by Vercel (`production` | `preview` | `development`).
  * Preview deployments keep the flags usable for smoke runs.
+ *
+ * Every variable is read as a literal `process.env.NAME` inside
+ * `snapshotEnv()`. The Edge bundler (middleware runs there) only ships
+ * variables it can see statically; an aliased `env[name]` read would come
+ * back undefined on Vercel.
  */
 
 export const DEMO_FLAGS = [
@@ -30,12 +35,25 @@ type Env = Record<string, string | undefined>;
 
 const MIN_AUTH_SECRET_LENGTH = 32;
 
-export function isVercelProduction(env: Env = process.env): boolean {
+/** The variables the guards care about, read statically so Edge sees them. */
+export function snapshotEnv(): Env {
+  return {
+    VERCEL_ENV: process.env.VERCEL_ENV,
+    SIFTY_DISABLE_AUTH: process.env.SIFTY_DISABLE_AUTH,
+    SIFTY_DEMO_SEED: process.env.SIFTY_DEMO_SEED,
+    SIFTY_AI_OFFLINE: process.env.SIFTY_AI_OFFLINE,
+    SIFTY_USER_EMAIL: process.env.SIFTY_USER_EMAIL,
+    DATABASE_URL: process.env.DATABASE_URL,
+    AUTH_SECRET: process.env.AUTH_SECRET,
+  };
+}
+
+export function isVercelProduction(env: Env = snapshotEnv()): boolean {
   return env.VERCEL_ENV === "production";
 }
 
 /** True only when the flag is `"1"` and we are not on Vercel production. */
-export function demoFlagEnabled(flag: DemoFlag, env: Env = process.env): boolean {
+export function demoFlagEnabled(flag: DemoFlag, env: Env = snapshotEnv()): boolean {
   if (isVercelProduction(env)) return false;
   return env[flag] === "1";
 }
@@ -43,9 +61,9 @@ export function demoFlagEnabled(flag: DemoFlag, env: Env = process.env): boolean
 /**
  * Human-readable problems that make `env` unfit for production. Empty when
  * the environment is acceptable. Pure, so it is unit-testable and can be
- * surfaced from `/api/health` later.
+ * surfaced from `/api/health`.
  */
-export function findProductionEnvProblems(env: Env = process.env): string[] {
+export function findProductionEnvProblems(env: Env = snapshotEnv()): string[] {
   const problems: string[] = [];
 
   for (const flag of DEMO_FLAGS) {
@@ -84,7 +102,7 @@ export class ProductionEnvError extends Error {
 }
 
 /** Throws `ProductionEnvError` on Vercel production when the env is unsafe. No-op elsewhere. */
-export function assertProductionEnv(env: Env = process.env): void {
+export function assertProductionEnv(env: Env = snapshotEnv()): void {
   if (!isVercelProduction(env)) return;
   const problems = findProductionEnvProblems(env);
   if (problems.length > 0) throw new ProductionEnvError(problems);

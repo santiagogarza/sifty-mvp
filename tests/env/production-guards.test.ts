@@ -93,6 +93,36 @@ describe("production guards", () => {
   });
 });
 
+describe("snapshotEnv", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("reads every guarded variable from process.env at call time", async () => {
+    const { snapshotEnv } = await import("@/lib/env/production-guards");
+    vi.stubEnv("SIFTY_DISABLE_AUTH", "1");
+    vi.stubEnv("VERCEL_ENV", "preview");
+    expect(snapshotEnv()).toMatchObject({ SIFTY_DISABLE_AUTH: "1", VERCEL_ENV: "preview" });
+    for (const flag of DEMO_FLAGS) expect(flag in snapshotEnv()).toBe(true);
+    expect(demoFlagEnabled("SIFTY_DISABLE_AUTH")).toBe(true);
+  });
+
+  it("only uses literal process.env.NAME reads, which the Edge bundler can see", async () => {
+    const { readFileSync } = await import("node:fs");
+    const source = readFileSync("lib/env/production-guards.ts", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/.*$/gm, "");
+    const literalReads = source.match(/process\.env\.[A-Z_]+/g) ?? [];
+    expect(new Set(literalReads)).toEqual(
+      new Set(
+        [...DEMO_FLAGS, "VERCEL_ENV", "DATABASE_URL", "AUTH_SECRET"].map((k) => `process.env.${k}`),
+      ),
+    );
+    expect(source).not.toMatch(/process\.env\[/);
+    expect(source).not.toMatch(/=\s*process\.env\b(?!\.)/);
+  });
+});
+
 describe("instrumentation.register", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
