@@ -218,7 +218,7 @@ page rolls the table up by day, stage, model, and account.
 
 | Stage | Model class | Writes | Prompt version |
 | --- | --- | --- | --- |
-| `enrich` | fast | title, description, next action, due hint, labels | `enrich.v1` |
+| `enrich` | fast | title, description, next action, due hint, labels | `enrich.v2` |
 | `prioritize` | fast | urgency, importance, effort, rationale — **list-aware**: the prompt sees the user's other open tasks | `prioritize.v1` |
 | `triage` | fast | routing (inbox task → `waiting` / `someday` only), delegation candidate, confidence, clarifying question | `triage.v2` |
 | `subtasks` | fast | up to five subtasks when the work has distinct steps | `subtasks.v1` |

@@ -136,3 +136,58 @@ describe("CaptureDialog draft", () => {
     expect(screen.queryByPlaceholderText(PLACEHOLDER)).toBeNull();
   });
 });
+
+describe("CaptureDialog natural-language due date", () => {
+  function tomorrowIso(): string {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  it("shows a due chip while typing and stores the date as a protected due", async () => {
+    const user = userEvent.setup();
+    renderCapture();
+
+    await user.type(screen.getByPlaceholderText(PLACEHOLDER), "Call the dentist tomorrow 3pm");
+    const chip = screen.getByTestId("capture-due-chip");
+    expect(chip).toHaveTextContent(/^Due .*· 3pm$/);
+    expect(screen.getByText("from “tomorrow 3pm”")).toBeInTheDocument();
+
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    const task = useStore.getState().tasks[0]!;
+    expect(task.due).toBe(tomorrowIso());
+    expect(task.editedFields).toEqual(["due"]);
+    // The phrase leaves the title; the raw capture is kept verbatim.
+    expect(task.title).toBe("Call the dentist");
+    expect(task.sourceText).toBe("Call the dentist tomorrow 3pm");
+  });
+
+  it("removing the chip captures the text as typed, with no due", async () => {
+    const user = userEvent.setup();
+    renderCapture();
+
+    const textarea = screen.getByPlaceholderText(PLACEHOLDER);
+    await user.type(textarea, "Send the report by Friday");
+    expect(screen.getByTestId("capture-due-chip")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Remove due date" }));
+    expect(screen.queryByTestId("capture-due-chip")).toBeNull();
+    expect(textarea).toHaveFocus();
+
+    // Typing on keeps it dismissed while the same phrase is what parses…
+    await user.type(textarea, " please");
+    expect(screen.queryByTestId("capture-due-chip")).toBeNull();
+
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    const task = useStore.getState().tasks[0]!;
+    expect(task.due).toBeNull();
+    expect(task.editedFields).toEqual([]);
+    expect(task.title).toBe("Send the report by Friday please");
+  });
+
+  it("shows no chip for text without a date", async () => {
+    const user = userEvent.setup();
+    renderCapture();
+    await user.type(screen.getByPlaceholderText(PLACEHOLDER), "Buy flowers for mom");
+    expect(screen.queryByTestId("capture-due-chip")).toBeNull();
+  });
+});

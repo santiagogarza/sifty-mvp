@@ -7,7 +7,7 @@ function run(userId: string, overrides: Record<string, unknown> = {}) {
   return {
     userId,
     taskId: null,
-    promptVersion: "enrich.v1",
+    promptVersion: "enrich.v2",
     stage: "enrich",
     model: "anthropic/claude-haiku-4.5",
     transport: "gateway",

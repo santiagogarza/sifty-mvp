@@ -121,6 +121,20 @@ function taskBlock(ctx: SiftContext): string {
     .join("\n");
 }
 
+/** A due the user confirmed at capture (or edited since): protected, and not worth restating. */
+function userSetDue(t: Task): boolean {
+  return t.due !== null && t.editedFields.includes("due");
+}
+
+/**
+ * Offline stand-in for the model's "leave the date out of the title": the
+ * capture chip already stripped the phrase from the provisional title, so
+ * that title is the cleanest text available.
+ */
+function titleWithoutDate(t: Task): string {
+  return t.title.trim() || t.sourceText.trim();
+}
+
 function currentState(t: Task): string {
   return [
     `Current title: ${t.title}`,
@@ -160,7 +174,7 @@ const SOMEDAY_RE = /\b(someday|some day|one day|maybe|eventually|not urgent at a
 
 export const STAGE_DEFINITIONS: { [S in keyof StageOutputs]: StageDefinition<S> } = {
   enrich: {
-    promptVersion: "enrich.v1",
+    promptVersion: "enrich.v2",
     schema: EnrichOutput,
     schemaName: "EnrichOutput",
     schemaDescription: "Clean title, description, next action, due hint, and labels for a task.",
@@ -177,6 +191,9 @@ For the task, produce:
     user: (ctx) =>
       [
         taskBlock(ctx),
+        userSetDue(ctx.task)
+          ? `\nThe user already set the due date to ${ctx.task.due}. Leave the date phrase out of the title and the next action; dueHint is ignored.`
+          : null,
         ctx.recentLabels.length
           ? `\nUser's existing labels (prefer reusing): ${ctx.recentLabels.join(", ")}.`
           : null,
@@ -186,7 +203,7 @@ For the task, produce:
     offline: (ctx) => {
       const h = offlineBase(ctx);
       return {
-        title: h.title,
+        title: userSetDue(ctx.task) ? titleWithoutDate(ctx.task) : h.title,
         description: h.description,
         nextAction: h.nextAction,
         dueHint: h.dueHint,

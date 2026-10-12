@@ -91,7 +91,17 @@ interface SiftyState {
   setViewMode: (mode: TaskViewMode) => void;
   dismissWelcome: () => void;
 
-  createTask: (input: { sourceText: string; sourceContext?: string | null }) => Task;
+  createTask: (input: {
+    sourceText: string;
+    sourceContext?: string | null;
+    /**
+     * A due date the user confirmed at capture (natural-language chip). It
+     * is recorded as a user edit so the sift never overwrites it.
+     */
+    due?: string | null;
+    /** Provisional title when it should differ from the raw text (date phrase removed). */
+    title?: string | null;
+  }) => Task;
   updateTask: (
     id: string,
     patch: Partial<Task>,
@@ -207,11 +217,14 @@ export const useStore = create<SiftyState>()(
         setViewMode: (mode) => set({ viewMode: mode }),
         dismissWelcome: () => set({ welcomeDismissed: true }),
 
-        createTask: ({ sourceText, sourceContext }) => {
+        createTask: ({ sourceText, sourceContext, due, title }) => {
           const now = new Date().toISOString();
           const text = sourceText.trim();
+          const titleSource = title?.trim() || text;
           const provisionalTitle =
-            text.length > 80 ? `${text.slice(0, 78)}…` : text || "Untitled task";
+            titleSource.length > 80
+              ? `${titleSource.slice(0, 78)}…`
+              : titleSource || "Untitled task";
 
           const task: Task = {
             id: id("task"),
@@ -228,7 +241,7 @@ export const useStore = create<SiftyState>()(
             importance: 0.4,
             priorityBucket: "unset",
             effort: "small",
-            due: null,
+            due: due ?? null,
             delegationCandidate: "unsure",
             assigneeName: null,
             confidence: 0,
@@ -240,7 +253,7 @@ export const useStore = create<SiftyState>()(
             plan: null,
             labelIds: [],
             subtasks: [],
-            editedFields: [],
+            editedFields: due ? ["due"] : [],
             createdAt: now,
             updatedAt: now,
             completedAt: null,

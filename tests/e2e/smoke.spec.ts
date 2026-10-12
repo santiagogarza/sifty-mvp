@@ -146,6 +146,34 @@ test("captured task syncs to the server and survives cleared local state", async
   await expect(page.getByText(marker.slice(0, 30)).first()).toBeVisible({ timeout: 10_000 });
 });
 
+test("a date typed at capture becomes a due chip and a protected due date", async ({ page }) => {
+  await gotoApp(page, "/inbox");
+
+  const marker = `Dentist ${Date.now()}`;
+  await page.keyboard.press("c");
+  await page.getByPlaceholder("What do you need to do?").fill(`${marker} tomorrow 3pm`);
+  const chip = page.getByTestId("capture-due-chip");
+  await expect(chip).toContainText(/^Due .*· 3pm$/);
+  await page.keyboard.press("ControlOrMeta+Enter");
+
+  // The sheet opens on the new task with the date set and the phrase gone.
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByPlaceholder("Task title")).toHaveValue(marker);
+  await expect(dialog.getByText("Tomorrow", { exact: true })).toBeVisible();
+
+  await expect
+    .poll(async () => {
+      const res = await page.request.get("/api/tasks");
+      if (!res.ok()) return null;
+      const { tasks } = (await res.json()) as {
+        tasks: Array<{ title: string; due: string | null; editedFields: string[] }>;
+      };
+      const mine = tasks.find((t) => t.title === marker);
+      return mine ? { due: mine.due, protectedDue: mine.editedFields.includes("due") } : null;
+    })
+    .toMatchObject({ due: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), protectedDue: true });
+});
+
 test.describe("mobile detail sheet", () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
