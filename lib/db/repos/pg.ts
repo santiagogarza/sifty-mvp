@@ -2,7 +2,7 @@ import { LABEL_TONES, type Label, type LabelTone } from "@/lib/domain/types";
 import type { Memory, Subtask, Task, TaskEditableField } from "@/lib/domain/types";
 import { trialSnapshot } from "@/lib/entitlements/entitlements";
 import { id as makeId } from "@/lib/utils/ids";
-import { and, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "../client";
 import * as schema from "../schema";
@@ -13,6 +13,9 @@ import {
   type EntitlementRepo,
   type EntitlementSnapshot,
   IdConflictError,
+  type InviteCode,
+  type InviteCodeRepo,
+  type InviteRedemption,
   type LabelRepo,
   type MemoryCreateInput,
   type MemoryRepo,
@@ -526,7 +529,164 @@ export function createPostgresRepos(): Repos {
     },
   };
 
-  return { users, entitlements, tasks, labels, memories, aiRuns, sessions, stripeEvents };
+  const inviteCodes: InviteCodeRepo = {
+    async create(input) {
+      const db = getDb();
+      const [row] = await db
+        .insert(schema.inviteCodes)
+        .values({
+          id: makeId("inv"),
+          codeHash: input.codeHash,
+          grants: input.grants,
+          durationMonths: input.durationMonths,
+          maxRedemptions: input.maxRedemptions,
+          expiresAt: toDate(input.expiresAt),
+          note: input.note,
+        })
+        .returning();
+      return rowToInviteCode(row!);
+    },
+    async findByHash(codeHash) {
+      const db = getDb();
+      const [row] = await db
+        .select()
+        .from(schema.inviteCodes)
+        .where(eq(schema.inviteCodes.codeHash, codeHash));
+      return row ? rowToInviteCode(row) : null;
+    },
+    async getById(id) {
+      const db = getDb();
+      const [row] = await db.select().from(schema.inviteCodes).where(eq(schema.inviteCodes.id, id));
+      return row ? rowToInviteCode(row) : null;
+    },
+    async list() {
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.inviteCodes)
+        .orderBy(desc(schema.inviteCodes.createdAt));
+      return rows.map(rowToInviteCode);
+    },
+    async revoke(id, at = new Date()) {
+      const db = getDb();
+      await db
+        .update(schema.inviteCodes)
+        .set({ revokedAt: at })
+        .where(and(eq(schema.inviteCodes.id, id), isNull(schema.inviteCodes.revokedAt)));
+      return inviteCodes.getById(id);
+    },
+    async consume(codeId, userId, input) {
+      const db = getDb();
+      const now = input.now ?? new Date();
+      return db.transaction(async (tx) => {
+        const [existing] = await tx
+          .select({ id: schema.inviteRedemptions.id })
+          .from(schema.inviteRedemptions)
+          .where(
+            and(
+              eq(schema.inviteRedemptions.codeId, codeId),
+              eq(schema.inviteRedemptions.userId, userId),
+            ),
+          );
+        if (existing) return { ok: false as const, reason: "already_redeemed" as const };
+
+        // One conditional UPDATE is the atomic check-and-increment: two
+        // racing redeemers serialize on the row lock and only the first
+        // sees `redemption_count < max_redemptions`.
+        const bumped = await tx
+          .update(schema.inviteCodes)
+          .set({ redemptionCount: sql`${schema.inviteCodes.redemptionCount} + 1` })
+          .where(
+            and(
+              eq(schema.inviteCodes.id, codeId),
+              isNull(schema.inviteCodes.revokedAt),
+              or(isNull(schema.inviteCodes.expiresAt), gt(schema.inviteCodes.expiresAt, now)),
+              lt(schema.inviteCodes.redemptionCount, schema.inviteCodes.maxRedemptions),
+            ),
+          )
+          .returning({ id: schema.inviteCodes.id });
+        if (!bumped.length) {
+          const [code] = await tx
+            .select()
+            .from(schema.inviteCodes)
+            .where(eq(schema.inviteCodes.id, codeId));
+          if (!code) return { ok: false as const, reason: "expired" as const };
+          if (code.revokedAt) return { ok: false as const, reason: "revoked" as const };
+          if (code.expiresAt && code.expiresAt.getTime() <= now.getTime()) {
+            return { ok: false as const, reason: "expired" as const };
+          }
+          return { ok: false as const, reason: "exhausted" as const };
+        }
+
+        const [row] = await tx
+          .insert(schema.inviteRedemptions)
+          .values({
+            id: makeId("red"),
+            codeId,
+            userId,
+            compedUntil: toDate(input.compedUntil),
+            redeemedAt: now,
+          })
+          .returning();
+        return { ok: true as const, redemption: rowToRedemption(row!) };
+      });
+    },
+    async listRedemptions(codeId) {
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.inviteRedemptions)
+        .where(eq(schema.inviteRedemptions.codeId, codeId))
+        .orderBy(desc(schema.inviteRedemptions.redeemedAt));
+      return rows.map(rowToRedemption);
+    },
+    async listRedemptionsForUser(userId) {
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.inviteRedemptions)
+        .where(eq(schema.inviteRedemptions.userId, userId))
+        .orderBy(desc(schema.inviteRedemptions.redeemedAt));
+      return rows.map(rowToRedemption);
+    },
+  };
+
+  return {
+    users,
+    entitlements,
+    tasks,
+    labels,
+    memories,
+    aiRuns,
+    sessions,
+    stripeEvents,
+    inviteCodes,
+  };
+}
+
+function rowToInviteCode(row: typeof schema.inviteCodes.$inferSelect): InviteCode {
+  return {
+    id: row.id,
+    codeHash: row.codeHash,
+    grants: row.grants,
+    durationMonths: row.durationMonths,
+    maxRedemptions: row.maxRedemptions,
+    redemptionCount: row.redemptionCount,
+    expiresAt: row.expiresAt?.toISOString() ?? null,
+    note: row.note,
+    revokedAt: row.revokedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function rowToRedemption(row: typeof schema.inviteRedemptions.$inferSelect): InviteRedemption {
+  return {
+    id: row.id,
+    codeId: row.codeId,
+    userId: row.userId,
+    compedUntil: row.compedUntil?.toISOString() ?? null,
+    redeemedAt: row.redeemedAt.toISOString(),
+  };
 }
 
 function toDate(iso: string | null): Date | null {

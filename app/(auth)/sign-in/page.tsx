@@ -18,7 +18,10 @@ export default async function SignInPage({
       </div>
       <div className="mt-6 text-[13px] text-[var(--fg-muted)]">
         New to Sifty?{" "}
-        <Link href="/sign-up" className="text-[var(--accent)] hover:underline">
+        <Link
+          href={params.next ? `/sign-up?next=${encodeURIComponent(params.next)}` : "/sign-up"}
+          className="text-[var(--accent)] hover:underline"
+        >
           Create an account
         </Link>
       </div>

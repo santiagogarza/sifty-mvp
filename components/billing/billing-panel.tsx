@@ -1,5 +1,6 @@
 "use client";
 
+import { RedeemInviteForm } from "@/components/billing/redeem-invite-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Entitlement } from "@/lib/domain/types";
@@ -120,6 +121,20 @@ export function BillingPanel({
               {error}
             </div>
           ) : null}
+        </section>
+      ) : null}
+
+      {!user.isCreator ? (
+        <section className="surface-card p-5">
+          <div className="text-eyebrow mb-2">Invite code</div>
+          <p className="text-[13px] text-[var(--fg-muted)] leading-[1.5] max-w-prose mb-4">
+            {tier === "comped"
+              ? "Have another code? Redeeming it extends your Pro access."
+              : "Got an invite from Santi? Redeem it here for Pro without a card."}
+          </p>
+          <div className="max-w-md">
+            <RedeemInviteForm />
+          </div>
         </section>
       ) : null}
     </div>

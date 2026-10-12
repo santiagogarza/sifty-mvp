@@ -206,6 +206,63 @@ export interface StripeEventRepo {
   delete(eventId: string): Promise<void>;
 }
 
+export type InviteGrant = "pro";
+
+export interface InviteCode {
+  id: string;
+  codeHash: string;
+  grants: InviteGrant;
+  durationMonths: number | null;
+  maxRedemptions: number;
+  redemptionCount: number;
+  expiresAt: string | null;
+  note: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+}
+
+export interface InviteCodeCreateInput {
+  codeHash: string;
+  grants: InviteGrant;
+  durationMonths: number | null;
+  maxRedemptions: number;
+  expiresAt: string | null;
+  note: string | null;
+}
+
+export interface InviteRedemption {
+  id: string;
+  codeId: string;
+  userId: string;
+  compedUntil: string | null;
+  redeemedAt: string;
+}
+
+/** Why `consume` refused; the order here is the order checks run in. */
+export type InviteConsumeFailure = "revoked" | "expired" | "exhausted" | "already_redeemed";
+
+export interface InviteCodeRepo {
+  create(input: InviteCodeCreateInput): Promise<InviteCode>;
+  findByHash(codeHash: string): Promise<InviteCode | null>;
+  getById(id: string): Promise<InviteCode | null>;
+  list(): Promise<InviteCode[]>;
+  revoke(id: string, at?: Date): Promise<InviteCode | null>;
+  /**
+   * Atomically check the code is live and under its cap, bump the count,
+   * and record the redemption. Two users racing for the last redemption
+   * must not both succeed; the same user redeeming twice must not count twice.
+   */
+  consume(
+    codeId: string,
+    userId: string,
+    input: { compedUntil: string | null; now?: Date },
+  ): Promise<
+    { ok: true; redemption: InviteRedemption } | { ok: false; reason: InviteConsumeFailure }
+  >;
+  listRedemptions(codeId: string): Promise<InviteRedemption[]>;
+  listRedemptionsForUser(userId: string): Promise<InviteRedemption[]>;
+}
+
 export interface Repos {
   users: UserRepo;
   entitlements: EntitlementRepo;
@@ -215,4 +272,5 @@ export interface Repos {
   aiRuns: AiRunRepo;
   sessions: SessionRepo;
   stripeEvents: StripeEventRepo;
+  inviteCodes: InviteCodeRepo;
 }

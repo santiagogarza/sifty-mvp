@@ -10,6 +10,12 @@ interface AuthFormProps {
   next?: string;
 }
 
+/** Only same-origin paths may be used as a post-login destination. */
+function safeNext(next: string | undefined): string {
+  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/today";
+  return next;
+}
+
 export function AuthForm({ mode, next }: AuthFormProps) {
   const router = useRouter();
   const [email, setEmail] = React.useState("");
@@ -39,7 +45,7 @@ export function AuthForm({ mode, next }: AuthFormProps) {
         setPending(false);
         return;
       }
-      router.push(next ?? "/today");
+      router.push(safeNext(next));
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");
