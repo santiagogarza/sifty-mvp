@@ -1,5 +1,5 @@
 import { BRIEF_PROMPT_VERSION, generateAgentBrief } from "@/lib/ai/agent-brief";
-import { gateAiRequest, resolveOfflineMode } from "@/lib/ai/ai-gate";
+import { gateAiRequest, gateAiRequestByIp, resolveOfflineMode } from "@/lib/ai/ai-gate";
 import { recordAiRun } from "@/lib/ai/ai-runs";
 import { AiConfigError } from "@/lib/ai/provider";
 import { getSession } from "@/lib/auth/session";
@@ -25,6 +25,9 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
+
+  const ipGate = await gateAiRequestByIp(req, "brief");
+  if (!ipGate.ok) return ipGate.response;
 
   const session = await getSession(req);
   if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });

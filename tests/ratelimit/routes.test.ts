@@ -201,6 +201,29 @@ describe.each(STORES)("per-route rate limits — $name", ({ make }) => {
     );
   });
 
+  it("unauthenticated floods spend the IP budget before any session lookup", async () => {
+    vi.stubEnv("RATELIMIT_STRIPE_IP_PER_MIN", "2");
+    vi.stubEnv("RATELIMIT_REDEEM_IP_PER_MIN", "2");
+    vi.stubEnv("RATELIMIT_TRIAGE_IP_PER_MIN", "2");
+    const checkout = (await import("@/app/api/stripe/checkout/route")).POST;
+    const redeem = (await import("@/app/api/invites/redeem/route")).POST;
+    const triage = (await import("@/app/api/triage/route")).POST;
+    const brief = (await import("@/app/api/agent-brief/route")).POST;
+    const anon = { "x-forwarded-for": "66.66.66.66", cookie: "sifty.session_token=forged" };
+
+    const flood = async (fire: () => Promise<Response>) => {
+      expect((await fire()).status).toBe(401);
+      expect((await fire()).status).toBe(401);
+      await expect429(await fire());
+    };
+    await flood(() => checkout(json("http://localhost/api/stripe/checkout", {}, anon)));
+    await flood(() =>
+      redeem(json("http://localhost/api/invites/redeem", { code: "sifty-x" }, anon)),
+    );
+    await flood(() => triage(json("http://localhost/api/triage", { sourceText: "x" }, anon)));
+    await flood(() => brief(json("http://localhost/api/agent-brief", { taskId: "t" }, anon)));
+  });
+
   it("/api/stripe/webhook: per-IP cap on forged requests", async () => {
     vi.stubEnv("RATELIMIT_STRIPE_WEBHOOK_PER_MIN", "2");
     const { POST } = await import("@/app/api/stripe/webhook/route");

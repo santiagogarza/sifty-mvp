@@ -1,4 +1,4 @@
-import { gateAiRequest, resolveOfflineMode } from "@/lib/ai/ai-gate";
+import { gateAiRequest, gateAiRequestByIp, resolveOfflineMode } from "@/lib/ai/ai-gate";
 import { recordAiRun } from "@/lib/ai/ai-runs";
 import { applyTriageToTask } from "@/lib/ai/apply-triage";
 import { AiConfigError } from "@/lib/ai/provider";
@@ -37,6 +37,9 @@ export async function POST(req: Request) {
   }
 
   const offline = resolveOfflineMode(req);
+
+  const ipGate = await gateAiRequestByIp(req, "triage");
+  if (!ipGate.ok) return ipGate.response;
 
   const session = await getSession(req);
   if (!session) {

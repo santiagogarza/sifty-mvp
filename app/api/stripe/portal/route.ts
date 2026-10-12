@@ -8,12 +8,20 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
+  // IP first, before the session lookup, so an unauthenticated flood spends
+  // its budget here instead of on free 401s.
+  const ipLimit = await enforceRateLimit(req, {
+    route: "stripe-user",
+    ip: STRIPE_IP_POLICY,
+    message: "Too many portal requests. Try again in a moment.",
+  });
+  if (!ipLimit.ok) return ipLimit.response;
+
   const session = await getSession(req);
   if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
   const limit = await enforceRateLimit(req, {
     route: "stripe-user",
-    ip: STRIPE_IP_POLICY,
     subject: { id: session.user.id, policy: STRIPE_USER_POLICY },
     message: "Too many portal requests. Try again in a moment.",
   });

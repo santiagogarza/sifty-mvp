@@ -53,7 +53,7 @@ export const ACCOUNT_EXPORT_POLICY = perMinute("RATELIMIT_ACCOUNT_EXPORT_PER_MIN
 
 /** Checkout / portal initiation: per user. */
 export const STRIPE_USER_POLICY = perMinute(() => process.env.RATELIMIT_STRIPE_USER_PER_MIN, 12);
-/** Checkout / portal initiation: per client IP (checked before the session lookup). */
+/** Checkout / portal initiation: per client IP, checked before the session lookup. */
 export const STRIPE_IP_POLICY = perMinute(() => process.env.RATELIMIT_STRIPE_IP_PER_MIN, 30);
 
 /**

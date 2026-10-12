@@ -31,12 +31,20 @@ const STATUS_BY_REASON: Record<RedeemFailure, number> = {
  * redemption farms out.
  */
 export async function POST(req: Request) {
+  // IP first, before the session lookup, so an unauthenticated flood spends
+  // its budget here instead of on free 401s.
+  const ipLimit = await enforceRateLimit(req, {
+    route: "redeem",
+    ip: REDEEM_IP_POLICY,
+    message: "Too many attempts. Try again in a minute.",
+  });
+  if (!ipLimit.ok) return ipLimit.response;
+
   const session = await getSession(req);
   if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
   const limit = await enforceRateLimit(req, {
     route: "redeem",
-    ip: REDEEM_IP_POLICY,
     subject: { id: session.user.id, policy: REDEEM_POLICY },
     message: "Too many attempts. Try again in a minute.",
   });

@@ -11,8 +11,9 @@ import { countAiRunsSince, countAiRunsToday } from "./ai-runs";
  *
  * Three gates, cheapest first:
  *
- * 1. Fixed-window limits per client IP and per user (`consumeToken`):
- *    durable in Upstash Redis when configured, otherwise per instance.
+ * 1. Fixed-window limits per client IP (`gateAiRequestByIp`, before the
+ *    session lookup) and per user (`consumeToken`): durable in Upstash Redis
+ *    when configured, otherwise per instance.
  * 2. Persistent sliding window over `ai_runs` — holds across serverless
  *    instances even without Redis. Runs are recorded after completion, so a
  *    parallel burst can momentarily exceed the cap before the window
@@ -26,6 +27,19 @@ const TOO_MANY = "Too many AI requests. Slow down a bit.";
 
 export type AiGateResult = { ok: true } | { ok: false; response: NextResponse };
 
+/**
+ * Per-IP half of gate 1. Routes call this *before* `getSession()` so an
+ * unauthenticated flood spends its IP budget instead of free session lookups.
+ */
+export async function gateAiRequestByIp(req: Request, bucket: string): Promise<AiGateResult> {
+  const limit = await enforceRateLimit(req, {
+    route: bucket,
+    ip: TRIAGE_IP_POLICY,
+    message: TOO_MANY,
+  });
+  return limit.ok ? { ok: true } : { ok: false, response: limit.response };
+}
+
 export async function gateAiRequest(args: {
   req: Request;
   session: Session;
@@ -36,7 +50,6 @@ export async function gateAiRequest(args: {
 
   const limit = await enforceRateLimit(req, {
     route: bucket,
-    ip: TRIAGE_IP_POLICY,
     subject: { id: userId, policy: TRIAGE_POLICY },
     message: TOO_MANY,
   });

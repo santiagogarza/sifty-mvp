@@ -118,7 +118,7 @@ export function createUpstashStore(
   options: UpstashStoreOptions = {},
 ): RateLimitStore {
   const fallback = options.fallback ?? createMemoryStore();
-  const timeout = options.timeoutMs ?? 2000;
+  const timeout = options.timeoutMs ?? UPSTASH_TIMEOUT_MS;
   // One `Ratelimit` per (capacity, window): policies read their capacity
   // from env per call, so the instance cannot be fixed at module load.
   const limiters = new Map<string, Ratelimit>();
@@ -183,6 +183,24 @@ export function upstashCredentialsFromEnv(): { url: string; token: string } | nu
   return url && token ? { url, token } : null;
 }
 
+/** Milliseconds before a Redis REST call is aborted and the request falls back. */
+export const UPSTASH_TIMEOUT_MS = 2000;
+
+/**
+ * The `Ratelimit` timeout only races the `limit()` promise; it does not
+ * cancel the underlying fetch. Abort every REST call at the same deadline
+ * (and do not retry) so a hung Upstash cannot keep a function or Edge
+ * invocation open after admission has already fallen back to memory.
+ */
+export function createUpstashRedis(creds: { url: string; token: string }): Redis {
+  return new Redis({
+    url: creds.url,
+    token: creds.token,
+    retry: false,
+    signal: () => AbortSignal.timeout(UPSTASH_TIMEOUT_MS),
+  });
+}
+
 const STORE_KEY = Symbol.for("sifty.ratelimit.store");
 type StoreGlobal = typeof globalThis & {
   [STORE_KEY]?: { store: RateLimitStore; credentials: string | null } | null;
@@ -198,9 +216,7 @@ export function resolveRateLimitStore(): RateLimitStore {
   const fingerprint = creds ? `${creds.url}|${creds.token}` : null;
   const cached = g[STORE_KEY];
   if (cached && cached.credentials === fingerprint) return cached.store;
-  const store = creds
-    ? createUpstashStore(new Redis({ url: creds.url, token: creds.token }))
-    : createMemoryStore();
+  const store = creds ? createUpstashStore(createUpstashRedis(creds)) : createMemoryStore();
   g[STORE_KEY] = { store, credentials: fingerprint };
   return store;
 }

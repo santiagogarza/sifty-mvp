@@ -20,7 +20,7 @@ import { clientIdFromRequest } from "./policies";
 export interface RouteLimitSpec {
   /** Key prefix, e.g. `"triage"`. One prefix per route family. */
   route: string;
-  /** Per-client-IP policy; omit when another layer (middleware) already applies one. */
+  /** Per-client-IP policy; omit when a prior call or middleware already applied one. */
   ip?: RateLimitConfig | null;
   /** Per-subject policy; skipped when `id` is empty. */
   subject?: { id: string | null | undefined; policy: RateLimitConfig } | null;
