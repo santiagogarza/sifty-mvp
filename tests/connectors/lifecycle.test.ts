@@ -1,3 +1,4 @@
+import { setConnectSdkForTesting } from "@/lib/connectors/brokers/vercel-connect";
 import {
   ConnectorError,
   callbackUrlFor,
@@ -14,7 +15,7 @@ import { MOCK_TOKEN_PREFIX, __resetMockNotes } from "@/lib/connectors/tools/mock
 import { isSealed } from "@/lib/crypto/aes-gcm";
 import type { Repos } from "@/lib/db/repos";
 import { emptySnapshot, trialSnapshot } from "@/lib/entitlements/entitlements";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getTestRepos } from "../setup";
 
 const ORIGIN = "https://sifty.example";
@@ -255,6 +256,93 @@ describe("connection lifecycle (mock broker)", () => {
       notes: Array<{ text: string }>;
     };
     expect(listed.notes.map((n) => n.text)).toContain("Follow up with Ana");
+  });
+});
+
+describe("Vercel Connect attempts through the service", () => {
+  class UserAuthorizationRequiredError extends Error {}
+  class NoValidTokenError extends Error {}
+
+  afterEach(() => setConnectSdkForTesting(null));
+
+  it("keeps the attempt pending when the callback arrives before consent finished", async () => {
+    const repos = getTestRepos();
+    const user = await proUser(repos, "early@example.com");
+    vi.stubEnv("CONNECTOR_LINEAR", "linear/sifty");
+    let granted = false;
+    setConnectSdkForTesting({
+      startAuthorization: vi.fn(async () => ({
+        url: "https://vercel.com/connect/x",
+        request: "r",
+        verifier: "v",
+      })),
+      getTokenResponse: vi.fn(async () => {
+        if (!granted) throw new UserAuthorizationRequiredError("not yet");
+        return {
+          token: "tok",
+          expiresAt: Date.now() + 60_000,
+          connector: { id: "scl", uid: "linear/sifty", type: "oauth" },
+          claims: { email: "ana@example.com" },
+        };
+      }),
+      UserAuthorizationRequiredError,
+      NoValidTokenError,
+    } as never);
+
+    await startConnect(user.id, "linear", { origin: ORIGIN }, repos);
+    const before = await repos.connections.get(user.id, "linear");
+    expect(before?.status).toBe("pending");
+
+    // Stray hit (no state, no grant yet): reported, but the attempt survives.
+    const early = await completeConnect(user.id, "linear", new URLSearchParams(), repos);
+    expect(early).toMatchObject({ ok: false, code: "not_connected" });
+    const still = await repos.connections.get(user.id, "linear");
+    expect(still?.status).toBe("pending");
+    expect(still?.authState).toBe(before?.authState);
+
+    granted = true;
+    const done = await completeConnect(
+      user.id,
+      "linear",
+      new URLSearchParams({ state: before?.authState ?? "" }),
+      repos,
+    );
+    expect(done).toMatchObject({ ok: true });
+    expect(await repos.connections.get(user.id, "linear")).toMatchObject({
+      status: "connected",
+      externalAccount: "ana@example.com",
+      encryptedSecret: null,
+      connectorUid: "linear/sifty",
+    });
+  });
+
+  it("revokes at the broker on disconnect even from the error state", async () => {
+    const repos = getTestRepos();
+    const user = await proUser(repos, "revoke@example.com");
+    vi.stubEnv("CONNECTOR_LINEAR", "linear/sifty");
+    const revokeToken = vi.fn(async () => undefined);
+    setConnectSdkForTesting({
+      startAuthorization: vi.fn(async () => ({
+        url: "https://vercel.com/connect/x",
+        request: "r",
+        verifier: "v",
+      })),
+      getTokenResponse: vi.fn(async () => {
+        throw new NoValidTokenError("gone");
+      }),
+      revokeToken,
+      UserAuthorizationRequiredError,
+      NoValidTokenError,
+    } as never);
+    await startConnect(user.id, "linear", { origin: ORIGIN }, repos);
+    await repos.connections.update(user.id, "linear", { status: "connected", authState: null });
+    expect((await checkConnection(user.id, "linear", repos)).status).toBe("error");
+
+    expect(await disconnect(user.id, "linear", repos)).toBe(true);
+    expect(revokeToken).toHaveBeenCalledWith("linear/sifty", {
+      subject: { type: "user", id: user.id },
+    });
+    expect(await repos.connections.get(user.id, "linear")).toBeNull();
   });
 });
 

@@ -161,6 +161,40 @@ describe("REST tools call the provider with the brokered token", () => {
     }
   });
 
+  it("sends every provider call with a timeout signal", async () => {
+    const fetchImpl = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      return jsonResponse([]);
+    });
+    const tool = MANIFESTS.github.tools.find((t) => t.name === "github_list_repos");
+    if (!tool) throw new Error("missing tool");
+    await tool.execute({ perPage: 1 }, ctx(fetchImpl as typeof fetch));
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses header injection in gmail drafts and encodes non-ASCII subjects", async () => {
+    const gmailFetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const sent = JSON.parse(String(init?.body)) as { message: { raw: string } };
+      const raw = Buffer.from(sent.message.raw, "base64url").toString("utf8");
+      expect(raw).toContain("Subject: =?UTF-8?B?");
+      return jsonResponse({ id: "d1", message: { id: "m1", threadId: "t1" } });
+    });
+    const draft = MANIFESTS.google.tools.find((t) => t.name === "google_gmail_create_draft");
+    if (!draft) throw new Error("missing tool");
+    const base = { to: "ana@example.com", subject: "Račun", body: "Hi" };
+    await draft.execute(base, ctx(gmailFetch as typeof fetch, "google"));
+    for (const bad of [
+      { ...base, to: "ana@example.com\r\nBcc: evil@example.com" },
+      { ...base, subject: "Invoice\nBcc: evil@example.com" },
+      { ...base, inReplyTo: "<x>\r\nTo: evil@example.com" },
+    ]) {
+      await expect(draft.execute(bad, ctx(gmailFetch as typeof fetch, "google"))).rejects.toThrow(
+        /line breaks/,
+      );
+    }
+    expect(gmailFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("slack treats ok:false as an error and gmail drafts are base64url RFC 822", async () => {
     const slackFetch = vi.fn(async () => jsonResponse({ ok: false, error: "missing_scope" }));
     const post = MANIFESTS.slack.tools.find((t) => t.name === "slack_post_message");

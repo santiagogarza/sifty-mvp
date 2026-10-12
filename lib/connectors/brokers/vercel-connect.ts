@@ -132,7 +132,11 @@ export const vercelConnectBroker: CredentialBroker = {
       return { ok: true, externalAccount: account ?? null };
     } catch (err) {
       if (await isAuthorizationError(err)) {
-        return { ok: false, reason: "The provider did not complete the authorization." };
+        return {
+          ok: false,
+          stillPending: true,
+          reason: "The provider has not completed the authorization yet.",
+        };
       }
       return { ok: false, reason: describe(err) };
     }

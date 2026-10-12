@@ -42,11 +42,17 @@ export interface ConnectorToolDefinition<I extends z.ZodTypeAny = z.ZodTypeAny, 
   execute(input: z.infer<I>, ctx: ConnectorToolContext): Promise<O>;
 }
 
-/** Keeps `input` typed from the schema inside `execute`, then erases for the list. */
+/**
+ * Keeps `input` typed from the schema inside `execute`, then erases for the
+ * list. `execute` always re-parses its input, so a caller that bypasses the
+ * AI SDK (a direct executor call, a test) still gets the schema's guards.
+ */
 export function defineTool<I extends z.ZodTypeAny, O>(
   def: ConnectorToolDefinition<I, O>,
 ): ConnectorToolDefinition {
-  return def as unknown as ConnectorToolDefinition;
+  const execute = async (input: unknown, ctx: ConnectorToolContext) =>
+    def.execute(def.inputSchema.parse(input), ctx);
+  return { ...def, execute } as unknown as ConnectorToolDefinition;
 }
 
 export interface ProviderToolManifest {
@@ -70,8 +76,13 @@ export class ConnectorApiError extends Error {
 }
 
 const MAX_ERROR_DETAIL = 300;
+/** A stalled provider must not hold a function until the platform limit. */
+export const PROVIDER_TIMEOUT_MS = 15_000;
 
-/** `fetch` with the bearer token attached and non-2xx turned into `ConnectorApiError`. */
+/**
+ * `fetch` with the bearer token attached, a hard timeout, and non-2xx
+ * turned into `ConnectorApiError`.
+ */
 export async function providerFetch(
   ctx: ConnectorToolContext,
   url: string,
@@ -79,6 +90,7 @@ export async function providerFetch(
 ): Promise<Response> {
   const res = await ctx.fetch(url, {
     ...init,
+    signal: init.signal ?? AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${ctx.token}`,
       Accept: "application/json",

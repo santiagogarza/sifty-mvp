@@ -260,6 +260,9 @@ export async function completeConnect(
   const broker = brokerFor(spec);
   const result = await broker.complete({ spec, userId, connection: row, query });
   if (!result.ok) {
+    // A premature or stale hit must not burn the attempt: the row stays
+    // `pending` with its state so the real redirect can still finish it.
+    if (result.stillPending) return { ok: false, code: "not_connected", reason: result.reason };
     await repos.connections.update(userId, provider, {
       status: "error",
       authState: null,
@@ -289,14 +292,15 @@ export async function disconnect(
   const spec = resolveProvider(provider);
   const row = await repos.connections.get(userId, provider);
   if (!row) return false;
-  if (row.status === "connected") {
-    try {
-      await brokerFor(spec).revoke(row, spec);
-    } catch (err) {
-      // The row goes regardless: a grant we can no longer reach is still
-      // unusable without the reference, and the user asked for it gone.
-      reportError(err, { area: "connectors.disconnect", userId, tags: { provider } });
-    }
+  // Revoke whatever the status: an `error` row (failed check, declined
+  // reconnect) or even a `pending` one may still have a live grant at the
+  // broker, and the user asked for it gone.
+  try {
+    await brokerFor(spec).revoke(row, spec);
+  } catch (err) {
+    // The row goes regardless: a grant we can no longer reach is still
+    // unusable without the reference.
+    reportError(err, { area: "connectors.disconnect", userId, tags: { provider } });
   }
   return repos.connections.delete(userId, provider);
 }

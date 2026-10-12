@@ -48,7 +48,16 @@ export type BrokerCompleteResult =
       /** Only brokers that must hold a credential return one; it is sealed before storage. */
       secret?: string;
     }
-  | { ok: false; reason: string };
+  | {
+      ok: false;
+      reason: string;
+      /**
+       * The attempt is still open: the broker could not confirm a grant yet
+       * (callback hit before consent finished, stale tab). The service keeps
+       * the row `pending` so the real redirect can still complete it.
+       */
+      stillPending?: boolean;
+    };
 
 export interface BrokerToken {
   token: string;

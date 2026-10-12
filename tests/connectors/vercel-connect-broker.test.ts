@@ -149,6 +149,7 @@ describe("vercel-connect broker", () => {
         query: new URLSearchParams({ error: "access_denied", error_description: "user_cancel" }),
       }),
     ).toEqual({ ok: false, reason: "access_denied: user_cancel" });
+    // No grant yet: the attempt is reported as still pending, not failed.
     expect(
       await vercelConnectBroker.complete({
         spec,
@@ -156,7 +157,11 @@ describe("vercel-connect broker", () => {
         connection: row(),
         query: new URLSearchParams(),
       }),
-    ).toMatchObject({ ok: false, reason: expect.stringContaining("did not complete") });
+    ).toMatchObject({
+      ok: false,
+      stillPending: true,
+      reason: expect.stringContaining("not completed"),
+    });
   });
 
   it("maps a lost grant to ConnectionNotReadyError and a missing OIDC token to a clear message", async () => {

@@ -97,26 +97,41 @@ const getMessage = defineTool({
   },
 });
 
+/** No CR/LF in a header value: a crafted `to` or `subject` must not add `Bcc:` lines. */
+const headerSafe = (max: number) =>
+  z
+    .string()
+    .max(max)
+    .refine((v) => !/[\r\n\0]/.test(v), "must not contain line breaks");
+
+/** RFC 2047 B-encoding for non-ASCII header text (subjects in any language). */
+function encodeHeaderText(value: string): string {
+  if (/^[\x20-\x7e]*$/.test(value)) return value;
+  return `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=`;
+}
+
 const createDraft = defineTool({
   name: "google_gmail_create_draft",
   description:
     "Create a Gmail draft (never sends). Pass threadId to draft a reply inside an existing thread.",
   kind: "write",
   inputSchema: z.object({
-    to: z.string().min(3),
-    subject: z.string().max(300),
+    to: headerSafe(1_000).pipe(z.string().min(3)),
+    subject: headerSafe(300),
     body: z.string().max(50_000),
-    threadId: z.string().optional(),
-    inReplyTo: z.string().optional(),
+    threadId: headerSafe(100).optional(),
+    inReplyTo: headerSafe(500).optional(),
   }),
   async execute(input, ctx) {
     const lines = [
       `To: ${input.to}`,
-      `Subject: ${input.subject}`,
+      `Subject: ${encodeHeaderText(input.subject)}`,
       ...(input.inReplyTo
         ? [`In-Reply-To: ${input.inReplyTo}`, `References: ${input.inReplyTo}`]
         : []),
+      "MIME-Version: 1.0",
       "Content-Type: text/plain; charset=utf-8",
+      "Content-Transfer-Encoding: 8bit",
       "",
       input.body,
     ];
