@@ -461,6 +461,26 @@ describe("POST /api/stripe/webhook", () => {
       expect(getTestOutbox().outbox).toHaveLength(1);
     });
 
+    it("never emails a comped user: the comp keeps Pro regardless of the card", async () => {
+      const repos = getTestRepos();
+      const user = await payingUser("comped@example.com", "cus_CP", "sub_CP");
+      const ent = (await repos.entitlements.get(user.id))!;
+      await repos.entitlements.upsert(user.id, {
+        ...ent,
+        tier: "comped",
+        compedAt: new Date().toISOString(),
+        compedUntil: null,
+      });
+      const res = await deliver(
+        makeEvent({ type: "invoice.payment_failed", customer: "cus_CP" }).body,
+      );
+      expect(res.status).toBe(200);
+      const after = await repos.entitlements.get(user.id);
+      expect(after?.tier).toBe("comped");
+      expect(after?.stripeStatus).toBe("past_due");
+      expect(getTestOutbox().outbox).toHaveLength(0);
+    });
+
     it("never emails the creator", async () => {
       const repos = getTestRepos();
       const creator = await repos.users.create({
