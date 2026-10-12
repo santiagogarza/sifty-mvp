@@ -3,6 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { assigneeDisplayValue } from "@/lib/domain/assignee";
 import type { Label, Lifecycle, Task } from "@/lib/domain/types";
+import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import { formatRelativeDay, isOverdue, isToday } from "@/lib/utils/dates";
 import { Check } from "lucide-react";
@@ -36,6 +37,8 @@ export const TaskRow = React.forwardRef<
     uncompleteTo?: Lifecycle;
   }
 >(function TaskRow({ task, onOpen, active, labels, tabIndex = -1, uncompleteTo = "active" }, ref) {
+  const updateTask = useStore((s) => s.updateTask);
+
   const labelMap = React.useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels]);
   const taskLabels = task.labelIds.map((id) => labelMap.get(id)).filter(Boolean) as Label[];
 
@@ -51,6 +54,9 @@ export const TaskRow = React.forwardRef<
 
   const onComplete = (e: React.MouseEvent) => {
     e.stopPropagation();
+    updateTask(task.id, {
+      lifecycle: task.lifecycle === "done" ? uncompleteTo : "done",
+    });
   };
 
   const isDone = task.lifecycle === "done";

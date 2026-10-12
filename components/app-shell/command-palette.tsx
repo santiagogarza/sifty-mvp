@@ -8,7 +8,17 @@ import { Kbd } from "@/components/ui/kbd";
 import { STATUS_VIEWS } from "@/lib/domain/status";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
-import { ArrowRight, Brain, CreditCard, Search, Settings, Sparkles, Sun } from "lucide-react";
+import {
+  ArrowRight,
+  Brain,
+  Columns3,
+  CreditCard,
+  Rows3,
+  Search,
+  Settings,
+  Sparkles,
+  Sun,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
@@ -34,6 +44,8 @@ export function CommandPalette({
   const openDetail = useOpenDetail();
   const { toggle } = useTheme();
   const tasks = useStore((s) => s.tasks);
+  const viewMode = useStore((s) => s.viewMode);
+  const setViewMode = useStore((s) => s.setViewMode);
 
   const [query, setQuery] = React.useState("");
   const [activeIndex, setActiveIndex] = React.useState(0);
@@ -113,6 +125,13 @@ export function CommandPalette({
 
     const sys: CommandItem[] = [
       {
+        id: "toggle-view",
+        group: "system",
+        label: viewMode === "board" ? "Switch to list view" : "Switch to board view",
+        icon: viewMode === "board" ? <Rows3 size={14} /> : <Columns3 size={14} />,
+        run: () => setViewMode(viewMode === "board" ? "list" : "board"),
+      },
+      {
         id: "toggle-theme",
         group: "system",
         label: "Toggle theme",
@@ -122,7 +141,7 @@ export function CommandPalette({
     ];
 
     return [...taskItems, ...taskMatches, ...nav, ...sys];
-  }, [tasks, router, openDetail, onCapture, toggle]);
+  }, [tasks, router, openDetail, onCapture, toggle, viewMode, setViewMode]);
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();

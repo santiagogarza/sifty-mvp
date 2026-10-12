@@ -50,6 +50,9 @@ export interface SyncHooks {
   isTaskDirty(taskId: string): boolean;
 }
 
+/** How task pages render: linear list, or the kanban board. */
+export type TaskViewMode = "list" | "board";
+
 let syncHooks: SyncHooks | null = null;
 
 export function registerSyncHooks(hooks: SyncHooks | null): void {
@@ -67,9 +70,11 @@ interface SiftyState {
   memories: Memory[];
   /** Settings → AI model. A preference id from `MODEL_PREFERENCES`, never a raw model id. */
   modelPreference: ModelPreference;
+  viewMode: TaskViewMode;
 
   setHydrated: (v: boolean) => void;
   setModelPreference: (preference: ModelPreference) => void;
+  setViewMode: (mode: TaskViewMode) => void;
 
   createTask: (input: { sourceText: string; sourceContext?: string | null }) => Task;
   updateTask: (
@@ -147,9 +152,11 @@ export const useStore = create<SiftyState>()(
         labels: [],
         memories: [],
         modelPreference: DEFAULT_MODEL_PREFERENCE,
+        viewMode: "list",
 
         setHydrated: (v) => set({ hydrated: v }),
         setModelPreference: (preference) => set({ modelPreference: preference }),
+        setViewMode: (mode) => set({ viewMode: mode }),
 
         createTask: ({ sourceText, sourceContext }) => {
           const now = new Date().toISOString();
@@ -405,6 +412,7 @@ export const useStore = create<SiftyState>()(
         labels: s.labels,
         memories: s.memories,
         modelPreference: s.modelPreference,
+        viewMode: s.viewMode,
       }),
       migrate: (persisted, version) => {
         const state = persisted as Partial<SiftyState>;
