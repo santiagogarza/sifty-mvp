@@ -56,6 +56,16 @@ export function CaptureDialog({
   const dateMatch = React.useMemo(() => parseNaturalDate(text), [text]);
   const dueChip = dateMatch && dateMatch.text.toLowerCase() !== dismissedPhrase ? dateMatch : null;
 
+  const onTextChange = (next: string) => {
+    setText(next);
+    // A removed chip stays removed while its phrase is still in the text;
+    // once the phrase is gone (deleted, or the field retyped) a fresh
+    // phrase earns a fresh chip.
+    if (dismissedPhrase && !next.toLowerCase().includes(dismissedPhrase)) {
+      setDismissedPhrase(null);
+    }
+  };
+
   const clearDraft = () => {
     setText("");
     setContext("");
