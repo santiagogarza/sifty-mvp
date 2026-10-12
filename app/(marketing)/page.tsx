@@ -13,6 +13,10 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
 };
 
+// Must be dynamic: a prerender has no cookies and would bake the signed-out
+// landing page for everyone, so signed-in visitors never reach /today.
+export const dynamic = "force-dynamic";
+
 const STEPS = [
   {
     icon: PenLine,
