@@ -126,7 +126,7 @@ export async function deleteAccount(repos: Repos, userId: string): Promise<Accou
   }
   try {
     await repos.users.delete(userId);
-    await deleteAuthIdentity(userId);
+    await deleteAuthIdentity(userId, user.email);
   } catch (err) {
     throw new AccountDeletionError("database", stripeCustomer, err);
   }

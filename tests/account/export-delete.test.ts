@@ -213,6 +213,29 @@ describe("DELETE /api/account", () => {
     expect((await exportFor(b.cookie)).status).toBe(200);
   });
 
+  it("purges outstanding reset and magic-link tokens with the identity", async () => {
+    const repos = getTestRepos();
+    const a = await createUserWithCookie(repos, { email: "tokens@example.com" });
+    const { getAuth } = await import("@/lib/auth/auth");
+    const auth = getAuth();
+    await auth.api.requestPasswordReset({
+      body: { email: "tokens@example.com", redirectTo: "/reset" },
+    });
+    await auth.api.signInMagicLink({
+      body: { email: "tokens@example.com" },
+      headers: new Headers({ origin: "http://localhost:3000" }),
+    });
+    const ctx = await auth.$context;
+    const before = await ctx.adapter.findMany({ model: "verification" });
+    expect(before.length).toBeGreaterThanOrEqual(2); // reset token + magic link
+
+    const res = await deleteFor(a.cookie, { confirmEmail: "tokens@example.com" });
+    expect(res.status).toBe(200);
+    const after = await ctx.adapter.findMany<{ value: string }>({ model: "verification" });
+    expect(after.filter((v) => v.value === a.user.id)).toHaveLength(0);
+    expect(after.filter((v) => v.value.includes("tokens@example.com"))).toHaveLength(0);
+  });
+
   it("is a no-op for Stripe when keys are not configured", async () => {
     const repos = getTestRepos();
     const a = await createUserWithCookie(repos, { email: "nokeys@example.com" });

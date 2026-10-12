@@ -314,10 +314,22 @@ async function revokeUnprovenCredentials(userId: string): Promise<void> {
  * in-memory adapter (tests, keyless dev) in step; both paths end with no
  * session that can still resolve for the id.
  */
-export async function deleteAuthIdentity(userId: string): Promise<void> {
+export async function deleteAuthIdentity(userId: string, email: string): Promise<void> {
   const ctx = await getAuth().$context;
   await ctx.internalAdapter.deleteUser(userId);
   await ctx.internalAdapter.deleteUserSessions(userId);
+  // Verification tokens are not keyed by user id: a reset token stores the
+  // user id as its value, a magic link stores the email inside a JSON
+  // value. Neither would cascade, and either could act on whoever
+  // registers the address next.
+  await ctx.adapter.deleteMany({
+    model: "verification",
+    where: [{ field: "value", value: userId, operator: "eq" }],
+  });
+  await ctx.adapter.deleteMany({
+    model: "verification",
+    where: [{ field: "value", value: `"${email.toLowerCase()}"`, operator: "contains" }],
+  });
 }
 
 /** The session cookies Better Auth sets, so a route can expire them on its own response. */
