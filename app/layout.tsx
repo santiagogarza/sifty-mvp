@@ -1,3 +1,5 @@
+import { BOTID_PROTECTED_ROUTES } from "@/lib/abuse/botid-routes";
+import { BotIdClient } from "botid/client";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
@@ -35,6 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <BotIdClient protect={[...BOTID_PROTECTED_ROUTES]} />
         {/* Render the theme as early as possible so the first paint is correct. */}
         <script
           dangerouslySetInnerHTML={{

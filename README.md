@@ -122,8 +122,9 @@ lib/
                                # shared triage merge (editedFields guard)
   entitlements/                # pure deriveEntitlement, canRunAi
   observability/report-error.ts# central error reporter (Sentry-ready seam)
-  ratelimit/                   # token-bucket limiter + policies (triage,
-                               # stripe webhook, stripe user)
+  abuse/                       # Vercel BotID wrapper (sign-up, invite redeem)
+  ratelimit/                   # fixed-window limiter (Upstash Redis or
+                               # in-process) + per-route IP/user policies
   store/                       # Zustand store + server sync
   utils/                       # cn, dates, ids
 
@@ -180,12 +181,18 @@ Optional:
   workspace (first-run only; never touches existing data).
 - `SIFTY_AI_OFFLINE=1` — keyless dev: AI routes use the deterministic
   offline heuristic instead of a provider.
-- `RATELIMIT_TRIAGE_PER_MIN`, `RATELIMIT_STRIPE_USER_PER_MIN`,
-  `RATELIMIT_STRIPE_WEBHOOK_PER_MIN`, `RATELIMIT_REDEEM_PER_MIN` — token
-  bucket capacity overrides.
-  The triage cap is enforced twice: an in-process bucket per instance, and
-  a persistent sliding window over `ai_runs` that holds across serverless
-  instances.
+- `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` (or the Marketplace
+  `KV_REST_API_URL` / `KV_REST_API_TOKEN`) — when set, every rate limit is
+  a fixed window in Upstash Redis shared by all instances; when unset, the
+  same limits run in-process per instance. AI routes are additionally
+  bounded by a persistent sliding window over `ai_runs` either way.
+- `RATELIMIT_*_PER_MIN` — per-minute cap overrides, see `.env.example`.
+  Each protected route (`/api/auth/*`, `/api/invites/redeem`,
+  `/api/stripe/*`, `/api/triage`, `/api/agent-brief`) has a per-user (or
+  per-email) cap and a wider per-IP cap; `POST /api/auth/*` is capped per IP
+  in `middleware.ts`. Limited requests get `429` with `Retry-After`.
+- `SIFTY_DISABLE_BOTID=1` — turn off the Vercel BotID check on sign-up and
+  invite redemption. The check only runs on Vercel deployments anyway.
 
 ## AI configuration
 
@@ -279,7 +286,8 @@ pnpm invite:revoke sifty-… [--cascade]   # --cascade also ends redeemers' comp
   each user can redeem a given code once.
 - Redeem at `/redeem?code=sifty-…` (signed-out visitors go through sign-in
   or sign-up and land back on the code) or in Settings → Billing. The API,
-  `POST /api/invites/redeem`, is rate-limited per user and client.
+  `POST /api/invites/redeem`, is rate-limited per user and per IP and
+  checked with BotID.
 - Requires `DATABASE_URL` and `INVITE_CODE_PEPPER`; both the CLI and the app
   must use the same pepper.
 
