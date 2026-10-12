@@ -56,7 +56,10 @@ export function CaptureDialog({
 
   const hasDraft = text.length > 0 || context.length > 0;
 
-  const dateMatch = React.useMemo(() => parseNaturalDate(text), [text]);
+  // Re-parsed on every open as well as every keystroke: a draft kept
+  // across midnight must not carry yesterday's "tomorrow".
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `open` is a deliberate re-parse trigger.
+  const dateMatch = React.useMemo(() => parseNaturalDate(text), [text, open]);
   // Declined once, a date stays declined as its phrase grows ("tomorrow" →
   // "tomorrow 3pm"); a phrase that now names a different day ("Friday" →
   // "next Friday") is a new offer.
@@ -100,11 +103,13 @@ export function CaptureDialog({
 
   const submit = () => {
     if (!text.trim()) return;
+    // Resolve the accepted chip against the clock at the moment of capture.
+    const accepted = dueChip ? parseNaturalDate(text) : null;
     const task = createTask({
       sourceText: text,
       sourceContext: context.trim() || null,
-      due: dueChip?.due ?? null,
-      title: dueChip ? stripMatch(text, dueChip) : null,
+      due: accepted?.due ?? null,
+      title: accepted ? stripMatch(text, accepted) : null,
     });
     clearDraft();
     onOpenChange(false);

@@ -184,6 +184,12 @@ describe("parseNaturalDate: explicit dates", () => {
     expect(due("Birthday card 10/1", now)).toBe("2027-10-01");
   });
 
+  it("a bare leap day waits for the next leap year", () => {
+    expect(due("Leap party Feb 29", now)).toBe("2028-02-29"); // 2026, 2027 have no Feb 29
+    expect(due("Leap party 2/29", at(2028, 3, 1))).toBe("2032-02-29"); // just passed one
+    expect(due("Leap party Feb 29", at(2028, 2, 1))).toBe("2028-02-29");
+  });
+
   it("slash and ISO dates", () => {
     expect(due("Submit 10/20", now)).toBe("2026-10-20");
     expect(due("Submit by 10/20 at 5pm", now)).toBe("2026-10-20");

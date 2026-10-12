@@ -390,12 +390,16 @@ function monthDay(today: Date, monthWord: string, dayText: string, yearText?: st
   return forwardDate(today, month, day);
 }
 
-/** A month/day without a year: this year, or next year once it has passed. */
+/**
+ * A month/day without a year: the first year from this one in which the
+ * day exists and has not passed. Feb 29 looks ahead to the next leap year.
+ */
 function forwardDate(today: Date, month: number, day: number): Date | null {
-  const thisYear = validDate(today.getFullYear(), month, day);
-  if (!thisYear) return null;
-  if (thisYear.getTime() >= today.getTime()) return thisYear;
-  return validDate(today.getFullYear() + 1, month, day);
+  for (let year = today.getFullYear(); year <= today.getFullYear() + 8; year++) {
+    const candidate = validDate(year, month, day);
+    if (candidate && candidate.getTime() >= today.getTime()) return candidate;
+  }
+  return null;
 }
 
 /** Rejects overflow such as Feb 30 instead of letting `Date` roll it over. */
