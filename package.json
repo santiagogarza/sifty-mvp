@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev --turbo",
     "build": "next build",
+    "build:vercel": "pnpm db:migrate && next build",
     "start": "next start",
     "lint": "biome check",
     "lint:fix": "biome check --write",
@@ -16,7 +17,7 @@
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install --with-deps chromium",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "node scripts/migrate.mjs",
     "db:studio": "drizzle-kit studio",
     "invite:mint": "tsx --env-file-if-exists=.env.local scripts/invite.ts mint",
     "invite:revoke": "tsx --env-file-if-exists=.env.local scripts/invite.ts revoke",

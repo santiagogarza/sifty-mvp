@@ -43,6 +43,49 @@ jobs:
           NODE_ENV: production
         run: pnpm build
 
+  db:
+    name: Postgres repo tests (production only)
+    # Only for the production branch and PRs into it; master's demo CI is unchanged.
+    if: github.ref_name == 'production' || github.base_ref == 'production'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: sifty
+          POSTGRES_PASSWORD: sifty
+          POSTGRES_DB: sifty_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sifty"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AUTH_SECRET: ci-auth-secret-do-not-use-in-production-please-32
+      CREATOR_EMAIL: s.gonzalez.garza@gmail.com
+      NODE_ENV: test
+      TEST_DATABASE_URL: postgres://sifty:sifty@localhost:5432/sifty_test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Migrate
+        env:
+          DATABASE_URL: postgres://sifty:sifty@localhost:5432/sifty_test
+        run: pnpm db:migrate
+
+      - name: Postgres repo tests
+        run: pnpm vitest run tests/db
+
   e2e:
     name: Playwright smoke
     runs-on: ubuntu-latest

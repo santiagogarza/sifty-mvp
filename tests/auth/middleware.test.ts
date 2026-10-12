@@ -74,4 +74,13 @@ describe("middleware", () => {
     const res = await middleware(req);
     expect(res.status).toBe(200);
   });
+
+  it("SIFTY_DISABLE_AUTH=1 is ignored on Vercel production", async () => {
+    vi.stubEnv("SIFTY_DISABLE_AUTH", "1");
+    vi.stubEnv("VERCEL_ENV", "production");
+    const req = new NextRequest("http://localhost/today");
+    const res = await middleware(req);
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location") ?? "").toContain("/sign-in");
+  });
 });

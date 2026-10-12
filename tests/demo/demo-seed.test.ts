@@ -68,6 +68,15 @@ describe("SIFTY_DEMO_SEED", () => {
     expect(await repos.tasks.list(userId)).toHaveLength(1);
   });
 
+  it("the flag is ignored on Vercel production", async () => {
+    vi.stubEnv("VERCEL_ENV", "production");
+    const repos = getTestRepos();
+    const userId = await signUp("prod@example.com");
+
+    expect(await repos.tasks.list(userId)).toHaveLength(0);
+    expect(await repos.memories.list(userId)).toHaveLength(0);
+  });
+
   it("without the flag, sign-up seeds only the default labels", async () => {
     vi.stubEnv("SIFTY_DEMO_SEED", "");
     const repos = getTestRepos();

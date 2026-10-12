@@ -1,3 +1,4 @@
+import { demoFlagEnabled } from "@/lib/env/production-guards";
 import { getSessionCookie } from "better-auth/cookies";
 import { type NextRequest, NextResponse } from "next/server";
 
@@ -40,7 +41,7 @@ const SIGN_IN_PATH = "/sign-in";
 export async function middleware(req: NextRequest): Promise<NextResponse> {
   const { pathname } = req.nextUrl;
 
-  if (process.env.SIFTY_DISABLE_AUTH === "1") {
+  if (demoFlagEnabled("SIFTY_DISABLE_AUTH")) {
     return NextResponse.next();
   }
 

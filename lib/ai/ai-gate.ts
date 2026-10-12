@@ -1,5 +1,6 @@
 import type { Session } from "@/lib/auth/session";
 import { canRunAi, deriveEntitlement } from "@/lib/entitlements/entitlements";
+import { demoFlagEnabled, isVercelProduction } from "@/lib/env/production-guards";
 import { buildRateLimitKey, consumeToken, rateLimitResponseInit } from "@/lib/ratelimit/limiter";
 import { TRIAGE_POLICY, clientIdFromRequest } from "@/lib/ratelimit/policies";
 import { NextResponse } from "next/server";
@@ -86,8 +87,12 @@ export async function gateAiRequest(args: {
   return { ok: true };
 }
 
-/** AI routes honor the explicit query flag or the keyless-dev environment flag. */
+/**
+ * AI routes honor the explicit query flag or the keyless-dev environment
+ * flag. Both are debug switches and neither works on Vercel production.
+ */
 export function resolveOfflineMode(req: Request): boolean {
+  if (isVercelProduction()) return false;
   const url = new URL(req.url);
-  return url.searchParams.get("offline") === "1" || process.env.SIFTY_AI_OFFLINE === "1";
+  return url.searchParams.get("offline") === "1" || demoFlagEnabled("SIFTY_AI_OFFLINE");
 }

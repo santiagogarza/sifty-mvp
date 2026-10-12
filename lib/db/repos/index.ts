@@ -1,3 +1,5 @@
+import { isVercelProduction } from "@/lib/env/production-guards";
+import { DatabaseNotConfiguredError } from "../client";
 import { type MemoryReposHandle, createMemoryRepos } from "./memory";
 import { createPostgresRepos } from "./pg";
 import type { Repos } from "./types";
@@ -15,7 +17,8 @@ import type { Repos } from "./types";
  *
  * Local dev with no `DATABASE_URL`: falls back to in-memory so the app
  * still runs end-to-end. Routes set the `X-Sifty-Persistence: memory`
- * header so a developer notices when they have not configured a DB.
+ * header so a developer notices when they have not configured a DB. On
+ * Vercel production the fallback is logged as an error on first use.
  */
 
 type Resolved = { repos: Repos; persistence: "postgres" | "memory" };
@@ -53,6 +56,13 @@ function resolved(): Resolved {
 function resolveDefault(): { repos: Repos; persistence: "postgres" | "memory" } {
   const hasUrl = !!process.env.DATABASE_URL;
   if (!hasUrl) {
+    // Allowed in production only so the first deploy can render before Neon
+    // exists; the boot guard and /api/health both flag it.
+    if (isVercelProduction()) {
+      console.error(
+        `[repos] ${new DatabaseNotConfiguredError().message} Using the in-memory store.`,
+      );
+    }
     return { repos: createMemoryRepos(), persistence: "memory" };
   }
   return { repos: createPostgresRepos(), persistence: "postgres" };

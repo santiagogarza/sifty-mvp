@@ -1,4 +1,5 @@
 import type { Repos } from "@/lib/db/repos";
+import { demoFlagEnabled } from "@/lib/env/production-guards";
 import { id as makeId } from "@/lib/utils/ids";
 import { DEFAULT_LABELS, demoMemories, demoTasks, isoDaysAgo } from "./demo-data";
 
@@ -15,7 +16,7 @@ import { DEFAULT_LABELS, demoMemories, demoTasks, isoDaysAgo } from "./demo-data
  */
 
 export function isDemoSeedEnabled(): boolean {
-  return process.env.SIFTY_DEMO_SEED === "1";
+  return demoFlagEnabled("SIFTY_DEMO_SEED");
 }
 
 export async function seedDefaultLabels(
