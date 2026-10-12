@@ -47,6 +47,14 @@ export async function POST(req: Request) {
 
   const repos = getRepos();
   const ent = await repos.entitlements.get(session.user.id);
+  // Server-side twin of the panel's check: a comped user can still be
+  // billed by Stripe, and a second Checkout would open a second subscription.
+  if (ent?.subscriptionActive) {
+    return NextResponse.json(
+      { error: "You already have an active subscription. Manage it from the billing portal." },
+      { status: 409 },
+    );
+  }
   let customerId = ent?.stripeCustomerId ?? null;
 
   try {
