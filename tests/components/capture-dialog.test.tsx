@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { CaptureDialog } from "@/components/tasks/capture-dialog";
 import { useStore } from "@/lib/store/store";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -52,8 +52,32 @@ describe("CaptureDialog draft", () => {
     expect(screen.queryByPlaceholderText(PLACEHOLDER)).toBeNull();
 
     reopen();
-    const textarea = screen.getByPlaceholderText(PLACEHOLDER);
+    const textarea = screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
     expect(textarea).toHaveValue("Call the dentist");
+    expect(useStore.getState().tasks).toHaveLength(0);
+
+    // Picks up where the user left off: focused, caret at the end.
+    await waitFor(() => {
+      expect(textarea).toHaveFocus();
+      expect(textarea.selectionStart).toBe("Call the dentist".length);
+      expect(textarea.selectionEnd).toBe("Call the dentist".length);
+    });
+  });
+
+  it("restores the draft after a click outside the dialog", async () => {
+    const user = userEvent.setup();
+    const { reopen } = renderCapture();
+
+    await user.type(screen.getByPlaceholderText(PLACEHOLDER), "Water the plants");
+    // Radix dismisses on pointer-down outside the content; the overlay is
+    // the only thing outside it that is interactive here.
+    const dialog = screen.getByRole("dialog");
+    const overlay = dialog.previousElementSibling as HTMLElement;
+    await user.click(overlay);
+    expect(screen.queryByPlaceholderText(PLACEHOLDER)).toBeNull();
+
+    reopen();
+    expect(screen.getByPlaceholderText(PLACEHOLDER)).toHaveValue("Water the plants");
     expect(useStore.getState().tasks).toHaveLength(0);
   });
 

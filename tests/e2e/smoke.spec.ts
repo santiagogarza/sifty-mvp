@@ -70,12 +70,19 @@ test.describe("mobile detail sheet", () => {
     await expect(body).toBeVisible();
     const deleteButton = page.getByRole("button", { name: "Delete task" });
 
+    // The footer is pinned below the scroller: Delete is reachable before
+    // any scroll, and it must not move when the body scrolls.
+    await expect(deleteButton).toBeInViewport();
+    const footerTopBefore = (await deleteButton.boundingBox())!.y;
+
     const scrollable = await body.evaluate((el) => el.scrollHeight > el.clientHeight);
     expect(scrollable).toBe(true);
+    await expect(page.getByText("Original capture")).not.toBeInViewport();
 
     await body.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
-    await expect(deleteButton).toBeInViewport();
     await expect(page.getByText("Original capture")).toBeInViewport();
+    await expect(deleteButton).toBeInViewport();
+    expect((await deleteButton.boundingBox())!.y).toBe(footerTopBefore);
   });
 });
 
