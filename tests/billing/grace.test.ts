@@ -225,6 +225,14 @@ describe("paymentProblem", () => {
     });
   });
 
+  it("does not report lapsed while the app trial keeps Pro open", () => {
+    const snapshot = {
+      ...inGrace("cus_t"),
+      trialEndsAt: new Date(AFTER.getTime() + DAY).toISOString(),
+    };
+    expect(paymentProblem(snapshot, false, AFTER)).toBeNull();
+  });
+
   it("clears once the subscription recovers or is cancelled", () => {
     const snapshot = inGrace("cus_c");
     const recovered = applyStripeEvent(snapshot, {

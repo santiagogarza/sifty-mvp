@@ -121,6 +121,7 @@ export function paymentProblem(
   if (isGraceActive(snapshot.graceEndsAt, now)) {
     return { kind: "grace", graceEndsAt: snapshot.graceEndsAt as string };
   }
+  if (isTrialActive(snapshot.trialEndsAt, now)) return null;
   if (snapshot.stripeStatus && DUNNING_STATUSES.has(snapshot.stripeStatus)) {
     return { kind: "lapsed" };
   }
