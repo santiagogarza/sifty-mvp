@@ -1,4 +1,4 @@
-import { deleteAccount } from "@/lib/auth/account";
+import { AccountDeletionError, deleteAccount } from "@/lib/auth/account";
 import { SESSION_COOKIE_NAME, getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
 import { reportError } from "@/lib/observability/report-error";
@@ -42,10 +42,20 @@ export async function DELETE(req: Request) {
   try {
     result = await deleteAccount(getRepos(), session.user.id);
   } catch (err) {
-    reportError(err, { area: "account.delete", userId: session.user.id });
+    const stage = err instanceof AccountDeletionError ? err.stage : "database";
+    reportError(err, { area: "account.delete", userId: session.user.id, tags: { stage } });
+    if (stage === "billing") {
+      return NextResponse.json(
+        { error: "Couldn't cancel billing for this account. Nothing was deleted; try again." },
+        { status: 502 },
+      );
+    }
     return NextResponse.json(
-      { error: "Couldn't cancel billing for this account. Nothing was deleted; try again." },
-      { status: 502 },
+      {
+        error:
+          "Billing was cancelled but the account couldn't be removed. Try again; nothing will be charged.",
+      },
+      { status: 500 },
     );
   }
   if (!result) return NextResponse.json({ error: "Not found" }, { status: 404 });

@@ -212,6 +212,25 @@ describe("DELETE /api/account", () => {
     expect(await repos.tasks.list(a.user.id)).toHaveLength(1);
   });
 
+  it("says so when the database fails after billing was already cancelled", async () => {
+    stripeMock.configured = true;
+    const repos = getTestRepos();
+    const a = await createUserWithCookie(repos, { email: "halfway@example.com" });
+    const ent = await repos.entitlements.get(a.user.id);
+    await repos.entitlements.upsert(a.user.id, { ...ent!, stripeCustomerId: "cus_halfway" });
+    const original = repos.users.delete;
+    repos.users.delete = async () => {
+      throw new Error("connection reset");
+    };
+
+    const res = await deleteFor(a.cookie, { confirmEmail: "halfway@example.com" });
+    repos.users.delete = original;
+    expect(res.status).toBe(500);
+    expect(((await res.json()) as { error: string }).error).toMatch(/Billing was cancelled/);
+    expect(stripeMock.del).toHaveBeenCalledWith("cus_halfway");
+    expect(await repos.users.getById(a.user.id)).not.toBeNull();
+  });
+
   it("treats a customer Stripe already forgot as deleted", async () => {
     stripeMock.configured = true;
     stripeMock.del.mockRejectedValue(

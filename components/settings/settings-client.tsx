@@ -230,7 +230,7 @@ export function SettingsClient({ account }: { account: SettingsAccount }) {
           </Button>
         </div>
         <p className="mt-2 text-[12px] text-[var(--fg-subtle)] max-w-prose">
-          The export is a JSON file with your tasks, labels, memories, task history, and AI runs.
+          The export is a JSON file with your tasks, labels, memories, and AI runs.
         </p>
       </SectionCard>
 

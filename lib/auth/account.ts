@@ -56,18 +56,41 @@ export interface AccountDeletion {
   stripeCustomer: StripeCustomerDeletion | "none";
 }
 
+/** Which step of the deletion failed, so the caller can say what state the account is in. */
+export class AccountDeletionError extends Error {
+  constructor(
+    readonly stage: "billing" | "database",
+    cause: unknown,
+  ) {
+    super(stage === "billing" ? "Stripe customer deletion failed" : "Account row deletion failed", {
+      cause,
+    });
+    this.name = "AccountDeletionError";
+  }
+}
+
 /**
  * Stripe first, then the database: if Stripe refuses, nothing local is
- * touched and the caller can report a retryable failure. Throws on a
- * Stripe error; returns null when the user does not exist.
+ * touched and the caller can report a retryable failure. A database
+ * failure after the Stripe step leaves an account whose billing is already
+ * cancelled; the error says so. Returns null when the user does not exist.
  */
 export async function deleteAccount(repos: Repos, userId: string): Promise<AccountDeletion | null> {
   const user = await repos.users.getById(userId);
   if (!user) return null;
   const entitlement = await repos.entitlements.get(userId);
-  const stripeCustomer = entitlement?.stripeCustomerId
-    ? await deleteStripeCustomer(entitlement.stripeCustomerId, { userId })
-    : "none";
-  await repos.users.delete(userId);
+  let stripeCustomer: AccountDeletion["stripeCustomer"] = "none";
+  if (entitlement?.stripeCustomerId) {
+    try {
+      stripeCustomer = await deleteStripeCustomer(entitlement.stripeCustomerId, { userId });
+    } catch (err) {
+      throw new AccountDeletionError("billing", err);
+    }
+  }
+  try {
+    await repos.users.delete(userId);
+  } catch (err) {
+    throw new AccountDeletionError("database", err);
+  }
   return { stripeCustomer };
 }
