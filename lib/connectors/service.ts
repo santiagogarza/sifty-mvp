@@ -260,9 +260,12 @@ export async function completeConnect(
   const broker = brokerFor(spec);
   const result = await broker.complete({ spec, userId, connection: row, query });
   if (!result.ok) {
-    // A premature or stale hit must not burn the attempt: the row stays
-    // `pending` with its state so the real redirect can still finish it.
-    if (result.stillPending) return { ok: false, code: "not_connected", reason: result.reason };
+    // Only a callback bound to this attempt (matching state) may close it
+    // as failed; a premature, stale, or unbound hit leaves the row
+    // `pending` so the real redirect can still finish it.
+    if (result.stillPending || state !== row.authState) {
+      return { ok: false, code: "not_connected", reason: result.reason };
+    }
     await repos.connections.update(userId, provider, {
       status: "error",
       authState: null,

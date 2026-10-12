@@ -300,6 +300,16 @@ describe("Vercel Connect attempts through the service", () => {
     expect(still?.status).toBe("pending");
     expect(still?.authState).toBe(before?.authState);
 
+    // An unbound `error=` (no state) cannot close the attempt either.
+    const forgedDecline = await completeConnect(
+      user.id,
+      "linear",
+      new URLSearchParams({ error: "access_denied" }),
+      repos,
+    );
+    expect(forgedDecline).toMatchObject({ ok: false, code: "not_connected" });
+    expect((await repos.connections.get(user.id, "linear"))?.status).toBe("pending");
+
     granted = true;
     const done = await completeConnect(
       user.id,
