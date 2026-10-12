@@ -60,6 +60,38 @@ describe("sentry adapter", () => {
     expect(sentry.captureException).toHaveBeenCalledWith(err);
   });
 
+  it("installs query-scrubbing beforeSend/beforeBreadcrumb hooks", () => {
+    vi.stubEnv("SENTRY_DSN", "https://key@o1.ingest.sentry.io/1");
+    adapter.initSentryServer();
+    const options = sentry.init.mock.calls[0]?.[0] as {
+      beforeSend: (e: unknown) => unknown;
+      beforeBreadcrumb: (b: unknown) => unknown;
+    };
+    const sent = options.beforeSend({
+      request: { url: "https://x/reset-password?token=secret" },
+      contexts: { nextjs: { request_path: "/redeem?code=sifty-1" } },
+    });
+    expect(JSON.stringify(sent)).not.toMatch(/secret|code=/);
+    const crumb = options.beforeBreadcrumb({ data: { to: "/sign-in?next=%2Fredeem%3Fcode%3Dz" } });
+    expect(JSON.stringify(crumb)).not.toContain("next=");
+  });
+
+  it("swallows SDK failures instead of propagating them", async () => {
+    vi.stubEnv("SENTRY_DSN", "https://key@o1.ingest.sentry.io/1");
+    sentry.withScope.mockImplementationOnce(() => {
+      throw new Error("sdk down");
+    });
+    expect(() => adapter.captureToSentry(new Error("x"), { area: "test" })).not.toThrow();
+    sentry.captureRequestError.mockImplementationOnce(() => Promise.reject(new Error("sdk down")));
+    await expect(
+      adapter.captureRequestError(
+        new Error("x"),
+        { path: "/x", method: "GET", headers: {} },
+        { routerKind: "App Router", routePath: "/x", routeType: "route" },
+      ),
+    ).resolves.toBeUndefined();
+  });
+
   it("wraps non-Error values before capturing", () => {
     vi.stubEnv("SENTRY_DSN", "https://key@o1.ingest.sentry.io/1");
     adapter.captureToSentry("string failure", { area: "test" });

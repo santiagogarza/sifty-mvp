@@ -1,5 +1,5 @@
+import { Analytics } from "@/components/observability/analytics";
 import { SentryClient } from "@/components/observability/sentry-client";
-import { Analytics } from "@vercel/analytics/next";
 import { SITE_DESCRIPTION, getSiteUrl } from "@/lib/site/config";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";

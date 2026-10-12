@@ -1,7 +1,6 @@
-import { getDb } from "@/lib/db/client";
 import { getPersistenceMode } from "@/lib/db/repos";
 import { findProductionEnvProblems, isVercelProduction } from "@/lib/env/production-guards";
-import { sql } from "drizzle-orm";
+import postgres from "postgres";
 import { isSentryEnabled } from "./sentry";
 
 export interface HealthReport {
@@ -16,7 +15,7 @@ export interface HealthReport {
   ts: string;
 }
 
-const DB_TIMEOUT_MS = 3_000;
+const DB_TIMEOUT_SECONDS = 3;
 
 /**
  * Liveness + readiness in one call, for an external uptime check. Unauthenticated,
@@ -50,12 +49,28 @@ export async function checkHealth(): Promise<HealthReport> {
   };
 }
 
+/**
+ * One dedicated, short-lived connection with a hard connect/query timeout,
+ * so a hung database cannot pin sockets in the shared pool between probes.
+ */
 async function pingDb(): Promise<boolean> {
-  const query = getDb()
-    .execute(sql`select 1`)
-    .then(() => true);
-  const timeout = new Promise<boolean>((resolve) =>
-    setTimeout(() => resolve(false), DB_TIMEOUT_MS).unref?.(),
-  );
-  return Promise.race([query, timeout]).catch(() => false);
+  const url = process.env.DATABASE_URL;
+  if (!url) return false;
+  const client = postgres(url, {
+    max: 1,
+    connect_timeout: DB_TIMEOUT_SECONDS,
+    idle_timeout: 1,
+    prepare: false,
+    onnotice: () => {},
+  });
+  try {
+    const query = client`select 1`.then(() => true);
+    const timeout = new Promise<boolean>((resolve) =>
+      setTimeout(() => resolve(false), DB_TIMEOUT_SECONDS * 1_000).unref?.(),
+    );
+    return await Promise.race([query, timeout]).catch(() => false);
+  } finally {
+    // Tears down the socket even when the query is still pending.
+    void client.end({ timeout: 1 }).catch(() => {});
+  }
 }
