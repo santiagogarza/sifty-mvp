@@ -36,8 +36,24 @@ export const TaskRow = React.forwardRef<
      * puts it back exactly where it was.
      */
     uncompleteTo?: Lifecycle;
+    /** Part of a Shift+click range selection. */
+    selected?: boolean;
+    /** Shift+click handler; when set, Shift+click selects instead of opening. */
+    onRangeSelect?: (id: string) => void;
   }
->(function TaskRow({ task, onOpen, active, labels, tabIndex = -1, uncompleteTo = "active" }, ref) {
+>(function TaskRow(
+  {
+    task,
+    onOpen,
+    active,
+    labels,
+    tabIndex = -1,
+    uncompleteTo = "active",
+    selected = false,
+    onRangeSelect,
+  },
+  ref,
+) {
   const updateTask = useStore((s) => s.updateTask);
 
   const labelMap = React.useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels]);
@@ -66,9 +82,20 @@ export const TaskRow = React.forwardRef<
     <div
       ref={ref}
       role="option"
-      aria-selected={active}
+      aria-selected={active || selected}
+      data-selected={selected || undefined}
       tabIndex={tabIndex}
-      onClick={() => onOpen(task.id)}
+      onClick={(e) => {
+        if (e.shiftKey && onRangeSelect) {
+          onRangeSelect(task.id);
+          return;
+        }
+        onOpen(task.id);
+      }}
+      // Shift+click would otherwise start a text selection across rows.
+      onMouseDown={(e) => {
+        if (e.shiftKey && onRangeSelect) e.preventDefault();
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -82,6 +109,7 @@ export const TaskRow = React.forwardRef<
         "transition-colors duration-150 ease-[var(--ease-product)]",
         "hover:bg-[var(--surface-muted)]",
         active && "bg-[var(--surface-muted)]",
+        selected && "bg-[var(--surface-hover)] shadow-[inset_2px_0_0_var(--accent)]",
       )}
     >
       <button

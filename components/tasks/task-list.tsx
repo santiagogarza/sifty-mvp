@@ -1,8 +1,24 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
+import { toast } from "@/components/ui/toast";
+import { pruneSelection, rangeBetween } from "@/lib/domain/selection";
+import {
+  SNOOZE_KEYS,
+  SNOOZE_LABELS,
+  SNOOZE_PRESETS,
+  type SnoozePreset,
+  describeSnooze,
+  presetForKey,
+  resolveSnooze,
+} from "@/lib/domain/snooze";
+import { statusLabel } from "@/lib/domain/status";
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
+import { cn } from "@/lib/utils/cn";
 import * as React from "react";
+import { StatusIcon } from "./status-icon";
 import { TaskRow } from "./task-row";
 
 /**
@@ -51,6 +67,40 @@ export function TaskList({
 
   const { ghosts, dismissGhost } = useCompletionGhosts(tasks);
 
+  // Range selection (Shift+click). The anchor is the last plainly clicked
+  // or keyboard-active row; selection only ever contains visible ids.
+  const [selectedIds, setSelectedIds] = React.useState<ReadonlySet<string>>(() => new Set());
+  const anchorRef = React.useRef<string | null>(null);
+  const visibleIds = React.useMemo(() => tasks.map((t) => t.id), [tasks]);
+
+  React.useEffect(() => {
+    setSelectedIds((old) => {
+      if (old.size === 0) return old;
+      const pruned = pruneSelection(old, visibleIds);
+      return pruned.size === old.size ? old : pruned;
+    });
+  }, [visibleIds]);
+
+  const clearSelection = React.useCallback(() => {
+    setSelectedIds((old) => (old.size === 0 ? old : new Set()));
+  }, []);
+
+  const selectRangeTo = (targetId: string) => {
+    const anchor = anchorRef.current ?? tasks[activeIndex]?.id ?? null;
+    const range = rangeBetween(visibleIds, anchor, targetId);
+    if (range.length === 0) return;
+    if (!anchorRef.current) anchorRef.current = anchor ?? targetId;
+    setSelectedIds(new Set(range));
+  };
+
+  const openRow = (id: string) => {
+    anchorRef.current = id;
+    clearSelection();
+    onOpen(id);
+  };
+
+  const { pendingSnooze, handleSnoozeKey } = useSnoozeKeys(() => tasks[activeIndex] ?? null);
+
   React.useEffect(() => {
     if (activeIndex >= tasks.length) setActiveIndex(tasks.length - 1);
   }, [tasks.length, activeIndex]);
@@ -94,7 +144,14 @@ export function TaskList({
   }, [activeIndex]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape" && selectedIds.size > 0) {
+      e.preventDefault();
+      clearSelection();
+      return;
+    }
     if (tasks.length === 0) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (handleSnoozeKey(e)) return;
     if (e.key === "ArrowDown" || e.key === "j") {
       e.preventDefault();
       setActiveIndex((i) => Math.min(tasks.length - 1, Math.max(0, i + 1)));
@@ -104,7 +161,7 @@ export function TaskList({
     } else if (e.key === "Enter") {
       e.preventDefault();
       const t = tasks[activeIndex];
-      if (t) onOpen(t.id);
+      if (t) openRow(t.id);
     }
   };
 
@@ -151,12 +208,15 @@ export function TaskList({
       role="listbox"
       tabIndex={0}
       aria-label="Tasks"
+      aria-multiselectable
       onKeyDown={onKeyDown}
       onPointerDown={(e) => {
         if (e.target === e.currentTarget) listRef.current?.focus();
       }}
-      className="flex flex-col rounded-[var(--radius-lg)] focus:outline-none"
+      className="relative flex flex-col rounded-[var(--radius-lg)] focus:outline-none"
     >
+      {selectedIds.size >= 2 ? <BulkBar ids={[...selectedIds]} onClear={clearSelection} /> : null}
+      {pendingSnooze ? <SnoozeHint /> : null}
       {rows.map((row, i) => {
         const divider =
           i < rows.length - 1 ? <div className="ml-9 h-px bg-[var(--border)] opacity-60" /> : null;
@@ -175,7 +235,7 @@ export function TaskList({
                 <TaskRow
                   task={row.task}
                   labels={labels}
-                  onOpen={onOpen}
+                  onOpen={openRow}
                   uncompleteTo={row.restoreTo}
                 />
                 {divider}
@@ -203,8 +263,10 @@ export function TaskList({
               task={row.task}
               labels={labels}
               active={row.navIndex === activeIndex}
+              selected={selectedIds.has(row.task.id)}
               tabIndex={row.navIndex === activeIndex ? 0 : -1}
-              onOpen={onOpen}
+              onOpen={openRow}
+              onRangeSelect={selectRangeTo}
             />
             {divider}
           </div>
@@ -212,6 +274,124 @@ export function TaskList({
       })}
     </div>
   );
+}
+
+/**
+ * Calm bulk bar: appears only with two or more rows selected. One primary
+ * action (Someday — the pile a noisy Inbox most often empties into) and a
+ * way out. The moved tasks leave this view, and the selection with them.
+ */
+function BulkBar({ ids, onClear }: { ids: string[]; onClear: () => void }) {
+  const moveTasksToLifecycle = useStore((s) => s.moveTasksToLifecycle);
+  const target: Lifecycle = "someday";
+  return (
+    <div
+      role="toolbar"
+      aria-label="Bulk actions"
+      data-testid="bulk-bar"
+      className={cn(
+        "sticky top-2 z-10 mb-2 flex items-center justify-between gap-3",
+        "rounded-full border border-[var(--border-strong)] bg-[var(--bg-elevated)]/95 backdrop-blur",
+        "py-1.5 pl-4 pr-1.5 shadow-sm animate-fade-in",
+      )}
+    >
+      <span className="text-[12.5px] text-[var(--fg-muted)]">
+        <span className="text-num text-[var(--fg)]">{ids.length}</span> selected
+      </span>
+      <div className="flex items-center gap-1">
+        <Button
+          size="sm"
+          variant="soft"
+          onClick={() => {
+            const count = ids.length;
+            moveTasksToLifecycle(ids, target);
+            onClear();
+            toast(`Moved ${count} to ${statusLabel(target)}`);
+          }}
+        >
+          <StatusIcon status={target} size={12} />
+          Move to {statusLabel(target)}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onClear}>
+          Clear
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Shown while `s` is pending so the follow-up keys are discoverable. */
+function SnoozeHint() {
+  return (
+    <div
+      role="status"
+      data-testid="snooze-hint"
+      className="mb-2 flex items-center gap-2 px-2.5 text-[12px] text-[var(--fg-muted)] animate-fade-in"
+    >
+      <span>Snooze until</span>
+      {SNOOZE_PRESETS.map((preset) => (
+        <span key={preset} className="inline-flex items-center gap-1">
+          <Kbd>{SNOOZE_KEYS[preset]}</Kbd>
+          {SNOOZE_LABELS[preset]}
+        </span>
+      ))}
+      <span className="text-[var(--fg-subtle)]">· Esc to cancel</span>
+    </div>
+  );
+}
+
+const SNOOZE_SEQUENCE_MS = 2000;
+
+/**
+ * `s` then `t`/`w`: snooze the active row to tomorrow / next Monday without
+ * opening it. Confirms with an undoable toast so a mis-key costs nothing.
+ */
+function useSnoozeKeys(getActiveTask: () => Task | null): {
+  pendingSnooze: boolean;
+  handleSnoozeKey: (e: React.KeyboardEvent) => boolean;
+} {
+  const [pending, setPending] = React.useState(false);
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancel = React.useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
+    setPending(false);
+  }, []);
+
+  React.useEffect(() => cancel, [cancel]);
+
+  const handleSnoozeKey = (e: React.KeyboardEvent): boolean => {
+    if (pending) {
+      cancel();
+      const preset = presetForKey(e.key);
+      if (!preset) return e.key === "Escape";
+      e.preventDefault();
+      const task = getActiveTask();
+      if (task) snoozeTask(task, preset);
+      return true;
+    }
+    if (e.key !== "s" || !getActiveTask()) return false;
+    e.preventDefault();
+    setPending(true);
+    timerRef.current = setTimeout(() => setPending(false), SNOOZE_SEQUENCE_MS);
+    return true;
+  };
+
+  return { pendingSnooze: pending, handleSnoozeKey };
+}
+
+export function snoozeTask(task: Task, preset: SnoozePreset): void {
+  const { updateTask } = useStore.getState();
+  const previousDue = task.due;
+  const due = resolveSnooze(preset);
+  updateTask(task.id, { due }, { editedFields: ["due"] });
+  toast(`Snoozed until ${describeSnooze(preset)}`, {
+    action: {
+      label: "Undo",
+      run: () => updateTask(task.id, { due: previousDue }, { editedFields: ["due"] }),
+    },
+  });
 }
 
 interface CompletionGhost {

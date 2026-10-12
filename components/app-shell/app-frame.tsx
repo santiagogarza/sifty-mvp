@@ -2,6 +2,7 @@
 
 import { CaptureDialog } from "@/components/tasks/capture-dialog";
 import { TaskDetailSheet } from "@/components/tasks/task-detail-sheet";
+import { Toaster } from "@/components/ui/toast";
 import { useServerSync } from "@/lib/store/sync";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
@@ -82,6 +83,7 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} onCapture={openCapture} />
       <TaskDetailSheet taskId={detailTaskId} onClose={closeDetail} />
       <GlobalKeyboard onCapture={openCapture} onCommand={openCommand} />
+      <Toaster />
       <SyncNotice error={sync.hydrated ? sync.error : null} rejected={sync.rejected} />
     </FrameContext.Provider>
   );

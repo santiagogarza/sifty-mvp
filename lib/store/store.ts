@@ -6,6 +6,7 @@ import {
   normalizeModelPreference,
 } from "@/lib/ai/models";
 import { normalizeAssigneeName } from "@/lib/domain/assignee";
+import { TASK_LIMITS } from "@/lib/domain/limits";
 import { bucketFromScalars } from "@/lib/domain/priority";
 import { mergeTriageIntoTask } from "@/lib/domain/triage-merge";
 import {
@@ -94,6 +95,15 @@ interface SiftyState {
     opts?: { editedFields?: TaskEditableField[] },
   ) => void;
   deleteTask: (id: string) => void;
+  /**
+   * Copy a task's content into a new task (same create path as `createTask`
+   * so sync picks it up). Subtasks reset to not done with fresh ids; due,
+   * completion, AI history, and the agent brief are not copied. Returns
+   * the copy, or null when the source is gone.
+   */
+  duplicateTask: (id: string) => Task | null;
+  /** Patch several tasks' status in one go, each through `updateTask`. */
+  moveTasksToLifecycle: (ids: readonly string[], lifecycle: Lifecycle) => void;
   toggleSubtask: (taskId: string, subtaskId: string) => void;
   addSubtask: (taskId: string, title: string) => void;
   removeSubtask: (taskId: string, subtaskId: string) => void;
@@ -267,6 +277,65 @@ export const useStore = create<SiftyState>()(
         deleteTask: (id) => {
           set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) }));
           syncHooks?.taskDeleted(id);
+        },
+
+        duplicateTask: (sourceId) => {
+          const source = findTask(sourceId);
+          if (!source) return null;
+          const now = new Date().toISOString();
+          const title = `${source.title} (copy)`.slice(0, TASK_LIMITS.title);
+          // A finished or dropped original is new work again: it lands in
+          // the Inbox so the filing strip offers where it goes next.
+          const lifecycle: Lifecycle =
+            source.lifecycle === "done" || source.lifecycle === "dropped"
+              ? "inbox"
+              : source.lifecycle;
+          const copy: Task = {
+            id: id("task"),
+            sourceText: source.sourceText,
+            sourceContext: source.sourceContext,
+            title,
+            description: source.description,
+            nextAction: source.nextAction,
+            lifecycle,
+            // Content is already organized; nothing to resume. Idle keeps the
+            // copy out of the stale-triage recovery sweep.
+            aiStatus: source.aiStatus === "ready" ? "ready" : "idle",
+            aiError: null,
+            aiAttempts: 0,
+            urgency: source.urgency,
+            importance: source.importance,
+            priorityBucket: source.priorityBucket,
+            effort: source.effort,
+            due: null,
+            delegationCandidate: source.delegationCandidate,
+            assigneeName: source.assigneeName,
+            confidence: 0,
+            clarifyingQuestion: null,
+            rationale: null,
+            agentBrief: null,
+            labelIds: [...source.labelIds],
+            subtasks: source.subtasks.map((st) => ({
+              id: id("st"),
+              title: st.title,
+              done: false,
+              order: st.order,
+            })),
+            editedFields: [...source.editedFields],
+            createdAt: now,
+            updatedAt: now,
+            completedAt: null,
+          };
+          set((s) => ({ tasks: [copy, ...s.tasks] }));
+          syncHooks?.taskUpserted(copy, { created: true });
+          return copy;
+        },
+
+        moveTasksToLifecycle: (ids, lifecycle) => {
+          const { updateTask } = get();
+          for (const taskId of ids) {
+            if (findTask(taskId)) updateTask(taskId, { lifecycle });
+          }
         },
 
         toggleSubtask: (taskId, subtaskId) => {
