@@ -100,6 +100,8 @@ const WEEKDAY_ABBR_RE = "(?:sun|mon|tues?|wed|thu(?:rs?)?|fri|sat)";
 const MONTH_RE =
   "(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)";
 const ORD = "(?:st|nd|rd|th)?";
+/** "tomorrow's standup" names a meeting, not a deadline. */
+const NOT_POSSESSIVE = "(?!['\u2019]s\\b)";
 const TIME_RE =
   "(?:(?:at\\s+)?(?:(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)|(\\d{1,2}):(\\d{2})|(noon|midday|midnight))|(morning|afternoon|evening|night))";
 
@@ -110,20 +112,28 @@ interface Rule {
 
 const RULES: Rule[] = [
   {
-    re: new RegExp(`\\b${PREP}(?:the\\s+)?day after tomorrow\\b`, "gi"),
+    re: new RegExp(`\\b${PREP}(?:the\\s+)?day after tomorrow\\b${NOT_POSSESSIVE}`, "gi"),
     resolve: (_m, today) => addDays(today, 2),
   },
   {
-    re: new RegExp(`\\b${PREP}(?:tomorrow|tmrw|tmr)\\b`, "gi"),
+    re: new RegExp(`\\b${PREP}(?:tomorrow|tmrw|tmr)\\b${NOT_POSSESSIVE}`, "gi"),
     resolve: (_m, today) => addDays(today, 1),
   },
-  { re: new RegExp(`\\b${PREP}(?:today|tonight)\\b`, "gi"), resolve: (_m, today) => today },
   {
-    re: new RegExp(`\\b${PREP}this weekend\\b`, "gi"),
-    resolve: (_m, today) => nextWeekday(today, 6, { allowToday: true }),
+    re: new RegExp(`\\b${PREP}(?:today|tonight)\\b${NOT_POSSESSIVE}`, "gi"),
+    resolve: (_m, today) => today,
   },
   {
-    re: new RegExp(`\\b${PREP}(?:end of (?:the |this )?(week|month|year)|(eow|eom|eoy))\\b`, "gi"),
+    re: new RegExp(`\\b${PREP}this weekend\\b${NOT_POSSESSIVE}`, "gi"),
+    // Saturday or Sunday: the weekend is already here.
+    resolve: (_m, today) =>
+      today.getDay() === 0 ? today : nextWeekday(today, 6, { allowToday: true }),
+  },
+  {
+    re: new RegExp(
+      `\\b${PREP}(?:end of (?:the |this )?(week|month|year)|(eow|eom|eoy))\\b${NOT_POSSESSIVE}`,
+      "gi",
+    ),
     resolve: (m, today) => {
       const unit = (m[1] ?? m[2] ?? "").toLowerCase();
       if (unit === "week" || unit === "eow") return endOfWorkWeek(today);
@@ -134,11 +144,11 @@ const RULES: Rule[] = [
     },
   },
   {
-    re: new RegExp(`\\b${PREP}next week\\b`, "gi"),
+    re: new RegExp(`\\b${PREP}next week\\b${NOT_POSSESSIVE}`, "gi"),
     resolve: (_m, today) => nextWeekday(today, 1, { allowToday: false }),
   },
   {
-    re: new RegExp(`\\b${PREP}next month\\b`, "gi"),
+    re: new RegExp(`\\b${PREP}next month\\b${NOT_POSSESSIVE}`, "gi"),
     resolve: (_m, today) => new Date(today.getFullYear(), today.getMonth() + 1, 1),
   },
   {
@@ -157,7 +167,10 @@ const RULES: Rule[] = [
     },
   },
   {
-    re: new RegExp(`\\b${PREP}next\\s+(${WEEKDAY_FULL}|${WEEKDAY_ABBR_RE})\\b(?!'s)`, "gi"),
+    re: new RegExp(
+      `\\b${PREP}next\\s+(${WEEKDAY_FULL}|${WEEKDAY_ABBR_RE})\\b${NOT_POSSESSIVE}`,
+      "gi",
+    ),
     resolve: (m, today) => {
       const weekday = weekdayIndex(m[1]!);
       if (weekday === null) return null;
@@ -168,7 +181,7 @@ const RULES: Rule[] = [
     },
   },
   {
-    re: new RegExp(`\\b${PREP}(?:this\\s+)?(${WEEKDAY_FULL})\\b(?!'s)`, "gi"),
+    re: new RegExp(`\\b${PREP}(?:this\\s+)?(${WEEKDAY_FULL})\\b${NOT_POSSESSIVE}`, "gi"),
     resolve: (m, today) => {
       const weekday = weekdayIndex(m[1]!);
       return weekday === null ? null : nextWeekday(today, weekday, { allowToday: true });
@@ -178,7 +191,7 @@ const RULES: Rule[] = [
     // Abbreviations are everyday words too ("sat down", "mon ami"), so they
     // only count after a preposition or "this".
     re: new RegExp(
-      `\\b(?:by|on|before|until|till|due|due by|due on|this)\\s+(${WEEKDAY_ABBR_RE})\\b(?!'s)`,
+      `\\b(?:by|on|before|until|till|due|due by|due on|this)\\s+(${WEEKDAY_ABBR_RE})\\b${NOT_POSSESSIVE}`,
       "gi",
     ),
     resolve: (m, today) => {
@@ -192,7 +205,7 @@ const RULES: Rule[] = [
   },
   {
     re: new RegExp(
-      `\\b${PREP}(\\d{1,2})${ORD}\\s+(?:of\\s+)?(${MONTH_RE})\\b(?:,?\\s+(\\d{4}))?`,
+      `\\b${PREP}(?:the\\s+)?(\\d{1,2})${ORD}\\s+(?:of\\s+)?(${MONTH_RE})\\b(?:,?\\s+(\\d{4}))?`,
       "gi",
     ),
     resolve: (m, today) => monthDay(today, m[2]!, m[1]!, m[3]),
@@ -210,7 +223,9 @@ const RULES: Rule[] = [
       const tail = text.slice(m.index + m[0].length);
       if (
         !hasPrep &&
-        !/^(?:\s*$|\s*[,.;!?)]|\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm))/i.test(tail)
+        !/^(?:\s*$|\s*[,.;!?)]|\s+(?:at\s+)?(?:\d{1,2}(?::\d{2})?\s*(?:am|pm)|\d{1,2}:\d{2}|noon|midday|midnight)\b)/i.test(
+          tail,
+        )
       ) {
         return null;
       }
@@ -225,7 +240,7 @@ const RULES: Rule[] = [
   },
   {
     re: new RegExp(
-      `\\b(?:by|on|before|until|till|due|due by|due on)\\s+the\\s+(\\d{1,2})${ORD}\\b`,
+      `\\b(?:by|on|before|until|till|due|due by|due on)\\s+the\\s+(\\d{1,2})${ORD}\\b(?!\\s+(?:of\\s+)?${MONTH_RE}\\b)`,
       "gi",
     ),
     resolve: (m, today) => {
@@ -259,7 +274,9 @@ export function parseNaturalDate(text: string, now: Date = new Date()): NlDateMa
         if (
           !best ||
           (prioritized && !best.prioritized) ||
-          (prioritized === best.prioritized && candidate.start < best.match.start)
+          (prioritized === best.prioritized &&
+            (candidate.start < best.match.start ||
+              (candidate.start === best.match.start && candidate.end > best.match.end)))
         ) {
           best = { match: candidate, prioritized };
         }

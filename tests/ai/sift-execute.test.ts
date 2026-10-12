@@ -142,6 +142,7 @@ describe("sift steps (offline)", () => {
     const enriched = await repos.tasks.get(user.id, task.id);
     expect(enriched?.due).toBe("2026-12-24");
     expect(enriched?.title).toBe("Draft the investor update and send it to the board");
+    expect(enriched?.nextAction).not.toMatch(/friday/i);
     expect(enriched?.editedFields).toEqual(["due"]);
   });
 

@@ -73,12 +73,43 @@ describe("parseNaturalDate: relative words", () => {
     expect(due("Invoice end of month", at(2026, 10, 31))).toBe("2026-10-31");
   });
 
+  it("this weekend on a weekend day is today", () => {
+    expect(due("Clean the garage this weekend", at(2026, 10, 17))).toBe("2026-10-17"); // Saturday
+    expect(due("Clean the garage this weekend", at(2026, 10, 18))).toBe("2026-10-18"); // Sunday
+  });
+
+  it("end of year abbreviates too", () => {
+    expect(due("Taxes by eoy", now)).toBe("2026-12-31");
+  });
+
   it("returns null when nothing reads as a date", () => {
     expect(parseNaturalDate("Buy flowers for mom", now)).toBeNull();
     expect(parseNaturalDate("Read the Monday's-child poem", now)).toBeNull();
     expect(parseNaturalDate("I sat with Bob and we talked", now)).toBeNull();
     expect(parseNaturalDate("Buy 1/2 lb of coffee", now)).toBeNull();
     expect(parseNaturalDate("", now)).toBeNull();
+  });
+
+  it("possessives name a thing, not a deadline", () => {
+    for (const text of [
+      "Prep for tomorrow's standup",
+      "Prep for tomorrow’s standup",
+      "Read today's digest",
+      "Plan next week's menu",
+      "Review next month's budget",
+      "Pack for this weekend's trip",
+      "Summarize end of month's numbers",
+      "Book next Friday's room",
+      "Check Monday's notes",
+    ]) {
+      expect(parseNaturalDate(text, now), text).toBeNull();
+    }
+    // …but a real deadline next to a possessive still parses, and strips cleanly.
+    const m = parseNaturalDate("Prep for tomorrow's standup by Friday", now)!;
+    expect(m.text).toBe("by Friday");
+    expect(stripMatch("Prep for tomorrow's standup by Friday", m)).toBe(
+      "Prep for tomorrow's standup",
+    );
   });
 });
 
@@ -122,6 +153,17 @@ describe("parseNaturalDate: explicit dates", () => {
     expect(due("Taxes sept. 3", now)).toBe("2027-09-03");
   });
 
+  it("the Nth of a month is the whole phrase, not a bare ordinal", () => {
+    const m = parseNaturalDate("Pay rent on the 15th of November", now)!;
+    expect(m.due).toBe("2026-11-15");
+    expect(m.text).toBe("on the 15th of November");
+    expect(stripMatch("Pay rent on the 15th of November", m)).toBe("Pay rent");
+    expect(parseNaturalDate("Pay rent by the 1st of December", now)).toMatchObject({
+      due: "2026-12-01",
+      text: "by the 1st of December",
+    });
+  });
+
   it("rolls a passed month-day to next year", () => {
     expect(due("Birthday card Jan 5", now)).toBe("2027-01-05");
     expect(due("Birthday card 10/1", now)).toBe("2027-10-01");
@@ -130,6 +172,15 @@ describe("parseNaturalDate: explicit dates", () => {
   it("slash and ISO dates", () => {
     expect(due("Submit 10/20", now)).toBe("2026-10-20");
     expect(due("Submit by 10/20 at 5pm", now)).toBe("2026-10-20");
+    expect(parseNaturalDate("Submit 10/20 at 15:00", now)).toMatchObject({
+      due: "2026-10-20",
+      time: "15:00",
+      text: "10/20 at 15:00",
+    });
+    expect(parseNaturalDate("Submit 10/20 at noon", now)).toMatchObject({
+      due: "2026-10-20",
+      time: "noon",
+    });
     expect(due("Submit 12/3/26", now)).toBe("2026-12-03");
     expect(due("Submit 2026-11-02", now)).toBe("2026-11-02");
     expect(parseNaturalDate("Submit 13/40", now)).toBeNull();

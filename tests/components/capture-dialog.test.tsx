@@ -184,6 +184,19 @@ describe("CaptureDialog natural-language due date", () => {
     expect(task.title).toBe("Send the report by Friday please");
   });
 
+  it("a removed chip stays removed with the draft across Escape and reopen", async () => {
+    const user = userEvent.setup();
+    const { reopen } = renderCapture();
+
+    await user.type(screen.getByPlaceholderText(PLACEHOLDER), "Send the report by Friday");
+    await user.click(screen.getByRole("button", { name: "Remove due date" }));
+    await user.keyboard("{Escape}");
+
+    reopen();
+    expect(screen.getByPlaceholderText(PLACEHOLDER)).toHaveValue("Send the report by Friday");
+    expect(screen.queryByTestId("capture-due-chip")).toBeNull();
+  });
+
   it("a removed chip comes back once the phrase leaves the text and a date is typed again", async () => {
     const user = userEvent.setup();
     renderCapture();

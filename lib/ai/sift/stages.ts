@@ -128,9 +128,9 @@ function userSetDue(t: Task): boolean {
 }
 
 /**
- * Offline stand-in for the model's "leave the date out of the title": the
- * capture chip already stripped the phrase from the provisional title, so
- * that title is the cleanest text available.
+ * Offline stand-in for the model's "leave the date out": the capture chip
+ * already stripped the phrase from the provisional title, so that title is
+ * the cleanest text available.
  */
 function titleWithoutDate(t: Task): string {
   return t.title.trim() || t.sourceText.trim();
@@ -202,9 +202,13 @@ For the task, produce:
         .filter(Boolean)
         .join("\n"),
     offline: (ctx) => {
-      const h = offlineBase(ctx);
+      // With a user-set due, the heuristic reads the date-free title so
+      // neither the title nor the next action restates the date phrase.
+      const h = userSetDue(ctx.task)
+        ? offlineBase({ ...ctx, task: { ...ctx.task, sourceText: titleWithoutDate(ctx.task) } })
+        : offlineBase(ctx);
       return {
-        title: userSetDue(ctx.task) ? titleWithoutDate(ctx.task) : h.title,
+        title: h.title,
         description: h.description,
         nextAction: h.nextAction,
         dueHint: h.dueHint,
