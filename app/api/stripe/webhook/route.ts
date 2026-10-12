@@ -124,16 +124,17 @@ async function processEvent(
   });
 
   // Dunning mail only when the failure actually put a live subscription into
-  // dunning: never for the creator, and never for leftover retries on a
-  // subscription that already ended (the reducer leaves those untouched).
-  if (reducible.type === "invoice.payment_failed" && !noop) {
+  // dunning: never for leftover retries on a subscription that already ended
+  // (the reducer leaves those untouched), and never for creator or comped
+  // accounts, whose access does not depend on the card — the same rule the
+  // in-app banner follows (`paymentProblem`).
+  const nagged = next.tier !== "creator" && next.tier !== "comped";
+  if (reducible.type === "invoice.payment_failed" && !noop && nagged) {
     await sendPaymentFailedEmail({
       user,
       invoice: reducible.data.object as StripeInvoiceLike,
       graceEndsAt: isGraceActive(next.graceEndsAt, at) ? next.graceEndsAt : null,
-      // Comped users keep Pro through the comp; everyone else has it only
-      // while the window is open.
-      accessPaused: next.tier !== "pro" && next.tier !== "comped",
+      accessPaused: next.tier !== "pro",
       eventId: event.id,
     });
   }
