@@ -329,14 +329,23 @@ describe("memory proposals in the Decisions inbox", () => {
 });
 
 describe("describeWaiting", () => {
-  it("names questions and proposals separately", async () => {
-    const { describeWaiting } = await import("@/lib/decisions/copy");
-    expect(describeWaiting(1, 0)).toBe(
+  it("names approvals, questions, and proposals separately", async () => {
+    const { describeWaiting, EMPTY_WAITING_LINE } = await import("@/lib/decisions/copy");
+    expect(describeWaiting({ clarifying_question: 1 })).toBe(
       "One question Sifty could not answer on its own. One tap each, or let it decide.",
     );
-    expect(describeWaiting(0, 1)).toBe("One thing Sifty noticed about you. Remember it, or not.");
-    expect(describeWaiting(2, 3)).toBe(
+    expect(describeWaiting({ memory_proposal: 1 })).toBe(
+      "One thing Sifty noticed about you. Remember it, or not.",
+    );
+    expect(describeWaiting({ clarifying_question: 2, memory_proposal: 3 })).toBe(
       "2 questions Sifty could not answer on its own, and 3 things Sifty noticed about you. One tap each.",
     );
+    expect(describeWaiting({ approval: 1 })).toBe(
+      "One piece of work waiting for your go-ahead. Approve, edit, or reject.",
+    );
+    expect(describeWaiting({ approval: 1, draft_review: 1, clarifying_question: 1 })).toBe(
+      "2 pieces of work waiting for your go-ahead, and one question Sifty could not answer on its own. One tap each.",
+    );
+    expect(describeWaiting({})).toBe(EMPTY_WAITING_LINE);
   });
 });

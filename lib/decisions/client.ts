@@ -1,7 +1,16 @@
 "use client";
 
 import { watchSift } from "@/lib/ai/run-triage";
-import type { Decision, DecisionAnswer, Memory, Task } from "@/lib/domain/types";
+import type {
+  Decision,
+  DecisionAnswer,
+  DecisionKind,
+  Execution,
+  ExecutionDraft,
+  Memory,
+  Task,
+} from "@/lib/domain/types";
+import { APPROVE_OPTION } from "@/lib/executions/copy";
 import { useStore } from "@/lib/store/store";
 import { create } from "zustand";
 
@@ -27,7 +36,18 @@ export interface DecisionsResponse {
   decisions: Decision[];
   tasks: DecisionTaskSummary[];
   count: number;
+  byKind?: Partial<Record<DecisionKind, number>>;
 }
+
+/** What the server did to the execution behind an approval or a draft review. */
+export interface ExecutionOutcome {
+  execution: Execution | null;
+  mode: string;
+}
+
+export type AnswerOutcome =
+  | { ok: true; mode: string; execution: ExecutionOutcome | null }
+  | { ok: false; error: string };
 
 interface DecisionsState {
   decisions: Decision[];
@@ -45,9 +65,15 @@ interface DecisionsState {
   refresh: () => Promise<{ ok: boolean }>;
   answer: (
     id: string,
-    answer: Pick<DecisionAnswer, "text" | "option">,
-  ) => Promise<{ ok: true; mode: string } | { ok: false; error: string }>;
+    answer: Pick<DecisionAnswer, "text" | "option"> & { draft?: ExecutionDraft | null },
+  ) => Promise<AnswerOutcome>;
   dismiss: (id: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /**
+   * Batch approve: one request per decision, in order, so a failure in
+   * the middle leaves the rest open rather than half-applied. Returns what
+   * happened to each.
+   */
+  approveMany: (ids: string[]) => Promise<Array<{ id: string; result: AnswerOutcome }>>;
 }
 
 let inFlight: Promise<{ ok: boolean }> | null = null;
@@ -113,6 +139,7 @@ export const useDecisionsStore = create<DecisionsState>()((set, get) => ({
       body: JSON.stringify({
         text: answer.text ?? undefined,
         option: answer.option ?? undefined,
+        draft: answer.draft ? { title: answer.draft.title, body: answer.draft.body } : undefined,
         modelPreference: useStore.getState().modelPreference,
       }),
     });
@@ -121,6 +148,7 @@ export const useDecisionsStore = create<DecisionsState>()((set, get) => ({
       mode?: string;
       task?: Task | null;
       memory?: Memory | null;
+      execution?: ExecutionOutcome | null;
     } | null;
     if (!res.ok) {
       // 409: someone (another tab, a link) got there first — drop it locally.
@@ -130,7 +158,16 @@ export const useDecisionsStore = create<DecisionsState>()((set, get) => ({
     removeLocally(set, get, id);
     adoptTask(body?.task ?? null);
     adoptMemory(body?.memory ?? null);
-    return { ok: true, mode: body?.mode ?? "recorded" };
+    announceExecutionChange(body?.execution ?? null);
+    return { ok: true, mode: body?.mode ?? "recorded", execution: body?.execution ?? null };
+  },
+
+  async approveMany(ids) {
+    const results: Array<{ id: string; result: AnswerOutcome }> = [];
+    for (const id of ids) {
+      results.push({ id, result: await get().answer(id, { text: null, option: APPROVE_OPTION }) });
+    }
+    return results;
   },
 
   async dismiss(id) {
@@ -141,6 +178,7 @@ export const useDecisionsStore = create<DecisionsState>()((set, get) => ({
     const body = (await res.json().catch(() => null)) as {
       error?: string;
       task?: Task | null;
+      execution?: ExecutionOutcome | null;
     } | null;
     if (!res.ok) {
       if (res.status === 409 || res.status === 404) removeLocally(set, get, id);
@@ -148,9 +186,31 @@ export const useDecisionsStore = create<DecisionsState>()((set, get) => ({
     }
     removeLocally(set, get, id);
     adoptTask(body?.task ?? null);
+    announceExecutionChange(body?.execution ?? null);
     return { ok: true };
   },
 }));
+
+/**
+ * Fired on `window` when an answer moved an execution, so the task sheet's
+ * execution panel refreshes without a dependency between the two stores.
+ */
+export const EXECUTION_CHANGED_EVENT = "sifty:execution-changed";
+
+function announceExecutionChange(outcome: ExecutionOutcome | null): void {
+  if (!outcome?.execution || typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(EXECUTION_CHANGED_EVENT, {
+      detail: { taskId: outcome.execution.taskId, executionId: outcome.execution.id },
+    }),
+  );
+}
+
+/** Decisions a batch approve may take: plain gates and draft reviews. */
+export function isApprovable(decision: Decision): boolean {
+  if (decision.payload.kind === "draft_review") return true;
+  return decision.payload.kind === "approval" && decision.payload.reason === "ask_first";
+}
 
 function removeLocally(
   set: (partial: Partial<DecisionsState>) => void,

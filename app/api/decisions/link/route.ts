@@ -2,7 +2,9 @@ import { gateAiRequestByIp, resolveOfflineMode } from "@/lib/ai/ai-gate";
 import { type Session, getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
 import { answerDecision, dismissDecision } from "@/lib/decisions/actions";
+import { confirmCopy } from "@/lib/decisions/copy";
 import { type DecisionLinkClaims, verifyDecisionLinkToken } from "@/lib/decisions/links";
+import type { DecisionKind } from "@/lib/domain/types";
 import { getSiteUrl } from "@/lib/site/config";
 import { NextResponse } from "next/server";
 
@@ -36,7 +38,8 @@ export async function GET(req: Request) {
   if (refused) return refused;
 
   if (claims.link.action === "open") return redirect(openPath(claims));
-  return confirmPage(token ?? "", claims);
+  const decision = await getRepos().decisions.get(claims.userId, claims.decisionId);
+  return confirmPage(token ?? "", claims, decision?.kind ?? null);
 }
 
 export async function POST(req: Request) {
@@ -57,9 +60,8 @@ export async function POST(req: Request) {
 
   if (claims.link.action === "dismiss") {
     const result = await dismissDecision({ userId: actor.user.id, decisionId: claims.decisionId });
-    return redirect(
-      result.ok ? "/decisions?link=dismissed" : `/decisions?link=${linkFailure(result.reason)}`,
-    );
+    if (!result.ok) return redirect(`/decisions?link=${linkFailure(result.reason)}`);
+    return redirect(`/decisions?link=${result.execution ? "rejected" : "dismissed"}`);
   }
 
   // Answering may start a sift when no run is waiting, so it shares the AI
@@ -75,9 +77,24 @@ export async function POST(req: Request) {
     modelPreference: null,
     offline: resolveOfflineMode(req),
   });
-  return redirect(
-    result.ok ? "/decisions?link=answered" : `/decisions?link=${linkFailure(result.reason)}`,
-  );
+  if (!result.ok) return redirect(`/decisions?link=${linkFailure(result.reason)}`);
+  return redirect(`/decisions?link=${linkOutcome(result.execution?.mode)}`);
+}
+
+/** Query value for the inbox toast after an execution decision taken by link. */
+function linkOutcome(mode: string | undefined): string {
+  switch (mode) {
+    case "approved":
+    case "accepted":
+    case "edited":
+      return "approved";
+    case "rejected":
+      return "rejected";
+    case "stale":
+      return "gone";
+    default:
+      return "answered";
+  }
 }
 
 async function refuseForeignSession(
@@ -112,13 +129,13 @@ function redirect(path: string): NextResponse {
  * script, styled inline so it renders in any webview. The token travels in
  * the form body, never in a URL a scanner could follow.
  */
-function confirmPage(token: string, claims: DecisionLinkClaims): NextResponse {
+function confirmPage(
+  token: string,
+  claims: DecisionLinkClaims,
+  kind: DecisionKind | null,
+): NextResponse {
   const link = claims.link;
-  const label = link.action === "answer" ? `Answer “${link.option}”` : "Let Sifty decide";
-  const question =
-    link.action === "answer"
-      ? "Send this answer to Sifty?"
-      : "Skip this question and keep Sifty’s own read of the task?";
+  const { label, question } = confirmCopy(link, kind);
   const html = `<!doctype html>
 <html lang="en">
 <head>

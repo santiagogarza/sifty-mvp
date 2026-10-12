@@ -1,6 +1,6 @@
 import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
-import { listOpen } from "@/lib/decisions/service";
+import { countByKind, listOpen } from "@/lib/decisions/service";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -39,5 +39,5 @@ export async function GET(req: Request) {
           ]
         : [],
   );
-  return NextResponse.json({ decisions, tasks, count });
+  return NextResponse.json({ decisions, tasks, count, byKind: countByKind(decisions) });
 }
