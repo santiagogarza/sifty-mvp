@@ -35,6 +35,12 @@ export async function runStage<S extends SiftStage>(
   const start = Date.now();
 
   if (opts.offline) {
+    // The heuristic answers in microseconds; demos and keyless dev can pace
+    // the stages so the per-stage status is visible. Inert online.
+    const pace = Number(process.env.SIFTY_SIFT_STAGE_DELAY_MS ?? 0);
+    if (Number.isFinite(pace) && pace > 0) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(pace, 10_000)));
+    }
     const output = def.schema.parse(def.offline(ctx));
     return {
       output,
