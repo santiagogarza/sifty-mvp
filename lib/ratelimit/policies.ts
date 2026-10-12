@@ -40,6 +40,18 @@ export const STRIPE_USER_POLICY: RateLimitConfig = {
 };
 
 /**
+ * Invite-code redemption. Codes carry ~117 bits of entropy so guessing is
+ * hopeless anyway; this cap exists so a scripted client cannot turn the
+ * endpoint into a hashing treadmill.
+ */
+export const REDEEM_POLICY: RateLimitConfig = {
+  get capacity() {
+    return Number(process.env.RATELIMIT_REDEEM_PER_MIN ?? 5);
+  },
+  windowMs: 60_000,
+};
+
+/**
  * Best-effort client identifier. In production behind Vercel, the rightmost
  * value of `x-forwarded-for` is the proxy and we want the first.
  */

@@ -108,13 +108,13 @@ async function processEvent(
     );
   }
 
-  const current = (await repos.entitlements.get(userId)) ?? {
-    ...emptySnapshot(),
-    stripeCustomerId: customerId,
-  };
-
-  const next = applyStripeEvent(current, event as unknown as ReducibleEvent);
-  await repos.entitlements.upsert(userId, { ...next, stripeCustomerId: customerId });
+  // Locked read-modify-write: an invite redemption or checkout committing
+  // concurrently is seen by the reducer instead of being overwritten.
+  await repos.entitlements.update(userId, (current) => {
+    const base = current ?? { ...emptySnapshot(), stripeCustomerId: customerId };
+    const next = applyStripeEvent(base, event as unknown as ReducibleEvent);
+    return { ...next, stripeCustomerId: customerId };
+  });
 }
 
 function extractCustomerId(event: Stripe.Event): string | null {

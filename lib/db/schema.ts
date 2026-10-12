@@ -247,6 +247,52 @@ export const stripeEvents = pgTable("stripe_events", {
   receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Invite codes grant `comped` (Pro without Stripe). Only the SHA-256 of
+ * `INVITE_CODE_PEPPER` + code is stored; the plaintext is shown once when
+ * minted. Revocation is a timestamp so the audit trail keeps the row.
+ */
+export const inviteCodes = pgTable(
+  "invite_codes",
+  {
+    id: text("id").primaryKey(),
+    codeHash: text("code_hash").notNull(),
+    grants: text("grants", { enum: ["pro"] })
+      .notNull()
+      .default("pro"),
+    /** Months of comp per redemption; null = forever. */
+    durationMonths: integer("duration_months"),
+    maxRedemptions: integer("max_redemptions").notNull().default(1),
+    redemptionCount: integer("redemption_count").notNull().default(0),
+    /** Last moment the code can be redeemed; null = no deadline. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    note: text("note"),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("invite_codes_hash_idx").on(t.codeHash)],
+);
+
+export const inviteRedemptions = pgTable(
+  "invite_redemptions",
+  {
+    id: text("id").primaryKey(),
+    codeId: text("code_id")
+      .notNull()
+      .references(() => inviteCodes.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Comp end granted by this redemption; null = forever. */
+    compedUntil: timestamp("comped_until", { withTimezone: true }),
+    redeemedAt: timestamp("redeemed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("invite_redemptions_code_user_idx").on(t.codeId, t.userId),
+    index("invite_redemptions_user_idx").on(t.userId),
+  ],
+);
+
 export type DbUser = typeof users.$inferSelect;
 export type DbEntitlement = typeof entitlements.$inferSelect;
 export type DbTask = typeof tasks.$inferSelect;

@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { safeNextPath } from "@/lib/auth/safe-next";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
@@ -39,7 +40,7 @@ export function AuthForm({ mode, next }: AuthFormProps) {
         setPending(false);
         return;
       }
-      router.push(next ?? "/today");
+      router.push(safeNextPath(next, window.location.origin));
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");

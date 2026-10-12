@@ -116,8 +116,17 @@ export interface UserRepo {
 
 export interface EntitlementRepo {
   get(userId: string): Promise<EntitlementSnapshot | null>;
-  /** Idempotent upsert. */
+  /** Idempotent upsert. Overwrites every fact; use `update` when other writers may race. */
   upsert(userId: string, snapshot: EntitlementSnapshot): Promise<EntitlementSnapshot>;
+  /**
+   * Atomic read-modify-write: the row is locked while `mutate` runs, so two
+   * writers (Stripe webhook, invite redemption, checkout) serialize and the
+   * second one sees the first one's facts instead of clobbering them.
+   */
+  update(
+    userId: string,
+    mutate: (current: EntitlementSnapshot | null) => EntitlementSnapshot,
+  ): Promise<EntitlementSnapshot>;
   startTrialIfMissing(userId: string, days: number): Promise<EntitlementSnapshot>;
 }
 
@@ -206,6 +215,76 @@ export interface StripeEventRepo {
   delete(eventId: string): Promise<void>;
 }
 
+export type InviteGrant = "pro";
+
+export interface InviteCode {
+  id: string;
+  codeHash: string;
+  grants: InviteGrant;
+  durationMonths: number | null;
+  maxRedemptions: number;
+  redemptionCount: number;
+  expiresAt: string | null;
+  note: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+}
+
+export interface InviteCodeCreateInput {
+  codeHash: string;
+  grants: InviteGrant;
+  durationMonths: number | null;
+  maxRedemptions: number;
+  expiresAt: string | null;
+  note: string | null;
+}
+
+export interface InviteRedemption {
+  id: string;
+  codeId: string;
+  userId: string;
+  compedUntil: string | null;
+  redeemedAt: string;
+}
+
+/** Why `consume` refused; the order here is the order checks run in. */
+export type InviteConsumeFailure = "revoked" | "expired" | "exhausted" | "already_redeemed";
+
+/** The comp a redemption grants, derived from the user's locked entitlement. */
+export interface CompGrant {
+  compedAt: string;
+  compedUntil: string | null;
+  tier: Tier;
+}
+
+export interface InviteCodeRepo {
+  create(input: InviteCodeCreateInput): Promise<InviteCode>;
+  findByHash(codeHash: string): Promise<InviteCode | null>;
+  getById(id: string): Promise<InviteCode | null>;
+  list(): Promise<InviteCode[]>;
+  revoke(id: string, at?: Date): Promise<InviteCode | null>;
+  /**
+   * One atomic unit: lock the user's entitlement, let the caller derive the
+   * grant from it, record the redemption, bump the code's count (refusing
+   * when revoked / expired / exhausted), and write only the comp columns of
+   * the entitlement. Either everything commits or nothing does, so a spent
+   * code always comes with its Pro grant, concurrent Stripe writes to the
+   * same row are never clobbered, two users racing for the last redemption
+   * cannot both succeed, and the same user redeeming twice gets
+   * `already_redeemed` rather than a constraint error.
+   */
+  consume(
+    codeId: string,
+    userId: string,
+    input: { grant: (current: EntitlementSnapshot | null) => CompGrant; now?: Date },
+  ): Promise<
+    | { ok: true; redemption: InviteRedemption; entitlement: EntitlementSnapshot }
+    | { ok: false; reason: InviteConsumeFailure }
+  >;
+  listRedemptions(codeId: string): Promise<InviteRedemption[]>;
+  listRedemptionsForUser(userId: string): Promise<InviteRedemption[]>;
+}
+
 export interface Repos {
   users: UserRepo;
   entitlements: EntitlementRepo;
@@ -215,4 +294,5 @@ export interface Repos {
   aiRuns: AiRunRepo;
   sessions: SessionRepo;
   stripeEvents: StripeEventRepo;
+  inviteCodes: InviteCodeRepo;
 }

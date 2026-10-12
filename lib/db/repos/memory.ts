@@ -7,7 +7,7 @@ import type {
   TaskEditableField,
   UserProfile,
 } from "@/lib/domain/types";
-import { trialSnapshot } from "@/lib/entitlements/entitlements";
+import { emptySnapshot, trialSnapshot } from "@/lib/entitlements/entitlements";
 import { id as makeId } from "@/lib/utils/ids";
 import { nanoid } from "nanoid";
 import {
@@ -16,6 +16,9 @@ import {
   type EntitlementRepo,
   type EntitlementSnapshot,
   IdConflictError,
+  type InviteCode,
+  type InviteCodeRepo,
+  type InviteRedemption,
   type LabelRepo,
   type MemoryCreateInput,
   type MemoryRepo,
@@ -63,6 +66,8 @@ interface State {
   }>;
   sessions: Map<string, { userId: string; expiresAt: string }>;
   stripeEvents: Set<string>;
+  inviteCodes: Map<string, InviteCode>;
+  inviteRedemptions: InviteRedemption[];
 }
 
 function emptyState(): State {
@@ -76,6 +81,8 @@ function emptyState(): State {
     aiRuns: [],
     sessions: new Map(),
     stripeEvents: new Set(),
+    inviteCodes: new Map(),
+    inviteRedemptions: [],
   };
 }
 
@@ -140,6 +147,12 @@ export function createMemoryRepos(): MemoryReposHandle {
     async upsert(userId, snapshot) {
       state.entitlements.set(userId, { ...snapshot });
       return { ...snapshot };
+    },
+    async update(userId, mutate) {
+      const current = state.entitlements.get(userId);
+      const next = mutate(current ? { ...current } : null);
+      state.entitlements.set(userId, { ...next });
+      return { ...next };
     },
     async startTrialIfMissing(userId, days) {
       const existing = state.entitlements.get(userId);
@@ -420,6 +433,84 @@ export function createMemoryRepos(): MemoryReposHandle {
     },
   };
 
+  const inviteCodes: InviteCodeRepo = {
+    async create(input) {
+      const code: InviteCode = {
+        id: makeId("inv"),
+        ...input,
+        redemptionCount: 0,
+        revokedAt: null,
+        createdAt: new Date().toISOString(),
+      };
+      state.inviteCodes.set(code.id, code);
+      return { ...code };
+    },
+    async findByHash(codeHash) {
+      for (const c of state.inviteCodes.values()) {
+        if (c.codeHash === codeHash) return { ...c };
+      }
+      return null;
+    },
+    async getById(id) {
+      const c = state.inviteCodes.get(id);
+      return c ? { ...c } : null;
+    },
+    async list() {
+      return Array.from(state.inviteCodes.values())
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+        .map((c) => ({ ...c }));
+    },
+    async revoke(id, at = new Date()) {
+      const c = state.inviteCodes.get(id);
+      if (!c) return null;
+      if (!c.revokedAt) c.revokedAt = at.toISOString();
+      return { ...c };
+    },
+    async consume(codeId, userId, input) {
+      // The memory store is single-threaded, so this block is atomic by
+      // construction; the Postgres implementation gets the same guarantee
+      // from a row lock and a conditional UPDATE inside one transaction.
+      const now = input.now ?? new Date();
+      const c = state.inviteCodes.get(codeId);
+      if (!c) return { ok: false, reason: "expired" };
+      if (state.inviteRedemptions.some((r) => r.codeId === codeId && r.userId === userId)) {
+        return { ok: false, reason: "already_redeemed" };
+      }
+      if (c.revokedAt) return { ok: false, reason: "revoked" };
+      if (c.expiresAt && Date.parse(c.expiresAt) <= now.getTime()) {
+        return { ok: false, reason: "expired" };
+      }
+      if (c.redemptionCount >= c.maxRedemptions) return { ok: false, reason: "exhausted" };
+
+      const current = state.entitlements.get(userId) ?? null;
+      const grant = input.grant(current ? { ...current } : null);
+      const next: EntitlementSnapshot = {
+        ...(current ?? emptySnapshot()),
+        compedAt: grant.compedAt,
+        compedUntil: grant.compedUntil,
+        tier: grant.tier,
+      };
+
+      c.redemptionCount += 1;
+      const redemption: InviteRedemption = {
+        id: makeId("red"),
+        codeId,
+        userId,
+        compedUntil: grant.compedUntil,
+        redeemedAt: now.toISOString(),
+      };
+      state.inviteRedemptions.push(redemption);
+      state.entitlements.set(userId, next);
+      return { ok: true, redemption: { ...redemption }, entitlement: { ...next } };
+    },
+    async listRedemptions(codeId) {
+      return state.inviteRedemptions.filter((r) => r.codeId === codeId).map((r) => ({ ...r }));
+    },
+    async listRedemptionsForUser(userId) {
+      return state.inviteRedemptions.filter((r) => r.userId === userId).map((r) => ({ ...r }));
+    },
+  };
+
   return {
     users,
     entitlements,
@@ -429,6 +520,7 @@ export function createMemoryRepos(): MemoryReposHandle {
     aiRuns,
     sessions,
     stripeEvents,
+    inviteCodes,
     __reset: () => {
       state = emptyState();
     },

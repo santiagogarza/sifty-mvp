@@ -3,7 +3,12 @@ import Link from "next/link";
 
 export const metadata = { title: "Create a Sifty account" };
 
-export default function SignUpPage() {
+export default async function SignUpPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ next?: string }>;
+}) {
+  const params = (await searchParams) ?? {};
   return (
     <div className="surface-card p-7">
       <h1 className="text-[20px] tracking-[-0.01em] text-[var(--fg)]">Create your account</h1>
@@ -11,11 +16,14 @@ export default function SignUpPage() {
         Start with 30 days of Pro. No card up front; Free afterwards.
       </p>
       <div className="mt-6">
-        <AuthForm mode="sign-up" />
+        <AuthForm mode="sign-up" next={params.next} />
       </div>
       <div className="mt-6 text-[13px] text-[var(--fg-muted)]">
         Already have an account?{" "}
-        <Link href="/sign-in" className="text-[var(--accent)] hover:underline">
+        <Link
+          href={params.next ? `/sign-in?next=${encodeURIComponent(params.next)}` : "/sign-in"}
+          className="text-[var(--accent)] hover:underline"
+        >
           Sign in
         </Link>
       </div>
