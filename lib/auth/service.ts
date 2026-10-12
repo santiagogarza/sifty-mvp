@@ -7,7 +7,7 @@ import {
   seedDemoWorkspaceIfEmpty,
 } from "@/lib/demo/seed-demo";
 import type { UserProfile } from "@/lib/domain/types";
-import { TRIAL_DAYS } from "@/lib/entitlements/entitlements";
+import { TRIAL_DAYS, creatorSnapshot } from "@/lib/entitlements/entitlements";
 import { isCreatorEmail } from "./session-shared";
 
 /**
@@ -60,17 +60,7 @@ export async function signUp(input: {
   });
 
   if (isCreator) {
-    await repos.entitlements.upsert(user.id, {
-      tier: "creator",
-      trialStartedAt: null,
-      trialEndsAt: null,
-      subscriptionActive: true,
-      stripeCustomerId: null,
-      stripeSubscriptionId: null,
-      stripeStatus: null,
-      currentPeriodEnd: null,
-      aiRunsLimitDay: 1_000_000,
-    });
+    await repos.entitlements.upsert(user.id, creatorSnapshot());
   } else {
     await repos.entitlements.startTrialIfMissing(user.id, TRIAL_DAYS);
   }

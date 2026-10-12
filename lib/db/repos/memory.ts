@@ -7,6 +7,7 @@ import type {
   TaskEditableField,
   UserProfile,
 } from "@/lib/domain/types";
+import { trialSnapshot } from "@/lib/entitlements/entitlements";
 import { id as makeId } from "@/lib/utils/ids";
 import { nanoid } from "nanoid";
 import {
@@ -143,20 +144,7 @@ export function createMemoryRepos(): MemoryReposHandle {
     async startTrialIfMissing(userId, days) {
       const existing = state.entitlements.get(userId);
       if (existing) return { ...existing };
-      const now = new Date();
-      const end = new Date(now);
-      end.setDate(end.getDate() + days);
-      const snap: EntitlementSnapshot = {
-        tier: "trialing",
-        trialStartedAt: now.toISOString(),
-        trialEndsAt: end.toISOString(),
-        subscriptionActive: false,
-        stripeCustomerId: null,
-        stripeSubscriptionId: null,
-        stripeStatus: null,
-        currentPeriodEnd: null,
-        aiRunsLimitDay: 50,
-      };
+      const snap = trialSnapshot(days);
       state.entitlements.set(userId, snap);
       return { ...snap };
     },

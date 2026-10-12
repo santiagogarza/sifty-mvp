@@ -16,7 +16,8 @@ import { countAiRunsSince, countAiRunsToday } from "./ai-runs";
  *    after completion, so a parallel burst can momentarily exceed the cap
  *    before the window catches up; the bucket covers that gap on-instance
  *    and the window converges within one request round-trip.
- * 3. Entitlement (creator/trial/subscription + daily cap) — 402.
+ * 3. Entitlement (tier caps: `siftsPerDay`) — 402 with a `code` of
+ *    `free_cap` (upgrade path) or `fair_use_cap` (Pro ceiling).
  */
 
 export type AiGateResult = { ok: true } | { ok: false; response: NextResponse };
@@ -68,15 +69,17 @@ export async function gateAiRequest(args: {
 
   const entitlement = deriveEntitlement({
     profile: session.user,
-    trialStartedAt: session.trialStartedAt,
-    subscriptionActive: session.subscriptionActive,
-    aiRunsToday,
+    snapshot: session.entitlement,
+    siftsToday: aiRunsToday,
   });
   const allowed = canRunAi(entitlement);
   if (!allowed.ok) {
     return {
       ok: false,
-      response: NextResponse.json({ error: allowed.reason, entitlement }, { status: 402 }),
+      response: NextResponse.json(
+        { error: allowed.reason, code: allowed.code, entitlement },
+        { status: 402 },
+      ),
     };
   }
 

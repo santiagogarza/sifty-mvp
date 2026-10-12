@@ -1,3 +1,4 @@
+import { emptySnapshot } from "@/lib/entitlements/entitlements";
 import Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getTestRepos } from "../setup";
@@ -115,8 +116,8 @@ describe("POST /api/stripe/webhook", () => {
     expect(res1.status).toBe(200);
 
     const after = await repos.entitlements.get(user.id);
-    expect(after?.tier).toBe("active");
-    expect(after?.aiRunsLimitDay).toBe(200);
+    expect(after?.tier).toBe("pro");
+    expect(after?.subscriptionActive).toBe(true);
 
     // Replay — same event id. Should 200 without changing state.
     const res2 = await POST(
@@ -131,12 +132,12 @@ describe("POST /api/stripe/webhook", () => {
     expect(json2.deduped).toBe(true);
 
     const final = await repos.entitlements.get(user.id);
-    expect(final?.tier).toBe("active");
+    expect(final?.tier).toBe("pro");
     expect(final?.stripeSubscriptionId).toBe("sub_X");
     void id;
   });
 
-  it("subscription.deleted flips entitlement to expired", async () => {
+  it("subscription.deleted drops a paying user to free", async () => {
     const repos = getTestRepos();
     const user = await repos.users.create({
       email: "u2@example.com",
@@ -145,15 +146,13 @@ describe("POST /api/stripe/webhook", () => {
       isCreator: false,
     });
     await repos.entitlements.upsert(user.id, {
-      tier: "active",
-      trialStartedAt: null,
-      trialEndsAt: null,
+      ...emptySnapshot(),
+      tier: "pro",
       subscriptionActive: true,
       stripeCustomerId: "cus_Y",
       stripeSubscriptionId: "sub_Y",
       stripeStatus: "active",
       currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      aiRunsLimitDay: 200,
     });
     await repos.users.setStripeCustomerId(user.id, "cus_Y");
 
@@ -176,7 +175,7 @@ describe("POST /api/stripe/webhook", () => {
     expect(res.status).toBe(200);
 
     const after = await repos.entitlements.get(user.id);
-    expect(after?.tier).toBe("expired");
-    expect(after?.aiRunsLimitDay).toBe(0);
+    expect(after?.tier).toBe("free");
+    expect(after?.subscriptionActive).toBe(false);
   });
 });

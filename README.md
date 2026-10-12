@@ -218,6 +218,24 @@ schema validation, and offline fallback as triage.
 
 ## Billing
 
+Tiers (`lib/entitlements/entitlements.ts`), lowest to highest; when several
+facts apply the highest wins (`creator > comped > pro > trialing > free`):
+
+| Tier | Who | Sifts/day | Execution budget | Connectors |
+| --- | --- | --- | --- | --- |
+| `free` | Everyone after the trial | 5 | — | no |
+| `trialing` | New sign-ups, 30 days of Pro | 200 (fair use) | $10/mo | yes |
+| `pro` | Paying via Stripe | 200 (fair use) | $10/mo | yes |
+| `comped` | Pro granted by an invite code, no Stripe | 200 (fair use) | $10/mo | yes |
+| `creator` | `CREATOR_EMAIL` | unlimited | unlimited | yes |
+
+Capture, organize, sync, and reminders are free for every tier. The
+`entitlements` row stores facts (trial window, `subscription_active`,
+`comped_at`/`comped_until`); `deriveEntitlement()` resolves the effective
+tier and its caps at read time, and `canRunAi()` gates on `caps.siftsPerDay`.
+AI routes answer `402` with `code: "free_cap"` (upgrade path) or
+`"fair_use_cap"` (Pro ceiling).
+
 - Checkout: `/api/stripe/checkout` (POST `{ cadence: "monthly" | "yearly" }`)
   creates the Stripe customer if needed, then a Checkout Session with
   `allow_promotion_codes: true`. Discount/comp codes you create in the
@@ -228,8 +246,8 @@ schema validation, and offline fallback as triage.
   deduplicates by `event.id` in the `stripe_events` table, then runs the
   pure reducer in `lib/billing/events.ts` against the user's
   entitlement. Creator entitlement is sticky.
-- UI: `/settings/billing` shows tier, trial countdown, Upgrade
-  (monthly/yearly), Manage subscription.
+- UI: `/settings/billing` shows tier, sifts used today, trial countdown,
+  Upgrade (monthly/yearly), Manage subscription.
 
 ## Pre-deploy smoke checklist
 
@@ -248,7 +266,8 @@ Run through this on the preview URL before promoting to production:
 - [ ] Forging a webhook signature returns 400.
 - [ ] Replaying the same `event.id` returns 200 + `deduped: true` with
       no duplicate DB writes.
-- [ ] Trial-expired account hits the AI route → 402 with the cap message.
+- [ ] Free account past 5 sifts hits the AI route → 402 with
+      `code: "free_cap"` and the upgrade message.
 - [ ] Bursting `/api/triage` past the per-minute cap returns 429 with
       `Retry-After`.
 - [ ] Sentry / logs receive a structured `reportError(...)` payload from

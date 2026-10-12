@@ -180,12 +180,33 @@ export interface Memory {
   createdAt: ISODate;
 }
 
+/**
+ * Product tiers, lowest to highest. When several facts apply to one account
+ * the effective tier is the highest: `creator > comped > pro > trialing > free`.
+ *
+ * - `free`: capture/organize/sync/reminders, a few sifts a day.
+ * - `trialing`: 30-day Pro trial for new sign-ups.
+ * - `pro`: paid via Stripe.
+ * - `comped`: Pro granted by an invite code, no Stripe involved.
+ * - `creator`: the owner account, unlimited.
+ */
+export const TIERS = ["free", "trialing", "pro", "comped", "creator"] as const;
+export type Tier = (typeof TIERS)[number];
+
+/** Per-feature caps; `Number.POSITIVE_INFINITY` means unlimited. */
+export interface FeatureCaps {
+  siftsPerDay: number;
+  executionBudgetCentsMonth: number;
+  connectorsAllowed: boolean;
+}
+
 export interface Entitlement {
-  /** Permanent unlimited for the creator account; else trial/active/expired. */
-  tier: "creator" | "trialing" | "active" | "expired";
+  tier: Tier;
   trialEndsAt: ISODate | null;
-  aiRunsToday: number;
-  aiRunsLimitDay: number;
+  /** When a comp ends; null when not comped or comped forever. */
+  compedUntil: ISODate | null;
+  siftsToday: number;
+  caps: FeatureCaps;
 }
 
 export interface UserProfile {
