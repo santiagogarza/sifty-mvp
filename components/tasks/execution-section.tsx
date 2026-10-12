@@ -44,6 +44,8 @@ export function ExecutionSection({ task }: { task: Task }) {
   const cancel = useExecutionsStore((s) => s.cancel);
   const [policy, setPolicy] = React.useState<ExecutionPolicy>(DEFAULT_EXECUTION_POLICY);
   const [policySaved, setPolicySaved] = React.useState(false);
+  // Until the user picks, the server resolves the task's saved policy.
+  const policyPicked = React.useRef(false);
   const [busy, setBusy] = React.useState<"start" | "cancel" | null>(null);
   const [denied, setDenied] = React.useState<{ code: string | null; error: string } | null>(null);
 
@@ -52,13 +54,14 @@ export function ExecutionSection({ task }: { task: Task }) {
 
   React.useEffect(() => {
     void refresh(task.id);
+    policyPicked.current = false;
     let cancelled = false;
     void fetch(`/api/execution-policies?scope=task&key=${encodeURIComponent(task.id)}`, {
       credentials: "include",
     })
       .then((r) => (r.ok ? r.json() : null))
       .then((body: { policy?: ExecutionPolicy; saved?: boolean } | null) => {
-        if (cancelled || !body?.policy) return;
+        if (cancelled || policyPicked.current || !body?.policy) return;
         setPolicy(body.policy);
         setPolicySaved(!!body.saved);
       })
@@ -90,7 +93,7 @@ export function ExecutionSection({ task }: { task: Task }) {
     if (busy) return;
     setBusy("start");
     setDenied(null);
-    const result = await start(task.id, { policy });
+    const result = await start(task.id, { policy: policyPicked.current ? policy : null });
     setBusy(null);
     if (!result.ok) {
       if (result.status === 402) setDenied({ code: result.code, error: result.error });
@@ -100,7 +103,7 @@ export function ExecutionSection({ task }: { task: Task }) {
     }
     watchExecution(result.execution.id);
     toast(
-      policy === "ask_first"
+      result.execution.policy === "ask_first"
         ? "Sifty will ask before it starts — check Decisions."
         : "Sifty is on it. You'll find the draft in Decisions.",
     );
@@ -116,6 +119,7 @@ export function ExecutionSection({ task }: { task: Task }) {
   };
 
   const changePolicy = async (next: ExecutionPolicy) => {
+    policyPicked.current = true;
     setPolicy(next);
     try {
       const res = await fetch("/api/execution-policies", {

@@ -111,6 +111,11 @@ export async function prepareApproval(input: ExecutionInput): Promise<PendingApp
 
 export type OpenOutcome = "applied" | "skipped";
 
+/** A retried open step whose first attempt already parked the row on this decision. */
+function isParkedOn(execution: Execution, decisionId: string): boolean {
+  return isWaiting(execution.status) && execution.decisionId === decisionId;
+}
+
 /**
  * Open the `ask_first` approval and park the execution on it. Runs after
  * the workflow registered the hook for `pending.decisionId`. The CAS is
@@ -125,6 +130,7 @@ export async function openApproval(
   const repos = getRepos();
   const execution = await repos.executions.get(input.userId, input.executionId);
   if (!execution) return "skipped";
+  if (isParkedOn(execution, pending.decisionId)) return "applied";
   const def = getExecutor(execution.executor);
   if (!def) return "skipped";
   if (execution.status === "queued" && execution.cancelRequested) {
@@ -330,6 +336,7 @@ export async function openDraft(
 ): Promise<OpenOutcome> {
   const repos = getRepos();
   const execution = await repos.executions.get(input.userId, input.executionId);
+  if (execution && isParkedOn(execution, pending.decisionId)) return "applied";
   if (!execution || execution.status !== "running") return "skipped";
   const def = getExecutor(execution.executor);
   if (!def) return "skipped";
@@ -367,6 +374,7 @@ export async function openQuestion(
     repos.executions.get(input.userId, input.executionId),
     repos.tasks.get(input.userId, input.taskId),
   ]);
+  if (execution && isParkedOn(execution, pending.decisionId)) return "applied";
   if (!execution || !task || execution.status !== "running") return "skipped";
   const def = getExecutor(execution.executor);
   if (!def) return "skipped";

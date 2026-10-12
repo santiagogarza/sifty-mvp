@@ -245,7 +245,7 @@ function BatchBar({
   // biome-ignore lint/correctness/useExhaustiveDependencies: disarm whenever the selection changes.
   React.useEffect(() => {
     setArming(false);
-  }, [count]);
+  }, [selected]);
 
   const run = async () => {
     if (!arming) {
