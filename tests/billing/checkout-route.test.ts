@@ -46,6 +46,7 @@ function fakeStripe(overrides: { prices?: Record<string, Partial<Stripe.Price>> 
       active: true,
       unit_amount: PRO_PRICES.monthly.amountCents,
       currency: "usd",
+      tax_behavior: "exclusive",
       recurring: { interval: "month", interval_count: 1 } as Stripe.Price.Recurring,
     },
     price_yearly_test: {
@@ -53,6 +54,7 @@ function fakeStripe(overrides: { prices?: Record<string, Partial<Stripe.Price>> 
       active: true,
       unit_amount: PRO_PRICES.yearly.amountCents,
       currency: "usd",
+      tax_behavior: "exclusive",
       recurring: { interval: "year", interval_count: 1 } as Stripe.Price.Recurring,
     },
   };
@@ -246,6 +248,16 @@ describe("POST /api/stripe/checkout", () => {
     errors.mockRestore();
     expect(res.status).toBe(503);
     expect((await res.json()).detail).toMatch(/interval is 12 month, plan says 1 year/);
+  });
+
+  it("refuses a price without a tax behavior, which Stripe Tax would reject at session time", async () => {
+    fakeStripe({ prices: { price_monthly_test: { tax_behavior: "unspecified" } } });
+    const { cookie } = await createUserWithCookie(getTestRepos(), { email: "tax@example.com" });
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await post(cookie);
+    errors.mockRestore();
+    expect(res.status).toBe(503);
+    expect((await res.json()).detail).toMatch(/tax behavior is unspecified/);
   });
 
   it("verifies each price once per process", async () => {
