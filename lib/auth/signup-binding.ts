@@ -18,7 +18,8 @@ export const SIGNUP_BINDING_COOKIE = "sifty.signup_binding";
 export const SIGNUP_BINDING_MAX_AGE_S = 60 * 60;
 /** A browser may sign up a few accounts in a row ("Use a different email"); keep the newest. */
 const MAX_BINDINGS = 5;
-const SEPARATOR = " ";
+// RFC 6265 cookie-octet; never appears in ids (alnum/_/.) or base64url MACs.
+const SEPARATOR = "~";
 
 export function signupBindingValue(userId: string, secret: string): string {
   const mac = createHmac("sha256", secret).update(`signup-binding:${userId}`).digest("base64url");
