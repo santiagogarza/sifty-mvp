@@ -33,23 +33,27 @@ import * as React from "react";
 
 const PREVIEW_LINES = 8;
 
-export function ApprovalBody({
-  payload,
-  active,
-  busy,
-  onAnswer,
-  onReject,
-}: {
-  decision: Decision;
-  payload: ApprovalPayload;
-  active: boolean;
-  busy: boolean;
-  onAnswer: (input: { option?: string; text?: string }) => void;
-  onReject: () => void;
-}) {
+export interface ApprovalHandle {
+  /** Focus the free-text field of an executor question (no-op for a plain gate). */
+  focusInput(): void;
+}
+
+export const ApprovalBody = React.forwardRef<
+  ApprovalHandle,
+  {
+    decision: Decision;
+    payload: ApprovalPayload;
+    active: boolean;
+    busy: boolean;
+    onAnswer: (input: { option?: string; text?: string }) => void;
+    onReject: () => void;
+  }
+>(function ApprovalBody({ payload, active, busy, onAnswer, onReject }, ref) {
   const [text, setText] = React.useState("");
+  const inputRef = React.useRef<HTMLInputElement>(null);
   const isQuestion = payload.reason === "question";
   const options = isQuestion ? payload.options.filter((o) => o !== REJECT_OPTION) : [];
+  React.useImperativeHandle(ref, () => ({ focusInput: () => inputRef.current?.focus() }), []);
 
   return (
     <>
@@ -111,6 +115,7 @@ export function ApprovalBody({
             }}
           >
             <Input
+              ref={inputRef}
               value={text}
               maxLength={DECISION_LIMITS.answerText}
               onChange={(e) => setText(e.target.value)}
@@ -168,7 +173,7 @@ export function ApprovalBody({
       )}
     </>
   );
-}
+});
 
 export interface DraftReviewHandle {
   /** Enter edit mode (the `e` / `Enter` key). */

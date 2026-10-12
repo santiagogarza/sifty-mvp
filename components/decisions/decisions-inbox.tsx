@@ -19,7 +19,12 @@ import { cn } from "@/lib/utils/cn";
 import { formatTimeAgo } from "@/lib/utils/dates";
 import { ArrowUpRight, Check, CheckCheck, Sparkles } from "lucide-react";
 import * as React from "react";
-import { ApprovalBody, DraftReviewBody, type DraftReviewHandle } from "./execution-cards";
+import {
+  ApprovalBody,
+  type ApprovalHandle,
+  DraftReviewBody,
+  type DraftReviewHandle,
+} from "./execution-cards";
 
 /**
  * The Decisions inbox: everything waiting on the human, newest first.
@@ -333,6 +338,7 @@ const DecisionCard = React.forwardRef<
   const cardRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const draftRef = React.useRef<DraftReviewHandle>(null);
+  const approvalRef = React.useRef<ApprovalHandle>(null);
   const [text, setText] = React.useState("");
   const [busy, setBusy] = React.useState<"answer" | "dismiss" | null>(null);
 
@@ -431,6 +437,7 @@ const DecisionCard = React.forwardRef<
       focusCard: () => cardRef.current?.focus({ preventScroll: true }),
       focusInput: () => {
         if (review) draftRef.current?.edit();
+        else if (approval) approvalRef.current?.focusInput();
         else inputRef.current?.focus();
       },
       scrollIntoView: () => cardRef.current?.scrollIntoView?.({ block: "center" }),
@@ -443,7 +450,7 @@ const DecisionCard = React.forwardRef<
         return true;
       },
     }),
-    [options, review, runDismiss, submit],
+    [approval, options, review, runDismiss, submit],
   );
 
   return (
@@ -502,6 +509,7 @@ const DecisionCard = React.forwardRef<
 
       {approval ? (
         <ApprovalBody
+          ref={approvalRef}
           decision={decision}
           payload={approval}
           active={active}
