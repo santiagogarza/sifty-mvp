@@ -1,8 +1,8 @@
 import type { Session } from "@/lib/auth/session";
 import { canRunAi, deriveEntitlement } from "@/lib/entitlements/entitlements";
 import { demoFlagEnabled, isVercelProduction } from "@/lib/env/production-guards";
-import { buildRateLimitKey, consumeToken, rateLimitResponseInit } from "@/lib/ratelimit/limiter";
-import { TRIAGE_POLICY, clientIdFromRequest } from "@/lib/ratelimit/policies";
+import { enforceRateLimit } from "@/lib/ratelimit/guard";
+import { TRIAGE_IP_POLICY, TRIAGE_POLICY } from "@/lib/ratelimit/policies";
 import { NextResponse } from "next/server";
 import { countAiRunsSince, countAiRunsToday } from "./ai-runs";
 
@@ -11,15 +11,18 @@ import { countAiRunsSince, countAiRunsToday } from "./ai-runs";
  *
  * Three gates, cheapest first:
  *
- * 1. In-process token bucket — instant rejection of same-instance bursts.
+ * 1. Fixed-window limits per client IP and per user (`consumeToken`):
+ *    durable in Upstash Redis when configured, otherwise per instance.
  * 2. Persistent sliding window over `ai_runs` — holds across serverless
- *    instances, where the in-process bucket does not. Runs are recorded
- *    after completion, so a parallel burst can momentarily exceed the cap
- *    before the window catches up; the bucket covers that gap on-instance
- *    and the window converges within one request round-trip.
+ *    instances even without Redis. Runs are recorded after completion, so a
+ *    parallel burst can momentarily exceed the cap before the window
+ *    catches up; the bucket covers that gap and the window converges within
+ *    one request round-trip.
  * 3. Entitlement (tier caps: `siftsPerDay`) — 402 with a `code` of
  *    `free_cap` (upgrade path) or `fair_use_cap` (Pro ceiling).
  */
+
+const TOO_MANY = "Too many AI requests. Slow down a bit.";
 
 export type AiGateResult = { ok: true } | { ok: false; response: NextResponse };
 
@@ -31,19 +34,13 @@ export async function gateAiRequest(args: {
   const { req, session, bucket } = args;
   const userId = session.user.id;
 
-  const local = consumeToken(
-    buildRateLimitKey(bucket, userId, clientIdFromRequest(req)),
-    TRIAGE_POLICY,
-  );
-  if (!local.ok) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: "Too many AI requests. Slow down a bit." },
-        rateLimitResponseInit(local),
-      ),
-    };
-  }
+  const limit = await enforceRateLimit(req, {
+    route: bucket,
+    ip: TRIAGE_IP_POLICY,
+    subject: { id: userId, policy: TRIAGE_POLICY },
+    message: TOO_MANY,
+  });
+  if (!limit.ok) return { ok: false, response: limit.response };
 
   const windowStart = new Date(Date.now() - TRIAGE_POLICY.windowMs);
   const [runsInWindow, aiRunsToday] = await Promise.all([
@@ -56,7 +53,7 @@ export async function gateAiRequest(args: {
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "Too many AI requests. Slow down a bit." },
+        { error: TOO_MANY, code: "rate_limited" },
         {
           status: 429,
           headers: {

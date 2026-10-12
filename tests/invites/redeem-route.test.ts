@@ -99,7 +99,7 @@ describe("POST /api/invites/redeem", () => {
     expect((await again.json()).code).toBe("already_redeemed");
   });
 
-  it("rate-limits attempts per user+client with Retry-After", async () => {
+  it("rate-limits attempts per user with Retry-After, regardless of client IP", async () => {
     vi.stubEnv("RATELIMIT_REDEEM_PER_MIN", "3");
     const repos = getTestRepos();
     const { cookie } = await createUserWithCookie(repos, { email: "rl@example.com" });
@@ -109,8 +109,11 @@ describe("POST /api/invites/redeem", () => {
     const limited = await post({ code: `sifty-${"c".repeat(20)}` }, cookie);
     expect(limited.status).toBe(429);
     expect(limited.headers.get("Retry-After")).toBeTruthy();
-    // A different client id for the same user has its own bucket.
-    expect((await post({ code: `sifty-${"c".repeat(20)}` }, cookie, "2.2.2.2")).status).toBe(404);
+    // Switching IPs does not buy the same user a fresh budget.
+    expect((await post({ code: `sifty-${"c".repeat(20)}` }, cookie, "2.2.2.2")).status).toBe(429);
+    // Another user from the original IP is still fine (per-IP cap is wider).
+    const other = await createUserWithCookie(repos, { email: "rl2@example.com" });
+    expect((await post({ code: `sifty-${"c".repeat(20)}` }, other.cookie)).status).toBe(404);
   });
 
   it("503 with a clear message when INVITE_CODE_PEPPER is missing", async () => {
