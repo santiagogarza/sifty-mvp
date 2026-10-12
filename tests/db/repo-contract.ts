@@ -1,5 +1,9 @@
 import type { Repos } from "@/lib/db/repos";
-import { IdConflictError, SIFT_ACCOUNTING_STAGE } from "@/lib/db/repos/types";
+import {
+  IdConflictError,
+  NOTIFICATION_CLAIM_LEASE_MS,
+  SIFT_ACCOUNTING_STAGE,
+} from "@/lib/db/repos/types";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -498,6 +502,181 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect(await repos.stripeEvents.recordIfNew("evt_1", "invoice.paid")).toBe(false);
       await repos.stripeEvents.delete("evt_1");
       expect(await repos.stripeEvents.recordIfNew("evt_1", "invoice.paid")).toBe(true);
+    });
+  });
+
+  describe("notifications", () => {
+    const prefs = {
+      timezone: "Europe/Ljubljana",
+      emailEnabled: true,
+      pushEnabled: false,
+      morningPlanEnabled: true,
+      morningPlanHour: 7,
+      dueRemindersEnabled: true,
+      dueReminderHour: 15,
+      weeklyReviewEnabled: true,
+      weeklyReviewDay: 0,
+      quietHoursStart: 22,
+      quietHoursEnd: 7,
+    };
+
+    it("preferences: upsert replaces, get round-trips, list pages by user id", async () => {
+      const repos = getRepos();
+      const a = await createUser(repos, "prefs-a@example.com");
+      const b = await createUser(repos, "prefs-b@example.com");
+      const c = await createUser(repos, "prefs-c@example.com");
+      expect(await repos.notificationPreferences.get(a.id)).toBeNull();
+
+      await repos.notificationPreferences.upsert(a.id, prefs);
+      const saved = await repos.notificationPreferences.upsert(a.id, {
+        ...prefs,
+        morningPlanHour: 6,
+        quietHoursStart: null,
+        quietHoursEnd: null,
+      });
+      expect(saved).toMatchObject({ userId: a.id, morningPlanHour: 6, quietHoursStart: null });
+      expect(await repos.notificationPreferences.get(a.id)).toMatchObject({
+        morningPlanHour: 6,
+        timezone: "Europe/Ljubljana",
+      });
+
+      await repos.notificationPreferences.upsert(b.id, prefs);
+      // c never saved: not a digest candidate.
+      void c;
+      const ids = [a.id, b.id].sort();
+      const page1 = await repos.notificationPreferences.list(1);
+      expect(page1.map((p) => p.userId)).toEqual([ids[0]]);
+      const page2 = await repos.notificationPreferences.list(1, page1[0]!.userId);
+      expect(page2.map((p) => p.userId)).toEqual([ids[1]]);
+      expect(await repos.notificationPreferences.list(1, page2[0]!.userId)).toEqual([]);
+    });
+
+    it("pushSubscriptions: endpoint is unique and moves between accounts", async () => {
+      const repos = getRepos();
+      const a = await createUser(repos, "push-a@example.com");
+      const b = await createUser(repos, "push-b@example.com");
+      const input = {
+        endpoint: "https://push.example/e1",
+        p256dh: "p1",
+        auth: "a1",
+        userAgent: "ua",
+      };
+
+      const first = await repos.pushSubscriptions.upsert(a.id, input);
+      await repos.pushSubscriptions.touch(first.id, new Date("2026-10-12T05:00:00Z"));
+      const refreshed = await repos.pushSubscriptions.upsert(a.id, { ...input, p256dh: "p2" });
+      expect(refreshed.id).toBe(first.id);
+      expect(refreshed.p256dh).toBe("p2");
+      expect(refreshed.lastUsedAt).toBe("2026-10-12T05:00:00.000Z");
+
+      // Same browser, different account: the row follows the new owner.
+      const moved = await repos.pushSubscriptions.upsert(b.id, input);
+      expect(moved.id).toBe(first.id);
+      expect(moved.lastUsedAt).toBeNull();
+      expect(await repos.pushSubscriptions.listForUser(a.id)).toEqual([]);
+      expect((await repos.pushSubscriptions.listForUser(b.id)).map((s) => s.endpoint)).toEqual([
+        input.endpoint,
+      ]);
+
+      // Tenancy: a cannot delete b's subscription by endpoint.
+      expect(await repos.pushSubscriptions.deleteByEndpoint(a.id, input.endpoint)).toBe(false);
+      expect(await repos.pushSubscriptions.deleteByEndpoint(b.id, input.endpoint)).toBe(true);
+      expect(await repos.pushSubscriptions.listForUser(b.id)).toEqual([]);
+
+      const again = await repos.pushSubscriptions.upsert(b.id, input);
+      await repos.pushSubscriptions.remove(again.id);
+      expect(await repos.pushSubscriptions.listForUser(b.id)).toEqual([]);
+    });
+
+    it("notificationSends: one claim per (user, kind, channel, period)", async () => {
+      const repos = getRepos();
+      const a = await createUser(repos, "sends-a@example.com");
+      const b = await createUser(repos, "sends-b@example.com");
+      const key = {
+        kind: "morning_plan" as const,
+        channel: "email" as const,
+        periodKey: "2026-10-12",
+      };
+
+      const claim = await repos.notificationSends.claim({ userId: a.id, ...key });
+      expect(claim).not.toBeNull();
+      expect(await repos.notificationSends.claim({ userId: a.id, ...key })).toBeNull();
+      // Other channel, other period, other user: all still claimable.
+      expect(
+        await repos.notificationSends.claim({ userId: a.id, ...key, channel: "push" }),
+      ).not.toBeNull();
+      expect(
+        await repos.notificationSends.claim({ userId: a.id, ...key, periodKey: "2026-10-13" }),
+      ).not.toBeNull();
+      expect(await repos.notificationSends.claim({ userId: b.id, ...key })).not.toBeNull();
+
+      await repos.notificationSends.finalize(claim!.id, { status: "sent" });
+      const mine = await repos.notificationSends.listForUser(a.id);
+      expect(mine).toHaveLength(3);
+      const sent = mine.find((s) => s.id === claim!.id)!;
+      expect(sent.status).toBe("sent");
+      expect(sent.sentAt).not.toBeNull();
+      expect(mine.filter((s) => s.status === "pending")).toHaveLength(2);
+      expect(await repos.notificationSends.listForUser(b.id)).toHaveLength(1);
+
+      await repos.notificationSends.finalize(claim!.id, { status: "failed", error: "boom" });
+      const failed = (await repos.notificationSends.listForUser(a.id, 10)).find(
+        (s) => s.id === claim!.id,
+      )!;
+      expect(failed).toMatchObject({ status: "failed", error: "boom", sentAt: null });
+    });
+
+    it("notificationSends: an abandoned pending claim is taken over after its lease", async () => {
+      const repos = getRepos();
+      const a = await createUser(repos, "lease@example.com");
+      const key = {
+        userId: a.id,
+        kind: "morning_plan" as const,
+        channel: "email" as const,
+        periodKey: "2026-10-12",
+      };
+      const t0 = new Date("2026-10-12T05:00:00Z");
+      const first = await repos.notificationSends.claim(key, t0);
+      expect(first).not.toBeNull();
+      // Still inside the lease: refused.
+      expect(
+        await repos.notificationSends.claim(
+          key,
+          new Date(t0.getTime() + NOTIFICATION_CLAIM_LEASE_MS - 1000),
+        ),
+      ).toBeNull();
+      // Past the lease and still pending: same row, handed to the new runner.
+      const retaken = await repos.notificationSends.claim(
+        key,
+        new Date(t0.getTime() + NOTIFICATION_CLAIM_LEASE_MS + 1000),
+      );
+      expect(retaken?.id).toBe(first!.id);
+      // Finalized rows are never taken over, however old.
+      await repos.notificationSends.finalize(first!.id, { status: "sent" });
+      expect(await repos.notificationSends.claim(key, new Date("2026-10-12T23:00:00Z"))).toBeNull();
+      expect(await repos.notificationSends.listForUser(a.id)).toHaveLength(1);
+    });
+
+    it("users.delete cascades notification rows", async () => {
+      const repos = getRepos();
+      const a = await createUser(repos, "cascade@example.com");
+      await repos.notificationPreferences.upsert(a.id, prefs);
+      await repos.pushSubscriptions.upsert(a.id, {
+        endpoint: "https://push.example/cascade",
+        p256dh: "p",
+        auth: "a",
+        userAgent: null,
+      });
+      await repos.notificationSends.claim({
+        userId: a.id,
+        kind: "morning_plan",
+        channel: "email",
+        periodKey: "2026-10-12",
+      });
+      expect(await repos.users.delete(a.id)).toBe(true);
+      expect(await repos.notificationPreferences.get(a.id)).toBeNull();
+      expect(await repos.pushSubscriptions.listForUser(a.id)).toEqual([]);
+      expect(await repos.notificationSends.listForUser(a.id)).toEqual([]);
     });
   });
 }
