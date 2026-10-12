@@ -89,9 +89,14 @@ function AppFrameInner({
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [router, pathname, search]);
 
+  // The first server pull settling (ok or not) is what makes the local
+  // store trustworthy as "the workspace"; before that an empty store is
+  // just "not loaded yet", and views should not flash their empty state.
+  const serverReady = sync.hydrated;
+
   const value = React.useMemo(
-    () => ({ openDetail, openCapture, openCommand }),
-    [openDetail, openCapture, openCommand],
+    () => ({ openDetail, openCapture, openCommand, serverReady }),
+    [openDetail, openCapture, openCommand, serverReady],
   );
 
   return (
@@ -152,6 +157,8 @@ interface FrameApi {
   openDetail: (id: string) => void;
   openCapture: () => void;
   openCommand: () => void;
+  /** First server pull has settled (successfully or not). */
+  serverReady: boolean;
 }
 
 const FrameContext = React.createContext<FrameApi | null>(null);

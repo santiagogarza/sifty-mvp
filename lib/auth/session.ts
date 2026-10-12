@@ -1,13 +1,10 @@
 import { type Repos, getRepos } from "@/lib/db/repos";
 import type { EntitlementSnapshot } from "@/lib/db/repos/types";
-import {
-  isDemoSeedEnabled,
-  seedDefaultLabels,
-  seedDemoWorkspaceIfEmpty,
-} from "@/lib/demo/seed-demo";
+import { isDemoSeedEnabled, seedDemoWorkspaceIfEmpty } from "@/lib/demo/seed-demo";
 import type { UserProfile } from "@/lib/domain/types";
 import { TRIAL_DAYS, creatorSnapshot, withResolvedTier } from "@/lib/entitlements/entitlements";
 import { demoFlagEnabled } from "@/lib/env/production-guards";
+import { seedStarterWorkspaceIfEmpty } from "@/lib/onboarding/seed";
 import { getSessionCookie } from "better-auth/cookies";
 import { headers } from "next/headers";
 import { AUTH_COOKIE_PREFIX, type Auth, getAuth } from "./auth";
@@ -164,7 +161,7 @@ async function bootstrapBypassUser(repos: Repos): Promise<UserProfile> {
   if (isDemoSeedEnabled()) {
     await seedDemoWorkspaceIfEmpty(repos, user.id);
   } else {
-    await seedDefaultLabels(repos, user.id);
+    await seedStarterWorkspaceIfEmpty(repos, user.id);
   }
 
   return user;
