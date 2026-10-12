@@ -62,8 +62,14 @@ describe("POST /api/agent-brief", () => {
 
     const runs = await listAiRuns(userId);
     expect(runs).toHaveLength(1);
-    expect(runs[0]!.status).toBe("succeeded");
-    expect(runs[0]!.taskId).toBe(task.id);
+    expect(runs[0]).toMatchObject({
+      status: "succeeded",
+      taskId: task.id,
+      stage: "plan",
+      transport: "offline",
+      offline: true,
+      costCents: null,
+    });
   });
 
   it("composes markdown from the structured model output (online path)", async () => {
@@ -125,6 +131,11 @@ describe("POST /api/agent-brief", () => {
 
     expect((await POST(buildReq({ taskId: task.id, modelId: "gpt-4o" }))).status).toBe(200);
     expect(resolveProvider).toHaveBeenLastCalledWith("plan", { preference: "gpt-4o" });
+
+    // When a client sends both, the new field wins.
+    const both = buildReq({ taskId: task.id, modelPreference: "quality", modelId: "gpt-4o" });
+    expect((await POST(both)).status).toBe(200);
+    expect(resolveProvider).toHaveBeenLastCalledWith("plan", { preference: "quality" });
   });
 
   it("maps AI configuration errors to 503 with the error code and records no run", async () => {

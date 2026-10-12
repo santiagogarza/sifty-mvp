@@ -163,6 +163,13 @@ describe("POST /api/triage", () => {
     expect(vi.mocked(resolveProvider)).toHaveBeenCalledWith("triage", {
       preference: "claude-sonnet",
     });
+
+    // When a client sends both, the new field wins.
+    const both = await POST(
+      buildReq({ sourceText: "Draft email", modelPreference: "fast", modelId: "claude-sonnet" }),
+    );
+    expect(both.status).toBe(200);
+    expect(resolveProvider).toHaveBeenLastCalledWith("triage", { preference: "fast" });
   });
 
   it("surfaces model errors as a sanitized 500 and writes a failed aiRuns row", async () => {
