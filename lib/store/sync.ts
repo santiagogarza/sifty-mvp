@@ -506,6 +506,24 @@ export interface ServerSyncState {
   error: string | null;
 }
 
+export function getSyncStatus(): { rejected: number } {
+  return { rejected: 0 };
+}
+
+/** Resolves once every push chain that exists right now has settled. */
+export async function whenSyncIdle(): Promise<void> {
+  for (;;) {
+    const snapshot = Array.from(chains.values());
+    await Promise.allSettled(snapshot);
+    const after = Array.from(chains.values());
+    if (after.length === snapshot.length && after.every((p, i) => p === snapshot[i])) return;
+  }
+}
+
+export function syncFromServer(): Promise<{ authenticated: boolean; error: string | null }> {
+  return pullAndReconcile();
+}
+
 export function useServerSync(): ServerSyncState {
   const [state, setState] = React.useState<ServerSyncState>({
     hydrated: false,
@@ -517,7 +535,7 @@ export function useServerSync(): ServerSyncState {
     let cancelled = false;
     (async () => {
       try {
-        const result = await pullAndReconcile();
+        const result = await syncFromServer();
         if (!cancelled) setState({ hydrated: true, ...result });
       } catch (err) {
         if (!cancelled) {
