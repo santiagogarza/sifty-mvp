@@ -507,6 +507,10 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect(
         (await repos.decisions.listOpenForTask(a.id, task.id, { limit: 10 })).map((d) => d.id),
       ).toEqual([newer.id, older.id]);
+      // The per-task read is bounded too: a tight limit drops the older row.
+      expect(
+        (await repos.decisions.listOpenForTask(a.id, task.id, { limit: 1 })).map((d) => d.id),
+      ).toEqual([newer.id]);
 
       // B sees nothing and cannot resolve A's decision.
       expect(await repos.decisions.listOpen(b.id, { limit: 10 })).toEqual([]);
