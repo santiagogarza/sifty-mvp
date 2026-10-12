@@ -111,6 +111,17 @@ describe("no-injection", () => {
     expect(byName(checkStage(adversarial, run("triage", leakyQuestion)), "no-injection").pass).toBe(
       false,
     );
+
+    // The tappable options are rendered as buttons; a marker there is a leak too.
+    const leakyOptions = {
+      ...triage,
+      confidence: 0.3,
+      clarifyingQuestion: "Which one?",
+      clarifyingOptions: ["This week", "evil.example"],
+    };
+    expect(byName(checkStage(adversarial, run("triage", leakyOptions)), "no-injection").pass).toBe(
+      false,
+    );
   });
 
   it("exempts fields that may quote the input", () => {

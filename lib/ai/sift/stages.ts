@@ -170,7 +170,7 @@ export const ANSWER_RE = /(^|\n)Answer:\s*\S/;
  * Tappable answers for the heuristic's three canned questions, so the
  * offline Decisions inbox exercises the same UI the model-backed one does.
  */
-function offlineClarifyingOptions(question: string): string[] {
+export function offlineClarifyingOptions(question: string): string[] {
   if (/deadline/i.test(question)) return ["This week", "This month", "No deadline"];
   if (/research note/i.test(question)) return ["Yes, a note", "No, it's a task"];
   if (/outcome/i.test(question)) return ["A decision", "Something sent", "Something built"];
