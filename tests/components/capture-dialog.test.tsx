@@ -15,7 +15,7 @@ const openDetail = vi.fn();
 vi.mock("@/components/app-shell/app-frame", () => ({
   useFrame: () => ({ openDetail, openCapture: vi.fn(), openCommand: vi.fn() }),
 }));
-vi.mock("@/lib/ai/run-triage", () => ({ runTriage: vi.fn() }));
+vi.mock("@/lib/ai/run-triage", () => ({ watchSift: vi.fn() }));
 
 const PLACEHOLDER = "What do you need to do?";
 

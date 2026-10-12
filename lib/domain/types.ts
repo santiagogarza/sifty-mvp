@@ -56,6 +56,41 @@ export type PriorityBucket = (typeof PRIORITY_BUCKET)[number];
 export const DELEGATION_CANDIDATE = ["self", "ai", "person", "unsure"] as const;
 export type DelegationCandidate = (typeof DELEGATION_CANDIDATE)[number];
 
+/**
+ * The sifting pipeline, in order. Each stage is one durable workflow step
+ * that writes to the task and one `ai_runs` row. `task.siftStage` names the
+ * stage in progress (or the one that failed) while `aiStatus` is
+ * `running`/`failed`.
+ */
+export const SIFT_STAGES = ["enrich", "prioritize", "triage", "subtasks", "plan"] as const;
+export type SiftStage = (typeof SIFT_STAGES)[number];
+
+/** Short progressive labels for the per-stage status UI. */
+export const SIFT_STAGE_LABELS: Record<SiftStage, string> = {
+  enrich: "Enriching",
+  prioritize: "Prioritizing",
+  triage: "Triaging",
+  subtasks: "Breaking down",
+  plan: "Planning",
+};
+
+export const PLAN_EXECUTOR = ["self", "ai_agent", "cursor_agent", "person", "none"] as const;
+export type PlanExecutor = (typeof PLAN_EXECUTOR)[number];
+
+/** Output of the `plan` stage: can AI do it, with what, and what is missing. */
+export interface TaskPlan {
+  executor: PlanExecutor;
+  /** One or two sentences on how the work would get done. */
+  approach: string | null;
+  /** Connector slugs the executor would need ("gmail", "calendar", "github", …). */
+  connectors: string[];
+  /** True when an executor could start now without more input. */
+  readyForAi: boolean;
+  /** What stands in the way (missing access, unclear outcome), or null. */
+  blockers: string | null;
+  promptVersion: string;
+}
+
 export interface Subtask {
   id: ID;
   title: string;
@@ -121,6 +156,11 @@ export interface Task {
    * document for an AI agent or a person. Null until generated.
    */
   agentBrief: string | null;
+
+  /** Server-owned sift bookkeeping; never sent by the client. */
+  siftId: ID | null;
+  siftStage: SiftStage | null;
+  plan: TaskPlan | null;
 
   labelIds: ID[];
   subtasks: Subtask[];

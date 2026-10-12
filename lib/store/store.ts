@@ -134,6 +134,11 @@ interface SiftyState {
    * adopting the response would resurrect it as a ghost.
    */
   replaceTaskFromServer: (task: Task) => void;
+  /**
+   * Adopt server-owned fields (sift progress, AI status) without marking
+   * the task dirty: nothing here is pushed back.
+   */
+  patchTaskFromServer: (taskId: string, patch: Partial<Task>) => void;
   /** Server-origin: merge labels into the local set. No push. */
   upsertLabels: (labels: Label[]) => void;
   /**
@@ -225,6 +230,9 @@ export const useStore = create<SiftyState>()(
             clarifyingQuestion: null,
             rationale: null,
             agentBrief: null,
+            siftId: null,
+            siftStage: null,
+            plan: null,
             labelIds: [],
             subtasks: [],
             editedFields: [],
@@ -315,6 +323,9 @@ export const useStore = create<SiftyState>()(
             clarifyingQuestion: null,
             rationale: null,
             agentBrief: null,
+            siftId: null,
+            siftStage: null,
+            plan: null,
             labelIds: [...source.labelIds],
             subtasks: source.subtasks.map((st) => ({
               id: id("st"),
@@ -421,6 +432,12 @@ export const useStore = create<SiftyState>()(
         replaceTaskFromServer: (task) => {
           set((s) => ({
             tasks: s.tasks.map((t) => (t.id === task.id ? task : t)),
+          }));
+        },
+
+        patchTaskFromServer: (taskId, patch) => {
+          set((s) => ({
+            tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, ...patch } : t)),
           }));
         },
 
