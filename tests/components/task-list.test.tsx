@@ -271,6 +271,23 @@ describe("TaskList snooze keys", () => {
     expect(useStore.getState().tasks.find((t) => t.id === "b")!.due).toBeNull();
   });
 
+  it("a clicked row becomes the active row, so s works right after opening it", async () => {
+    const user = userEvent.setup();
+    const tasks = [makeTask("a", "Alpha"), makeTask("b", "Beta"), makeTask("c", "Gamma")];
+    useStore.setState({ tasks, labels: [] });
+    render(<TaskList tasks={tasks} onOpen={vi.fn()} />);
+
+    await user.click(row("Beta"));
+    expect(row("Beta")).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("st");
+    expect(useStore.getState().tasks.find((t) => t.id === "b")!.due).toBe(
+      resolveSnooze("tomorrow"),
+    );
+    // j continues from the clicked row.
+    await user.keyboard("{ArrowDown}");
+    expect(row("Gamma")).toHaveFocus();
+  });
+
   it("s then w lands on next Monday; Escape cancels a pending snooze", async () => {
     const user = userEvent.setup();
     const tasks = [makeTask("a", "Alpha")];

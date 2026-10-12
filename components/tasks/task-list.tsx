@@ -249,8 +249,12 @@ export function TaskList({
             className="animate-fade-in"
             // Both events: Safari does not focus a clicked button, so a
             // pointer press on the complete circle must count as well.
+            // A row that gains focus (click, or focus returning from the
+            // sheet) becomes the active row, so j/k continue from it and
+            // `s` snoozes the task the user is actually looking at.
             onFocus={() => {
               focusedRowRef.current = { id: row.task.id, index: row.navIndex };
+              setActiveIndex(row.navIndex);
             }}
             onPointerDown={() => {
               focusedRowRef.current = { id: row.task.id, index: row.navIndex };
