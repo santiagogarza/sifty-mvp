@@ -9,6 +9,7 @@ import {
   getStripe,
   verifyPriceMatchesPlan,
 } from "@/lib/billing/stripe";
+import { honoursRemainingTrial } from "@/lib/billing/trial-carryover";
 import { getRepos } from "@/lib/db/repos";
 import { TRIAL_DAYS, trialSnapshot } from "@/lib/entitlements/entitlements";
 import { reportError } from "@/lib/observability/report-error";
@@ -22,12 +23,6 @@ export const runtime = "nodejs";
 const Body = z.object({
   cadence: z.enum(["monthly", "yearly"] satisfies [Cadence, ...Cadence[]]).default("monthly"),
 });
-
-/**
- * Stripe requires `trial_end` to be at least 48h out; a shorter remainder
- * is not worth a trialing subscription, so those users are billed now.
- */
-const MIN_HONORED_TRIAL_MS = 48 * 60 * 60 * 1000;
 
 export async function POST(req: Request) {
   const session = await getSession(req);
@@ -100,9 +95,8 @@ export async function POST(req: Request) {
     const origin = req.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
     // Someone upgrading mid-trial keeps the days they were promised: the
     // card is collected now and first charged when the app trial ends.
-    const trialEndsAt = ent?.trialEndsAt ? Date.parse(ent.trialEndsAt) : Number.NaN;
-    const honorTrial =
-      Number.isFinite(trialEndsAt) && trialEndsAt - Date.now() > MIN_HONORED_TRIAL_MS;
+    const honorTrial = honoursRemainingTrial(ent?.trialEndsAt);
+    const trialEndsAt = honorTrial ? Date.parse(ent?.trialEndsAt as string) : Number.NaN;
 
     const checkout = await stripe.checkout.sessions.create({
       mode: "subscription",
