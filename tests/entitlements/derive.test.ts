@@ -49,6 +49,7 @@ describe("deriveEntitlement — tiers and caps", () => {
       siftsPerDay: FREE_SIFTS_PER_DAY,
       executionBudgetCentsMonth: 0,
       connectorsAllowed: false,
+      dailyPlan: false,
     });
   });
 
@@ -57,6 +58,7 @@ describe("deriveEntitlement — tiers and caps", () => {
     expect(ent.tier).toBe("trialing");
     expect(ent.caps.siftsPerDay).toBe(PRO_FAIR_USE_SIFTS_PER_DAY);
     expect(ent.caps.connectorsAllowed).toBe(true);
+    expect(ent.caps.dailyPlan).toBe(true);
     expect(ent.trialEndsAt).toBeTruthy();
   });
 

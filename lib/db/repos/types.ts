@@ -141,6 +141,8 @@ export interface UserRepo {
   setCreator(userId: string, isCreator: boolean): Promise<void>;
   setStripeCustomerId(userId: string, customerId: string): Promise<void>;
   findByStripeCustomerId(customerId: string): Promise<UserProfile | null>;
+  /** Every account in `id` order, `limit` at a time, starting after `afterId`. */
+  list(limit: number, afterId?: string): Promise<UserProfile[]>;
   /**
    * Remove the user and everything they own (tasks, labels, memories,
    * events, AI runs, sessions, entitlement). Returns false when no such
@@ -194,7 +196,11 @@ export interface LabelRepo {
 export interface TaskListOptions {
   /** Keep only these lifecycles. */
   lifecycles?: readonly Task["lifecycle"][];
-  /** Newest-updated first; undefined returns every matching task. */
+  /** Only tasks with a due date on or before this `YYYY-MM-DD` day. */
+  dueOnOrBefore?: string;
+  /** Default `updatedAt` (newest first). `due` is soonest first, undated excluded. */
+  orderBy?: "updatedAt" | "due";
+  /** Undefined returns every matching task. */
   limit?: number;
 }
 
@@ -272,6 +278,20 @@ export interface AiRunRepo {
     error?: string | null,
   ): Promise<void>;
   /**
+   * Fill in a reserved row once the model has answered: the daily plan
+   * writes its billing row before `start()` (so the cap sees it at once)
+   * and completes it here, keeping one row per run even across a retry.
+   */
+  complete(
+    userId: string,
+    id: string,
+    patch: Pick<
+      AiRunWriteInput,
+      "model" | "transport" | "status" | "durationMs" | "inputTokens" | "outputTokens" | "costCents"
+    > &
+      Partial<Pick<AiRunWriteInput, "promptVersion" | "workflowRunId" | "error" | "offline">>,
+  ): Promise<void>;
+  /**
    * Sifts that count against today's cap: succeeded, online, and a billing
    * unit (`siftId` null, or the `sift` accounting row). Per-stage detail rows
    * of a workflow sift are excluded so a five-stage sift is one sift.
@@ -292,6 +312,12 @@ export interface AiRunRepo {
   rollup(input: { since: Date; by: AiRunRollupKey }): Promise<AiRunRollupRow[]>;
 }
 
+/**
+ * Audit trail entries. The daily plan writes one per task it moved, with a
+ * human-readable `reason` in the payload.
+ */
+export type TaskEventKind = "plan.moved_in" | "plan.moved_out" | "plan.rescored";
+
 export interface TaskEventRecord {
   id: string;
   taskId: string;
@@ -300,9 +326,102 @@ export interface TaskEventRecord {
   createdAt: string;
 }
 
+export interface TaskEventAppendInput {
+  /**
+   * Caller-fixed id makes the append idempotent: a retried workflow step
+   * that re-writes the same event leaves one row.
+   */
+  id?: string;
+  taskId: string;
+  kind: TaskEventKind;
+  payload: Record<string, unknown>;
+}
+
 export interface TaskEventRepo {
   /** Oldest first. `limit` undefined returns every event. */
   list(userId: string, limit?: number): Promise<TaskEventRecord[]>;
+  /** Newest first, one task. */
+  listForTask(userId: string, taskId: string, limit: number): Promise<TaskEventRecord[]>;
+  /** Idempotent on `id`: an existing row is returned untouched. */
+  append(userId: string, input: TaskEventAppendInput): Promise<TaskEventRecord>;
+}
+
+export type DailyPlanTrigger = "cron" | "manual";
+export type DailyPlanStatus = "running" | "completed" | "failed";
+export type DailyPlanMoveKind = "moved_in" | "moved_out" | "rescored";
+
+export interface DailyPlanMove {
+  taskId: string;
+  title: string;
+  kind: DailyPlanMoveKind;
+  /** Short explanation shown to the user ("due tomorrow, high importance"). */
+  reason: string;
+}
+
+export interface DailyPlanRecord {
+  id: string;
+  userId: string;
+  /** Local `YYYY-MM-DD` the plan is for. */
+  planDate: string;
+  timezone: string;
+  trigger: DailyPlanTrigger;
+  status: DailyPlanStatus;
+  workflowRunId: string | null;
+  aiRunId: string | null;
+  summary: string | null;
+  moves: DailyPlanMove[];
+  considered: number;
+  error: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+}
+
+/**
+ * A `running` plan older than this is treated as dead (the workflow was
+ * lost between claim and finish) and no longer blocks a manual re-plan.
+ */
+export const DAILY_PLAN_LEASE_MS = 10 * 60 * 1000;
+
+export type DailyPlanClaim =
+  | { ok: true; plan: DailyPlanRecord }
+  /** A `running` plan inside its lease already exists for the user. */
+  | { ok: false; reason: "running"; plan: DailyPlanRecord }
+  /** Cron only: this (user, planDate) already has a cron plan. */
+  | { ok: false; reason: "planned" };
+
+export interface DailyPlanRepo {
+  /**
+   * Reserve a run, atomically with respect to other claims for the same
+   * user: at most one `running` plan inside its lease per user (two
+   * overlapping "Re-plan today" clicks start one workflow), and for `cron`
+   * one plan per (user, planDate) so a cron rerun enqueues nothing.
+   */
+  claim(
+    input: {
+      userId: string;
+      planDate: string;
+      timezone: string;
+      trigger: DailyPlanTrigger;
+      /** The pre-reserved `prioritize` `ai_runs` row this run bills against. */
+      aiRunId: string;
+    },
+    now?: Date,
+  ): Promise<DailyPlanClaim>;
+  get(userId: string, id: string): Promise<DailyPlanRecord | null>;
+  /** The newest plan for the user, any status. */
+  latest(userId: string): Promise<DailyPlanRecord | null>;
+  /** A `running` plan inside its lease, or null. */
+  runningFor(userId: string, now?: Date): Promise<DailyPlanRecord | null>;
+  update(
+    userId: string,
+    id: string,
+    patch: Partial<
+      Pick<
+        DailyPlanRecord,
+        "status" | "workflowRunId" | "aiRunId" | "summary" | "moves" | "considered" | "error"
+      >
+    > & { finishedAt?: string | null },
+  ): Promise<DailyPlanRecord | null>;
 }
 
 export interface StripeEventRepo {
@@ -511,4 +630,5 @@ export interface Repos {
   notificationPreferences: NotificationPreferencesRepo;
   pushSubscriptions: PushSubscriptionRepo;
   notificationSends: NotificationSendRepo;
+  dailyPlans: DailyPlanRepo;
 }

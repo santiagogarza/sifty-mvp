@@ -74,6 +74,65 @@ export function isToday(due: string | Date | null | undefined, now = new Date())
   return dayDelta(date, now) === 0;
 }
 
+const dayKeyFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * The calendar day (`YYYY-MM-DD`) it is at `now` in an IANA zone. Server
+ * code uses this instead of `toLocalIsoDate` (which reads the process
+ * zone — UTC on Vercel) so "today" for a user in Ljubljana is Ljubljana's
+ * day. An unknown zone falls back to UTC rather than throwing.
+ */
+export function dayKeyInTimeZone(now: Date, timeZone: string): string {
+  let f = dayKeyFormatters.get(timeZone);
+  if (!f) {
+    try {
+      f = new Intl.DateTimeFormat("en-CA", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+    } catch {
+      f = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "UTC",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+    }
+    dayKeyFormatters.set(timeZone, f);
+  }
+  // en-CA prints `YYYY-MM-DD`.
+  return f.format(now);
+}
+
+/** The local hour (0–23) at `now` in an IANA zone; UTC when the zone is unknown. */
+export function hourInTimeZone(now: Date, timeZone: string): number {
+  let hour: string;
+  try {
+    hour = new Intl.DateTimeFormat("en-US", { timeZone, hour: "2-digit", hourCycle: "h23" })
+      .formatToParts(now)
+      .find((p) => p.type === "hour")!.value;
+  } catch {
+    return now.getUTCHours();
+  }
+  // Some ICU builds print midnight as "24" even with h23.
+  return Number(hour) % 24;
+}
+
+/** Calendar arithmetic on a `YYYY-MM-DD` key, independent of any zone. */
+export function addDaysToKey(dayKey: string, days: number): string {
+  const [y, m, d] = dayKey.split("-").map(Number) as [number, number, number];
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/** Whole days from `fromKey` to `toKey` (positive when `toKey` is later). */
+export function dayKeyDelta(toKey: string, fromKey: string): number {
+  const [ty, tm, td] = toKey.split("-").map(Number) as [number, number, number];
+  const [fy, fm, fd] = fromKey.split("-").map(Number) as [number, number, number];
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / dayMs);
+}
+
 export function formatExactTime(value: string | Date): string {
   const date = typeof value === "string" ? new Date(value) : value;
   return date.toLocaleString(undefined, {

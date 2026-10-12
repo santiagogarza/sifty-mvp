@@ -6,6 +6,14 @@ import {
   BRIEF_TEMPERATURE,
   buildBriefUserPrompt,
 } from "@/lib/ai/agent-brief";
+import { type PlanContext, toCandidate } from "@/lib/ai/plan/context";
+import {
+  DAILY_PLAN_PROMPT_VERSION,
+  DAILY_PLAN_TEMPERATURE,
+  DailyPlanOutput,
+  dailyPlanSystem,
+  dailyPlanUser,
+} from "@/lib/ai/plan/stage";
 import { TRIAGE_SYSTEM_PROMPT, buildTriageUserPrompt } from "@/lib/ai/prompts";
 import { STAGE_DEFINITIONS } from "@/lib/ai/sift/stages";
 import { TRIAGE_TEMPERATURE } from "@/lib/ai/triage-agent";
@@ -83,6 +91,42 @@ export function computeFingerprints(): Fingerprints {
     }),
     schema: asSchema(TriageOutput).jsonSchema,
     temperature: TRIAGE_TEMPERATURE,
+  });
+
+  const planCtx: PlanContext = {
+    planDate: CANONICAL_TODAY,
+    timeZone: "UTC",
+    candidates: [
+      toCandidate(task, "t1", CANONICAL_TODAY),
+      toCandidate(
+        {
+          ...task,
+          id: "task_fingerprint_2",
+          title: CANONICAL_CAPTURE.openTasks[0]!.title,
+          lifecycle: "active",
+          due: CANONICAL_CAPTURE.openTasks[0]!.due,
+          urgency: CANONICAL_CAPTURE.openTasks[0]!.urgency,
+          importance: CANONICAL_CAPTURE.openTasks[0]!.importance,
+          priorityBucket: "do_now",
+          effort: CANONICAL_CAPTURE.openTasks[0]!.effort,
+          editedFields: ["urgency"],
+        },
+        "t2",
+        CANONICAL_TODAY,
+      ),
+    ],
+    considered: 2,
+    notShown: 0,
+    recentCompletions: [
+      { title: "Send the agenda", effort: "quick", completedAt: "2026-10-11T16:00:00.000Z" },
+    ],
+    preferences: CANONICAL_CAPTURE.preferences,
+  };
+  out[DAILY_PLAN_PROMPT_VERSION] = hash({
+    system: dailyPlanSystem(planCtx),
+    user: dailyPlanUser(planCtx),
+    schema: asSchema(DailyPlanOutput).jsonSchema,
+    temperature: DAILY_PLAN_TEMPERATURE,
   });
 
   out[BRIEF_PROMPT_VERSION] = hash({
