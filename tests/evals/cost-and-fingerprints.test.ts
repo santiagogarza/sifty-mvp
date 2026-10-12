@@ -173,12 +173,13 @@ describe("prompt fingerprints", () => {
   });
 
   it("reports a moved hash and an unrecorded version", () => {
+    const enrichVersion = STAGE_DEFINITIONS.enrich.promptVersion;
     const { "plan.v1": _unrecorded, ...rest } = current;
-    const recorded = { ...rest, "enrich.v1": "stale" };
+    const recorded = { ...rest, [enrichVersion]: "stale" };
     const findings = compareFingerprints(current, recorded);
     expect(findings.map((f) => [f.version, f.kind])).toEqual(
       expect.arrayContaining([
-        ["enrich.v1", "changed-without-bump"],
+        [enrichVersion, "changed-without-bump"],
         ["plan.v1", "unrecorded"],
       ]),
     );
