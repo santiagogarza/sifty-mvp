@@ -2,6 +2,10 @@
 
 Calm, AI-first productivity. Capture instantly. Sifty organizes the rest.
 
+> **Branches:** `production` is the live product (Vercel deploys from it);
+> `master` is the fresh pre-demo baseline; `demo-done` and `dragging-bug`
+> are demo branches. Read [`BRANCHES.md`](./BRANCHES.md) before opening a PR.
+
 ## Run
 
 ```bash

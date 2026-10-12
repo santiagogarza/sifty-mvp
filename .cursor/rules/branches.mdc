@@ -1,0 +1,22 @@
+---
+alwaysApply: true
+---
+
+# Branch roles for this repo
+
+Full details: `BRANCHES.md` at the repo root. Summary:
+
+- **`production`** — the live Sifty. Vercel deploys from it. All product work
+  goes here via PRs into `production`.
+- **`master`** — fresh pre-demo baseline (default branch). Only
+  demo-baseline changes land here via PRs into `master`.
+- **`demo-done`**, **`dragging-bug`** — demo branches reset by the demo
+  setup script. Never open PRs against them.
+
+Never merge `production` into `master`. Never land production-only features
+on `master`. Never run demo reset scripts against `production`. Fixes flow
+`master` → `production` only.
+
+Before creating a branch or PR, decide which base it belongs on. If the
+task does not say and it is not obvious, ask rather than defaulting to
+`master`.
