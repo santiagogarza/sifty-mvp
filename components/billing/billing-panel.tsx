@@ -4,6 +4,7 @@ import { RedeemInviteForm } from "@/components/billing/redeem-invite-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { type Cadence, PRO_PRICES, formatPrice, yearlySavingsPercent } from "@/lib/billing/plans";
+import { honoursRemainingTrial } from "@/lib/billing/trial-carryover";
 import type { Entitlement } from "@/lib/domain/types";
 import {
   FREE_SIFTS_PER_DAY,
@@ -222,7 +223,9 @@ function upgradeCopy(ent: Entitlement): string {
         ? "Your invite covers Pro for now. Add a subscription to keep Pro after it ends, or wait until then."
         : "Your invite covers Pro permanently. No card needed.";
     case "trialing":
-      return "You're on the Pro trial: unlimited sifting. Subscribe now and your card is first charged when the trial ends; or drop to Free and keep capturing with a few sifts a day. Promo codes work at checkout.";
+      return honoursRemainingTrial(ent.trialEndsAt)
+        ? "You're on the Pro trial: unlimited sifting. Subscribe now and your card is first charged when the trial ends; or drop to Free and keep capturing with a few sifts a day. Promo codes work at checkout."
+        : "Your Pro trial is almost over. Subscribe to keep unlimited sifting (billing starts right away), or drop to Free and keep capturing with a few sifts a day. Promo codes work at checkout.";
     default:
       return `Free includes capture, organize, sync, reminders, and ${FREE_SIFTS_PER_DAY} sifts a day. Pro removes the sifting cap and adds autonomous execution and connectors. Promo codes work at checkout.`;
   }
