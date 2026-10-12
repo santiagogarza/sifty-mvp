@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth/session";
 import { deriveEntitlement } from "@/lib/entitlements/entitlements";
 import { redirect } from "next/navigation";
 
-export const metadata = { title: "Settings — Sifty" };
+export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   const session = await getSession();

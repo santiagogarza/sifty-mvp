@@ -2,7 +2,7 @@ import { AuthForm } from "@/components/auth/auth-form";
 import { isGoogleAuthEnabled } from "@/lib/auth/auth";
 import Link from "next/link";
 
-export const metadata = { title: "Sign in to Sifty" };
+export const metadata = { title: { absolute: "Sign in to Sifty" } };
 
 const ERROR_COPY: Record<string, string> = {
   INVALID_TOKEN: "That link has expired or was already used. Sign in to get a new one.",
