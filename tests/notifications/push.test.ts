@@ -218,6 +218,30 @@ describe("sendPushToUser", () => {
     spy.mockRestore();
   });
 
+  it("sends to every device concurrently, so a slow one does not serialize the rest", async () => {
+    const user = await userWithSubscriptions([
+      "https://push.example/slow",
+      "https://push.example/fast",
+    ]);
+    const started: string[] = [];
+    let releaseSlow: (() => void) | null = null;
+    setPushTransportForTesting((sub) => {
+      started.push(sub.endpoint);
+      if (sub.endpoint.endsWith("slow")) {
+        return new Promise((resolve) => {
+          releaseSlow = () => resolve("delivered");
+        });
+      }
+      return Promise.resolve("delivered");
+    });
+    const pending = sendPushToUser(getTestRepos(), user.id, payload);
+    // Both requests were issued before the slow one answered.
+    await Promise.resolve();
+    expect(started).toEqual(["https://push.example/slow", "https://push.example/fast"]);
+    releaseSlow!();
+    expect(await pending).toEqual({ status: "sent", delivered: 2, removed: 0, failed: 0 });
+  });
+
   it("reports no_subscriptions for a user without devices", async () => {
     const user = await userWithSubscriptions([]);
     setPushTransportForTesting(async () => "delivered");

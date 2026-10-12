@@ -103,7 +103,15 @@ export async function sendDueDigests(
       if (due.length === 0) continue;
       const channels = enabledChannels(prefs);
       if (channels.length === 0) continue;
-      await deliverForUser(repos, prefs, due, channels, { now, appUrl }, result);
+      await deliverForUser(
+        repos,
+        prefs,
+        due,
+        channels,
+        { now, appUrl, deadline: startedAt + timeBudgetMs },
+        result,
+      );
+      if (result.truncated) break walk;
     }
     if (page.length < pageSize) break;
   }
@@ -128,7 +136,7 @@ async function deliverForUser(
   prefs: NotificationPreferencesRecord,
   due: DueDigest[],
   channels: NotificationChannel[],
-  ctx: { now: Date; appUrl: string },
+  ctx: { now: Date; appUrl: string; deadline: number },
   result: DigestRunResult,
 ): Promise<void> {
   const userId = prefs.userId;
@@ -161,6 +169,12 @@ async function deliverForUser(
   for (const { kind, periodKey } of due) {
     let digest: Digest | null | undefined;
     for (const channel of channels) {
+      // Never claim what there is no time left to send: an unclaimed period
+      // is retried on the next tick, a claim killed mid-send waits a lease.
+      if (Date.now() > ctx.deadline) {
+        result.truncated = true;
+        return;
+      }
       const claim = await repos.notificationSends.claim(
         { userId, kind, channel, periodKey },
         ctx.now,

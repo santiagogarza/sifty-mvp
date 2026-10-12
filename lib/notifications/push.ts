@@ -117,31 +117,32 @@ export async function sendPushToUser(
   const subscriptions = await repos.pushSubscriptions.listForUser(userId);
   if (subscriptions.length === 0) return { status: "no_subscriptions" };
 
-  let delivered = 0;
-  let removed = 0;
-  let failed = 0;
-  for (const sub of subscriptions) {
-    try {
-      const outcome = await _transport(sub, payload, config);
-      if (outcome === "delivered") {
-        delivered += 1;
-        await repos.pushSubscriptions.touch(sub.id, now);
-      } else if (outcome === "gone") {
-        removed += 1;
-        await repos.pushSubscriptions.remove(sub.id);
-      } else {
-        failed += 1;
+  // All devices in parallel: one user's fan-out is then bounded by a
+  // single request timeout, not by devices × timeout, which matters inside
+  // the cron's time budget.
+  const outcomes = await Promise.all(
+    subscriptions.map(async (sub): Promise<PushDelivery> => {
+      try {
+        const outcome = await _transport(sub, payload, config);
+        if (outcome === "delivered") await repos.pushSubscriptions.touch(sub.id, now);
+        if (outcome === "gone") await repos.pushSubscriptions.remove(sub.id);
+        return outcome;
+      } catch (err) {
+        reportError(err, {
+          area: "notifications.push",
+          userId,
+          tags: { endpointHost: safeHost(sub.endpoint) },
+        });
+        return "failed";
       }
-    } catch (err) {
-      failed += 1;
-      reportError(err, {
-        area: "notifications.push",
-        userId,
-        tags: { endpointHost: safeHost(sub.endpoint) },
-      });
-    }
-  }
-  return { status: "sent", delivered, removed, failed };
+    }),
+  );
+  return {
+    status: "sent",
+    delivered: outcomes.filter((o) => o === "delivered").length,
+    removed: outcomes.filter((o) => o === "gone").length,
+    failed: outcomes.filter((o) => o === "failed").length,
+  };
 }
 
 function safeHost(endpoint: string): string {

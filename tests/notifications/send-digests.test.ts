@@ -253,6 +253,28 @@ describe("sendDueDigests", () => {
     expect(next).toMatchObject({ users: 4, sent: 4, truncated: false });
   });
 
+  it("stops claiming inside a user once the budget is spent, leaving the rest unclaimed", async () => {
+    const user = await seedUser("slow@example.com", { pushEnabled: true });
+    setErrorSink(() => undefined);
+    // The email send eats the whole budget; the push claim must not follow.
+    const slow: EmailProvider = {
+      name: "console",
+      async send(message: EmailMessage) {
+        await new Promise((r) => setTimeout(r, 30));
+        return { id: `slow_${message.to}`, provider: "console" };
+      },
+    };
+    setEmailProviderForTesting(slow);
+    const run = await sendDueDigests(getTestRepos(), {
+      now: SEVEN_LJU,
+      appUrl: APP,
+      timeBudgetMs: 10,
+    });
+    expect(run).toMatchObject({ sent: 1, truncated: true });
+    const ledger = await getTestRepos().notificationSends.listForUser(user.id);
+    expect(ledger.map((l) => [l.channel, l.status])).toEqual([["email", "sent"]]);
+  });
+
   it("on a daily cron a truncated run means that day is missed, not backfilled", async () => {
     const user = await seedUser("daily@example.com");
     setErrorSink(() => undefined);
