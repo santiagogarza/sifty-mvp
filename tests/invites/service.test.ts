@@ -8,6 +8,7 @@ import {
 } from "@/lib/entitlements/entitlements";
 import { hashInviteCode, isWellFormedInviteCode } from "@/lib/invites/codes";
 import {
+  addMonthsClamped,
   extendComp,
   mintInviteCode,
   parseExpiresInput,
@@ -361,6 +362,28 @@ describe("redeem atomicity and Stripe-fact preservation", () => {
     expect(refused).toEqual({ ok: false, reason: "exhausted" });
     expect(await repos.entitlements.get(u2.id)).toEqual(before);
     expect(await repos.inviteCodes.listRedemptionsForUser(u2.id)).toEqual([]);
+  });
+});
+
+describe("addMonthsClamped", () => {
+  it("clamps to the last day of a shorter target month", () => {
+    expect(addMonthsClamped(new Date("2026-01-31T10:00:00.000Z"), 1).toISOString()).toBe(
+      "2026-02-28T10:00:00.000Z",
+    );
+    expect(addMonthsClamped(new Date("2028-01-31T00:00:00.000Z"), 1).toISOString()).toBe(
+      "2028-02-29T00:00:00.000Z",
+    );
+    expect(addMonthsClamped(new Date("2026-10-31T00:00:00.000Z"), 1).toISOString()).toBe(
+      "2026-11-30T00:00:00.000Z",
+    );
+  });
+  it("is a plain month add otherwise, across year ends", () => {
+    expect(addMonthsClamped(new Date("2026-11-15T00:00:00.000Z"), 3).toISOString()).toBe(
+      "2027-02-15T00:00:00.000Z",
+    );
+    expect(addMonthsClamped(new Date("2026-10-12T00:00:00.000Z"), 12).toISOString()).toBe(
+      "2027-10-12T00:00:00.000Z",
+    );
   });
 });
 

@@ -147,9 +147,17 @@ export function extendComp(
   if (durationMonths === null) return null;
   if (active && current.compedUntil === null) return null;
   const base = active && current.compedUntil ? new Date(current.compedUntil) : new Date(now);
-  const end = new Date(base);
-  end.setMonth(end.getMonth() + durationMonths);
-  return end.toISOString();
+  return addMonthsClamped(base, durationMonths).toISOString();
+}
+
+/** `Date.setMonth` rolls Jan 31 + 1 into March; clamp to the target month's last day instead. */
+export function addMonthsClamped(from: Date, months: number): Date {
+  const end = new Date(from);
+  end.setUTCDate(1);
+  end.setUTCMonth(end.getUTCMonth() + months);
+  const lastDay = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, 0)).getUTCDate();
+  end.setUTCDate(Math.min(from.getUTCDate(), lastDay));
+  return end;
 }
 
 export interface RevokeOptions {

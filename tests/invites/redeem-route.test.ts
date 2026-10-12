@@ -70,6 +70,25 @@ describe("POST /api/invites/redeem", () => {
     expect(text).not.toContain(record.codeHash);
   });
 
+  it("expired and exhausted codes → 410 with their reason codes", async () => {
+    const repos = getTestRepos();
+    const { cookie } = await createUserWithCookie(repos, { email: "late@example.com" });
+    const other = await createUserWithCookie(repos, { email: "other@example.com" });
+
+    const expired = await mintInviteCode(repos, {
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    const res1 = await post({ code: expired.code }, cookie);
+    expect(res1.status).toBe(410);
+    expect((await res1.json()).code).toBe("expired");
+
+    const single = await mintInviteCode(repos, { maxRedemptions: 1 });
+    expect((await post({ code: single.code }, other.cookie, "9.9.9.9")).status).toBe(200);
+    const res2 = await post({ code: single.code }, cookie);
+    expect(res2.status).toBe(410);
+    expect((await res2.json()).code).toBe("exhausted");
+  });
+
   it("second redemption of the same code by the same user → 409", async () => {
     const repos = getTestRepos();
     const { cookie } = await createUserWithCookie(repos, { email: "twice@example.com" });
