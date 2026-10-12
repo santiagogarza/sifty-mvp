@@ -35,11 +35,22 @@ import { persist } from "zustand/middleware";
  *   via the shared `mergeTriageIntoTask` helper.
  */
 
+/**
+ * Which top-level fields a mutation touched. The sync layer pushes exactly
+ * these keys, so two devices editing different fields never clobber each
+ * other and a server-side write (triage, agent brief) survives a pending
+ * local edit. Undefined means "unknown — push the whole entity".
+ */
+export type ChangedKeys<T> = ReadonlyArray<keyof T & string>;
+
 export interface SyncHooks {
-  taskUpserted(task: Task, opts: { created: boolean }): void;
+  taskUpserted(task: Task, opts: { created: boolean; changedKeys?: ChangedKeys<Task> }): void;
   taskDeleted(taskId: string): void;
   labelEnsured(label: Label): void;
-  memoryUpserted(memory: Memory, opts: { created: boolean }): void;
+  memoryUpserted(
+    memory: Memory,
+    opts: { created: boolean; changedKeys?: ChangedKeys<Memory> },
+  ): void;
   memoryDeleted(memoryId: string): void;
   /** Resolves when the task's create push has settled (ok or not). */
   waitForTask(taskId: string): Promise<void>;
@@ -128,12 +139,30 @@ interface SiftyState {
 
 const VERSION = 3;
 
+/** Bookkeeping fields the server derives itself; never worth a push. */
+const UNSYNCED_KEYS = new Set(["id", "createdAt", "updatedAt", "completedAt"]);
+
+/**
+ * Shallow key diff. Mutations build new arrays/objects only for the fields
+ * they touch, so reference inequality is an exact change signal.
+ */
+function changedKeys<T extends object>(prev: T | undefined, next: T): ChangedKeys<T> | undefined {
+  if (!prev) return undefined;
+  return (Object.keys(next) as Array<keyof T & string>).filter(
+    (key) => !UNSYNCED_KEYS.has(key) && prev[key] !== next[key],
+  );
+}
+
 export const useStore = create<SiftyState>()(
   persist(
     (set, get) => {
-      const notifyTask = (taskId: string, opts: { created: boolean }) => {
-        const task = get().tasks.find((t) => t.id === taskId);
-        if (task) syncHooks?.taskUpserted(task, opts);
+      const findTask = (taskId: string) => get().tasks.find((t) => t.id === taskId);
+      /** Call after `set` with the row captured before it. */
+      const notifyTask = (taskId: string, prev: Task | undefined) => {
+        const task = findTask(taskId);
+        if (task) {
+          syncHooks?.taskUpserted(task, { created: false, changedKeys: changedKeys(prev, task) });
+        }
       };
 
       return {
@@ -187,6 +216,7 @@ export const useStore = create<SiftyState>()(
         },
 
         updateTask: (id, patch, opts) => {
+          const prev = findTask(id);
           set((s) => ({
             tasks: s.tasks.map((t) => {
               if (t.id !== id) return t;
@@ -219,7 +249,7 @@ export const useStore = create<SiftyState>()(
               return next;
             }),
           }));
-          notifyTask(id, { created: false });
+          notifyTask(id, prev);
         },
 
         deleteTask: (id) => {
@@ -228,6 +258,7 @@ export const useStore = create<SiftyState>()(
         },
 
         toggleSubtask: (taskId, subtaskId) => {
+          const prev = findTask(taskId);
           set((s) => ({
             tasks: s.tasks.map((t) =>
               t.id !== taskId
@@ -242,12 +273,13 @@ export const useStore = create<SiftyState>()(
                   },
             ),
           }));
-          notifyTask(taskId, { created: false });
+          notifyTask(taskId, prev);
         },
 
         addSubtask: (taskId, title) => {
           const cleaned = title.trim();
           if (!cleaned) return;
+          const prev = findTask(taskId);
           set((s) => ({
             tasks: s.tasks.map((t) => {
               if (t.id !== taskId) return t;
@@ -260,10 +292,11 @@ export const useStore = create<SiftyState>()(
               };
             }),
           }));
-          notifyTask(taskId, { created: false });
+          notifyTask(taskId, prev);
         },
 
         removeSubtask: (taskId, subtaskId) => {
+          const prev = findTask(taskId);
           set((s) => ({
             tasks: s.tasks.map((t) =>
               t.id !== taskId
@@ -276,7 +309,7 @@ export const useStore = create<SiftyState>()(
                   },
             ),
           }));
-          notifyTask(taskId, { created: false });
+          notifyTask(taskId, prev);
         },
 
         setLifecycle: (taskId, lifecycle) => {
@@ -284,19 +317,21 @@ export const useStore = create<SiftyState>()(
         },
 
         setAiStatus: (taskId, status, error) => {
+          const prev = findTask(taskId);
           set((s) => ({
             tasks: s.tasks.map((t) =>
               t.id !== taskId ? t : { ...t, aiStatus: status, aiError: error ?? null },
             ),
           }));
-          notifyTask(taskId, { created: false });
+          notifyTask(taskId, prev);
         },
 
         applyTriage: (taskId, triage) => {
+          const prev = findTask(taskId);
           set((s) => ({
             tasks: s.tasks.map((t) => (t.id !== taskId ? t : mergeTriageIntoTask(t, triage))),
           }));
-          notifyTask(taskId, { created: false });
+          notifyTask(taskId, prev);
         },
 
         replaceTaskFromServer: (task) => {
@@ -367,11 +402,17 @@ export const useStore = create<SiftyState>()(
         },
 
         updateMemory: (id, patch) => {
+          const prev = get().memories.find((m) => m.id === id);
           set((s) => ({
             memories: s.memories.map((m) => (m.id === id ? { ...m, ...patch } : m)),
           }));
           const memory = get().memories.find((m) => m.id === id);
-          if (memory) syncHooks?.memoryUpserted(memory, { created: false });
+          if (memory) {
+            syncHooks?.memoryUpserted(memory, {
+              created: false,
+              changedKeys: changedKeys(prev, memory),
+            });
+          }
         },
 
         removeMemory: (id) => {

@@ -22,10 +22,16 @@ async function bootAndPull(previous?: ClientHandle): Promise<ClientHandle> {
   return client;
 }
 
+/**
+ * Capture a task and let its create land. Marks it `ready` so the mount
+ * pull's triage auto-resume (which this harness does not route) stays out
+ * of the call log.
+ */
 async function captureSynced(client: ClientHandle, text: string): Promise<string> {
   const task = client.store.getState().createTask({ sourceText: text });
+  client.store.getState().setAiStatus(task.id, "ready");
   await settle(client);
-  expect(await client.repos.tasks.get(client.userId, task.id)).not.toBeNull();
+  expect((await client.repos.tasks.get(client.userId, task.id))?.aiStatus).toBe("ready");
   return task.id;
 }
 
@@ -45,7 +51,10 @@ describe("narrow patches", () => {
 
     // Something lands on the server behind the client's back (agent-brief
     // route, another device, a triage result).
-    await client.repos.tasks.update(client.userId, id, { agentBrief: "# Brief", due: "2026-11-02" });
+    await client.repos.tasks.update(client.userId, id, {
+      agentBrief: "# Brief",
+      due: "2026-11-02",
+    });
 
     client.calls.length = 0;
     client.store.getState().updateTask(id, { title: "Launch post" }, { editedFields: ["title"] });
@@ -97,7 +106,9 @@ describe("reconcile", () => {
       if (method === "PATCH") throw new TypeError("Failed to fetch");
       return null;
     });
-    client.store.getState().updateTask(id, { title: "Renew passport" }, { editedFields: ["title"] });
+    client.store
+      .getState()
+      .updateTask(id, { title: "Renew passport" }, { editedFields: ["title"] });
     await settle(client);
     offline();
 
@@ -115,7 +126,9 @@ describe("reconcile", () => {
     const client = await bootClient();
     await Promise.all([client.sync.syncFromServer(), client.sync.syncFromServer()]);
     await settle(client);
-    expect(client.calls.filter((c) => c.method === "GET" && c.path === "/api/tasks")).toHaveLength(1);
+    expect(client.calls.filter((c) => c.method === "GET" && c.path === "/api/tasks")).toHaveLength(
+      1,
+    );
     expect(client.calls.filter((c) => c.path === "/api/auth/me")).toHaveLength(1);
   });
 
@@ -123,15 +136,18 @@ describe("reconcile", () => {
     const client = await bootAndPull();
     const id = await captureSynced(client, "Ship it");
 
-    // Gate the second mount's snapshot so it stays in flight.
+    // Hold the second mount's snapshot after it was taken, so it is stale
+    // by the time it is reconciled.
     let release!: () => void;
     const gate = new Promise<void>((r) => {
       release = r;
     });
     let gated = 0;
-    const ungate = client.intercept(async (method, path) => {
-      if (method === "GET" && path === "/api/tasks" && gated++ === 0) await gate;
-      return null;
+    const ungate = client.intercept(async (method, path, proceed) => {
+      if (method !== "GET" || path !== "/api/tasks" || gated++ > 0) return null;
+      const res = await proceed();
+      await gate;
+      return res;
     });
 
     const pull = client.sync.syncFromServer();
@@ -154,8 +170,11 @@ describe("rejections", () => {
     const client = await bootAndPull();
     const id = await captureSynced(client, "Pay the invoice");
 
+    client.calls.length = 0;
     const reject = client.intercept((method) =>
-      method === "PATCH" ? new Response(JSON.stringify({ error: "Invalid input" }), { status: 400 }) : null,
+      method === "PATCH"
+        ? new Response(JSON.stringify({ error: "Invalid input" }), { status: 400 })
+        : null,
     );
     client.store.getState().updateTask(id, { title: "Pay invoice" }, { editedFields: ["title"] });
     await settle(client);
@@ -207,7 +226,9 @@ describe("replay ordering", () => {
       return null;
     });
     const label = client.store.getState().ensureLabel("Grants");
-    client.store.getState().updateTask(id, { labelIds: [label.id] }, { editedFields: ["labelIds"] });
+    client.store
+      .getState()
+      .updateTask(id, { labelIds: [label.id] }, { editedFields: ["labelIds"] });
     await settle(client);
     offline();
     expect(ledger().dirty.labels[label.id]).toBeDefined();
@@ -235,9 +256,7 @@ describe("replay ordering", () => {
     const { id, labelId } = await captureWithOfflineLabel(client);
 
     const reloaded = await bootClient(client);
-    reloaded.intercept((method) =>
-      method === "PUT" ? new Response(null, { status: 503 }) : null,
-    );
+    reloaded.intercept((method) => (method === "PUT" ? new Response(null, { status: 503 }) : null));
     await reloaded.sync.syncFromServer();
     await settle(reloaded);
     expect(reloaded.calls.filter((c) => c.method === "PATCH")).toHaveLength(0);

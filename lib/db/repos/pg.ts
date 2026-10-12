@@ -1,4 +1,3 @@
-import { bucketFromScalars } from "@/lib/domain/priority";
 import { LABEL_TONES, type Label, type LabelTone } from "@/lib/domain/types";
 import type { Memory, Subtask, Task, TaskEditableField } from "@/lib/domain/types";
 import { id as makeId } from "@/lib/utils/ids";
@@ -6,6 +5,7 @@ import { and, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "../client";
 import * as schema from "../schema";
+import { taskPatchColumns } from "./task-columns";
 import {
   type AiRunRepo,
   type AiRunWriteInput,
@@ -305,57 +305,19 @@ export function createPostgresRepos(): Repos {
       const existing = await tasks.get(userId, taskId);
       if (!existing) return null;
 
-      const editedFields = opts?.editedFields
-        ? Array.from(new Set([...existing.editedFields, ...opts.editedFields]))
-        : existing.editedFields;
-      const merged = { ...existing, ...patch, editedFields } as Task;
-      // Recompute the derived bucket from the scalars unless the caller set
-      // it explicitly or the user has protected it with a manual edit.
-      if (
-        ("urgency" in patch || "importance" in patch) &&
-        !("priorityBucket" in patch) &&
-        !editedFields.includes("priorityBucket")
-      ) {
-        merged.priorityBucket = bucketFromScalars(merged.urgency, merged.importance);
-      }
-      const now = new Date();
-      let completedAt = existing.completedAt ? new Date(existing.completedAt) : null;
-      if (patch.lifecycle === "done" && !existing.completedAt) {
-        completedAt = now;
-      }
-      if (patch.lifecycle && patch.lifecycle !== "done") {
-        completedAt = null;
-      }
+      // Narrow SET: only the provided keys (and what they derive) are
+      // written, so concurrent edits to other fields are never overwritten
+      // with this caller's stale read.
+      const columns = taskPatchColumns(existing, patch, {
+        editedFields: opts?.editedFields,
+        now: new Date(),
+      });
 
       // Task row + label links change together — one transaction.
       await db.transaction(async (tx) => {
         await tx
           .update(schema.tasks)
-          .set({
-            title: merged.title,
-            description: merged.description,
-            sourceContext: merged.sourceContext,
-            nextAction: merged.nextAction,
-            lifecycle: merged.lifecycle,
-            aiStatus: merged.aiStatus,
-            aiError: merged.aiError,
-            aiAttempts: merged.aiAttempts,
-            urgency: Math.round(merged.urgency * 100),
-            importance: Math.round(merged.importance * 100),
-            priorityBucket: merged.priorityBucket,
-            effort: merged.effort,
-            due: merged.due,
-            delegationCandidate: merged.delegationCandidate,
-            assigneeName: merged.assigneeName,
-            confidence: Math.round(merged.confidence * 100),
-            clarifyingQuestion: merged.clarifyingQuestion,
-            rationale: merged.rationale,
-            agentBrief: merged.agentBrief,
-            editedFields: merged.editedFields,
-            subtasks: merged.subtasks,
-            completedAt,
-            updatedAt: now,
-          })
+          .set(columns)
           .where(and(eq(schema.tasks.id, taskId), eq(schema.tasks.userId, userId)));
 
         if (patch.labelIds) {

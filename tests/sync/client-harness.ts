@@ -1,3 +1,4 @@
+import type { MemoryReposHandle } from "@/lib/db/repos";
 import { vi } from "vitest";
 
 /**
@@ -19,14 +20,22 @@ export interface RecordedCall {
   status: number;
 }
 
-/** Return a Response to short-circuit the route, or null to pass through. */
-export type Interceptor = (method: string, path: string) => Response | Promise<Response> | null;
+/**
+ * Return a Response to short-circuit the route, or null to pass through.
+ * `proceed` runs the real route, so an interceptor can hold a genuine
+ * response back to simulate a slow network.
+ */
+export type Interceptor = (
+  method: string,
+  path: string,
+  proceed: () => Promise<Response>,
+) => Response | Promise<Response | null> | null;
 
 /**
  * Pass the previous handle to "reload the page" against the same server
  * state; omit it for a fresh server.
  */
-export async function bootClient(previous?: ClientHandle) {
+export async function bootClient(previous?: Pick<ClientHandle, "repos">): Promise<ClientHandle> {
   vi.resetModules();
   vi.stubEnv("SIFTY_DISABLE_AUTH", "1");
 
@@ -46,12 +55,7 @@ export async function bootClient(previous?: ClientHandle) {
   const calls: RecordedCall[] = [];
   const interceptors: Interceptor[] = [];
 
-  const dispatch = async (method: string, url: URL, req: Request): Promise<Response> => {
-    const path = url.pathname;
-    for (const fn of interceptors) {
-      const hit = await fn(method, path);
-      if (hit) return hit;
-    }
+  const route = async (method: string, path: string, req: Request): Promise<Response> => {
     const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
     if (path === "/api/auth/me") return me.GET(req);
     if (path === "/api/tasks") return method === "GET" ? tasks.GET(req) : tasks.POST(req);
@@ -73,6 +77,15 @@ export async function bootClient(previous?: ClientHandle) {
       if (method === "DELETE") return memory.DELETE(req, ctx(id));
     }
     return new Response(JSON.stringify({ error: `unrouted ${method} ${path}` }), { status: 500 });
+  };
+
+  const dispatch = async (method: string, url: URL, req: Request): Promise<Response> => {
+    const path = url.pathname;
+    for (const fn of interceptors) {
+      const hit = await fn(method, path, () => route(method, path, req));
+      if (hit) return hit;
+    }
+    return route(method, path, req);
   };
 
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -116,7 +129,14 @@ export async function bootClient(previous?: ClientHandle) {
   };
 }
 
-export type ClientHandle = Awaited<ReturnType<typeof bootClient>>;
+export interface ClientHandle {
+  repos: MemoryReposHandle;
+  sync: typeof import("@/lib/store/sync");
+  store: typeof import("@/lib/store/store")["useStore"];
+  userId: string;
+  calls: RecordedCall[];
+  intercept(fn: Interceptor): () => void;
+}
 
 /** Pull, then settle the debounce window and every push chain. */
 export async function settle(client: ClientHandle, ms = 500): Promise<void> {

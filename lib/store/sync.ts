@@ -15,22 +15,30 @@ import { type SyncHooks, registerSyncHooks, useStore } from "./store";
  *
  * 1. **Push.** Every store mutation notifies this module (via the
  *    `SyncHooks` registered into the store). Creates and deletes push
- *    immediately; field edits are debounced per entity and always send the
- *    full entity (last-writer-wins). Pushes for one entity are chained so
- *    they can never arrive out of order.
+ *    immediately; field edits are debounced per entity and send only the
+ *    keys that changed (narrow PATCH), so edits to different fields from
+ *    different origins never clobber each other. Pushes for one entity are
+ *    chained so they can never arrive out of order.
  *
- * 2. **Dirty ledger.** Before an entity is pushed it is marked dirty in
- *    localStorage (with tombstones for deletes). A push that never lands —
- *    tab closed, network down — leaves the mark, and the next mount
- *    replays it. On overlap, dirty-local wins over server; clean-local
- *    yields to server.
+ * 2. **Dirty ledger.** Before an entity is pushed, the keys it changed are
+ *    recorded in localStorage (with tombstones for deletes). A push that
+ *    never lands — tab closed, network down — leaves the mark, and the
+ *    next mount replays exactly those keys. On overlap, the dirty keys win
+ *    over the server and every other field follows the server.
  *
  * 3. **Pull.** On mount, `useServerSync` fetches the server snapshot and
  *    reconciles it into the store using the ledger. It also detects an
  *    account switch (shared browser) and resets the local cache instead of
- *    replaying the previous user's data into the new account.
+ *    replaying the previous user's data into the new account. Pulls are
+ *    single-flight: concurrent mounts share one.
  *
- * 4. **Triage recovery.** Tasks stuck in `pending`/`running` from an
+ * 4. **Rejections.** A push the server refuses with a terminal 4xx can
+ *    never succeed by retrying. The entity stays as the user left it (its
+ *    dirty keys still win locally) but is not replayed; the UI shows a
+ *    "not syncing" state via `useServerSync`. The next local change to
+ *    that entity earns one fresh attempt.
+ *
+ * 5. **Triage recovery.** Tasks stuck in `pending`/`running` from an
  *    interrupted session are re-triaged (bounded) after reconcile.
  *
  * Failures are logged, never thrown into the UI: the app keeps working
@@ -43,18 +51,41 @@ const AUTO_RESUME_LIMIT = 3;
 
 type EntityKind = "tasks" | "memories" | "labels";
 
+/** Sentinel dirty key: the whole entity (creates, legacy ledgers). */
+const ALL = "*";
+
 interface Ledger {
   lastUserId: string | null;
-  dirty: Record<EntityKind, string[]>;
+  /** Entity id → changed keys (or `["*"]`). */
+  dirty: Record<EntityKind, Record<string, string[]>>;
   deleted: { tasks: string[]; memories: string[] };
+  /** Dirty entities whose last push was terminally rejected; not replayed. */
+  rejected: Record<EntityKind, string[]>;
 }
 
 function emptyLedger(): Ledger {
   return {
     lastUserId: null,
-    dirty: { tasks: [], memories: [], labels: [] },
+    dirty: { tasks: {}, memories: {}, labels: {} },
     deleted: { tasks: [], memories: [] },
+    rejected: { tasks: [], memories: [], labels: [] },
   };
+}
+
+/** Older ledgers stored dirty ids as arrays; they meant "the whole entity". */
+function readDirty(value: unknown): Record<string, string[]> {
+  if (Array.isArray(value)) {
+    return Object.fromEntries(value.filter((v) => typeof v === "string").map((id) => [id, [ALL]]));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([id, keys]) => [
+        id,
+        Array.isArray(keys) && keys.length ? keys.filter((k) => typeof k === "string") : [ALL],
+      ]),
+    );
+  }
+  return {};
 }
 
 function loadLedger(): Ledger | null {
@@ -62,17 +93,27 @@ function loadLedger(): Ledger | null {
   try {
     const raw = window.localStorage.getItem(LEDGER_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<Ledger>;
+    const parsed = JSON.parse(raw) as {
+      lastUserId?: string | null;
+      dirty?: Partial<Record<EntityKind, unknown>>;
+      deleted?: Partial<Ledger["deleted"]>;
+      rejected?: Partial<Ledger["rejected"]>;
+    };
     return {
       lastUserId: parsed.lastUserId ?? null,
       dirty: {
-        tasks: parsed.dirty?.tasks ?? [],
-        memories: parsed.dirty?.memories ?? [],
-        labels: parsed.dirty?.labels ?? [],
+        tasks: readDirty(parsed.dirty?.tasks),
+        memories: readDirty(parsed.dirty?.memories),
+        labels: readDirty(parsed.dirty?.labels),
       },
       deleted: {
         tasks: parsed.deleted?.tasks ?? [],
         memories: parsed.deleted?.memories ?? [],
+      },
+      rejected: {
+        tasks: parsed.rejected?.tasks ?? [],
+        memories: parsed.rejected?.memories ?? [],
+        labels: parsed.rejected?.labels ?? [],
       },
     };
   } catch {
@@ -96,23 +137,100 @@ function saveLedger(): void {
   }
 }
 
-function markDirty(kind: EntityKind, id: string): void {
-  if (!ledger.dirty[kind].includes(id)) {
-    ledger.dirty[kind].push(id);
-    saveLedger();
-  }
+// ---------------------------------------------------------------------------
+// Sync status (for the UI).
+// ---------------------------------------------------------------------------
+
+export interface SyncStatus {
+  /** Entities whose changes the server refused; kept locally, not retried. */
+  rejected: number;
+}
+
+const statusListeners = new Set<() => void>();
+
+function rejectedCount(): number {
+  return (
+    ledger.rejected.tasks.length + ledger.rejected.memories.length + ledger.rejected.labels.length
+  );
+}
+
+let statusSnapshot: SyncStatus = { rejected: rejectedCount() };
+
+function publishStatus(): void {
+  const rejected = rejectedCount();
+  if (rejected === statusSnapshot.rejected) return;
+  statusSnapshot = { rejected };
+  for (const listener of statusListeners) listener();
+}
+
+export function getSyncStatus(): SyncStatus {
+  return statusSnapshot;
+}
+
+function subscribeStatus(listener: () => void): () => void {
+  statusListeners.add(listener);
+  return () => {
+    statusListeners.delete(listener);
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Ledger operations.
+// ---------------------------------------------------------------------------
+
+/**
+ * Record a local change. A new change also lifts a previous rejection: the
+ * user did something, so the entity has earned exactly one more attempt.
+ */
+function markDirty(kind: EntityKind, id: string, keys: readonly string[] | typeof ALL): void {
+  const current = ledger.dirty[kind][id];
+  let next: string[];
+  if (keys === ALL || current?.includes(ALL)) next = [ALL];
+  else next = Array.from(new Set([...(current ?? []), ...keys]));
+  const changed =
+    !current || next.length !== current.length || next.some((k) => !current.includes(k));
+  const wasRejected = unmarkRejected(kind, id);
+  if (changed) ledger.dirty[kind][id] = next;
+  if (changed || wasRejected) saveLedger();
 }
 
 function clearDirty(kind: EntityKind, id: string): void {
-  const idx = ledger.dirty[kind].indexOf(id);
-  if (idx >= 0) {
-    ledger.dirty[kind].splice(idx, 1);
+  const wasRejected = unmarkRejected(kind, id);
+  if (id in ledger.dirty[kind]) {
+    delete ledger.dirty[kind][id];
+    saveLedger();
+  } else if (wasRejected) {
     saveLedger();
   }
 }
 
+function dirtyKeys(kind: EntityKind, id: string): string[] | null {
+  return ledger.dirty[kind][id] ?? null;
+}
+
 function isDirty(kind: EntityKind, id: string): boolean {
-  return ledger.dirty[kind].includes(id);
+  return id in ledger.dirty[kind];
+}
+
+function markRejected(kind: EntityKind, id: string): void {
+  if (!ledger.rejected[kind].includes(id)) {
+    ledger.rejected[kind].push(id);
+    saveLedger();
+    publishStatus();
+  }
+}
+
+/** Returns true when the entity was flagged. Caller saves. */
+function unmarkRejected(kind: EntityKind, id: string): boolean {
+  const idx = ledger.rejected[kind].indexOf(id);
+  if (idx < 0) return false;
+  ledger.rejected[kind].splice(idx, 1);
+  publishStatus();
+  return true;
+}
+
+function isRejected(kind: EntityKind, id: string): boolean {
+  return ledger.rejected[kind].includes(id);
 }
 
 function addTombstone(kind: "tasks" | "memories", id: string): void {
@@ -182,9 +300,14 @@ function enqueue(kind: EntityKind, id: string, job: () => Promise<boolean>): Pro
   return next;
 }
 
-function schedulePatch(kind: EntityKind, id: string, job: () => Promise<boolean>): void {
+function schedulePatch(
+  kind: EntityKind,
+  id: string,
+  keys: readonly string[] | typeof ALL,
+  job: () => Promise<boolean>,
+): void {
   const key = `${kind}:${id}`;
-  markDirty(kind, id);
+  markDirty(kind, id, keys);
   const existing = patchTimers.get(key);
   if (existing) clearTimeout(existing.timer);
   patchTimers.set(key, {
@@ -208,10 +331,16 @@ function flushScheduledPatch(kind: EntityKind, id: string): void {
   void enqueue(kind, id, scheduled.job);
 }
 
+/** Immediate push of a new local change (creates, deletes, labels). */
 function pushNow(kind: EntityKind, id: string, job: () => Promise<boolean>): Promise<void> {
-  const key = `${kind}:${id}`;
-  markDirty(kind, id);
-  bumpPending(key);
+  markDirty(kind, id, ALL);
+  bumpPending(`${kind}:${id}`);
+  return enqueue(kind, id, job);
+}
+
+/** Re-push something the ledger already tracks, without widening its keys. */
+function replay(kind: EntityKind, id: string, job: () => Promise<boolean>): Promise<void> {
+  bumpPending(`${kind}:${id}`);
   return enqueue(kind, id, job);
 }
 
@@ -242,12 +371,12 @@ function clipOrNull(value: string | null, max: number): string | null {
 // ---------------------------------------------------------------------------
 
 /**
- * Wire body for a full-entity push, clamped to the shared limits so the
- * strict server schema can never reject an entity the UI produced. The
- * inputs enforce the same limits (maxLength, capped add affordances); the
- * clamp is the safety net for data from older builds.
+ * Full wire entity, clamped to the shared limits so the strict server
+ * schema can never reject an entity the UI produced. The inputs enforce the
+ * same limits (maxLength, capped add affordances); the clamp is the safety
+ * net for data from older builds.
  */
-function taskPatchBody(task: Task): Record<string, unknown> {
+function taskWireFields(task: Task): Record<string, unknown> {
   return {
     title: clip(task.title, TASK_LIMITS.title) || "Untitled task",
     description: clipOrNull(task.description, TASK_LIMITS.description),
@@ -276,12 +405,22 @@ function taskPatchBody(task: Task): Record<string, unknown> {
   };
 }
 
+/** Keep only the dirty keys; `["*"]` keeps everything. */
+function pick(fields: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
+  if (keys.includes(ALL)) return fields;
+  return Object.fromEntries(Object.entries(fields).filter(([k]) => keys.includes(k)));
+}
+
+function taskPatchBody(task: Task, keys: readonly string[]): Record<string, unknown> {
+  return pick(taskWireFields(task), keys);
+}
+
 function taskCreateBody(task: Task): Record<string, unknown> {
   return {
     id: task.id,
     sourceText: clip(task.sourceText, TASK_LIMITS.sourceText),
     createdAt: task.createdAt,
-    ...taskPatchBody(task),
+    ...taskWireFields(task),
   };
 }
 
@@ -295,13 +434,34 @@ function currentMemory(id: string): Memory | null {
 }
 
 /**
- * Returning false keeps the entity dirty for replay: the clamps above make
- * validation rejections unreachable for UI-produced data, so a rejection
- * here is a bug worth retrying loudly rather than silently dropping data.
+ * Retrying a 4xx can never succeed: the server will give the same answer
+ * to the same body. Rate limiting and timeouts are the exceptions — those
+ * are about the moment, not the data.
  */
-async function reportRejection(res: Response, what: string): Promise<false> {
+function isTerminalStatus(status: number): boolean {
+  return status >= 400 && status < 500 && status !== 408 && status !== 425 && status !== 429;
+}
+
+/**
+ * Returning false keeps the entity dirty. Terminal rejections are flagged
+ * so they are not replayed (and the UI can say so); anything else stays a
+ * plain retry for the next mount.
+ */
+async function reportRejection(
+  res: Response,
+  kind: EntityKind,
+  id: string,
+  what: string,
+): Promise<false> {
   const body = await res.text().catch(() => "");
-  console.warn(`[sifty-sync] ${what} rejected (${res.status}): ${body.slice(0, 200)}`);
+  if (isTerminalStatus(res.status)) {
+    markRejected(kind, id);
+    console.error(
+      `[sifty-sync] ${what} rejected (${res.status}); not retrying: ${body.slice(0, 200)}`,
+    );
+  } else {
+    console.warn(`[sifty-sync] ${what} failed (${res.status}); will retry: ${body.slice(0, 200)}`);
+  }
   return false;
 }
 
@@ -310,10 +470,16 @@ async function reportRejection(res: Response, what: string): Promise<false> {
  * server drops unknown label ids and a clean push would make that
  * permanent. Label chains never wait on task chains, so this is acyclic.
  * Returns false when a referenced label is still unsynced after its chain
- * settled (its push failed); the task push defers and replays later.
+ * settled (its push failed); the task push defers and replays later. A
+ * label the server refused outright makes the task unsyncable too, so it
+ * inherits the rejection instead of deferring forever in silence.
  */
 async function awaitReferencedLabels(task: Task): Promise<boolean> {
   await Promise.allSettled(task.labelIds.map((labelId) => chains.get(`labels:${labelId}`)));
+  if (task.labelIds.some((labelId) => isRejected("labels", labelId))) {
+    markRejected("tasks", task.id);
+    return false;
+  }
   return task.labelIds.every((labelId) => !isDirty("labels", labelId));
 }
 
@@ -325,10 +491,7 @@ async function awaitReferencedLabels(task: Task): Promise<boolean> {
  */
 function remintAndRepushTask(id: string): boolean {
   const newId = useStore.getState().adoptFreshTaskId(id);
-  if (newId) {
-    markDirty("tasks", newId);
-    void pushNow("tasks", newId, () => pushTaskCreateJob(newId));
-  }
+  if (newId) void pushNow("tasks", newId, () => pushTaskCreateJob(newId));
   return true; // old id can be cleared; the new id carries the data
 }
 
@@ -342,7 +505,7 @@ async function pushTaskCreateJob(id: string): Promise<boolean> {
   });
   if (!res) return false;
   if (res.status === 409) return remintAndRepushTask(id);
-  if (!res.ok) return reportRejection(res, `task create ${id}`);
+  if (!res.ok) return reportRejection(res, "tasks", id, `task create ${id}`);
   return true;
 }
 
@@ -350,13 +513,17 @@ async function pushTaskPatchJob(id: string): Promise<boolean> {
   const task = currentTask(id);
   if (!task) return true;
   if (!(await awaitReferencedLabels(task))) return false;
+  const keys = dirtyKeys("tasks", id);
+  if (!keys) return true;
+  const body = taskPatchBody(currentTask(id) ?? task, keys);
+  if (Object.keys(body).length === 0) return true; // only server-derived fields changed
   const res = await request(`/api/tasks/${encodeURIComponent(id)}`, {
     method: "PATCH",
-    body: JSON.stringify(taskPatchBody(currentTask(id) ?? task)),
+    body: JSON.stringify(body),
   });
   if (!res) return false;
   if (res.status === 404) return pushTaskCreateJob(id);
-  if (!res.ok) return reportRejection(res, `task patch ${id}`);
+  if (!res.ok) return reportRejection(res, "tasks", id, `task patch ${id}`);
   return true;
 }
 
@@ -370,7 +537,7 @@ async function pushTaskDeleteJob(id: string): Promise<boolean> {
     if (!pullInFlight) removeTombstone("tasks", id);
     return true;
   }
-  return reportRejection(res, `task delete ${id}`);
+  return reportRejection(res, "tasks", id, `task delete ${id}`);
 }
 
 async function pushLabelJob(id: string): Promise<boolean> {
@@ -381,7 +548,7 @@ async function pushLabelJob(id: string): Promise<boolean> {
     body: JSON.stringify({ ...label, name: clip(label.name, LABEL_LIMITS.name) }),
   });
   if (!res) return false;
-  if (!res.ok) return reportRejection(res, `label ensure ${id}`);
+  if (!res.ok) return reportRejection(res, "labels", id, `label ensure ${id}`);
   const data = (await res.json()) as { label: Label };
   if (data.label.id !== label.id) {
     // The server returned a different canonical row (name collision or id
@@ -389,7 +556,7 @@ async function pushLabelJob(id: string): Promise<boolean> {
     const affected = useStore.getState().remapLabel(label.id, data.label);
     clearDirty("labels", label.id);
     for (const taskId of affected) {
-      schedulePatch("tasks", taskId, () => pushTaskPatchJob(taskId));
+      schedulePatch("tasks", taskId, ["labelIds"], () => pushTaskPatchJob(taskId));
     }
   }
   return true;
@@ -397,14 +564,11 @@ async function pushLabelJob(id: string): Promise<boolean> {
 
 function remintAndRepushMemory(id: string): boolean {
   const newId = useStore.getState().adoptFreshMemoryId(id);
-  if (newId) {
-    markDirty("memories", newId);
-    void pushNow("memories", newId, () => pushMemoryCreateJob(newId));
-  }
+  if (newId) void pushNow("memories", newId, () => pushMemoryCreateJob(newId));
   return true;
 }
 
-function memoryBody(memory: Memory): Record<string, unknown> {
+function memoryWireFields(memory: Memory): Record<string, unknown> {
   return {
     text: clip(memory.text, MEMORY_LIMITS.text),
     kind: memory.kind,
@@ -418,11 +582,15 @@ async function pushMemoryCreateJob(id: string): Promise<boolean> {
   if (!memory.text.trim()) return true;
   const res = await request("/api/memories", {
     method: "POST",
-    body: JSON.stringify({ id: memory.id, createdAt: memory.createdAt, ...memoryBody(memory) }),
+    body: JSON.stringify({
+      id: memory.id,
+      createdAt: memory.createdAt,
+      ...memoryWireFields(memory),
+    }),
   });
   if (!res) return false;
   if (res.status === 409) return remintAndRepushMemory(id);
-  if (!res.ok) return reportRejection(res, `memory create ${id}`);
+  if (!res.ok) return reportRejection(res, "memories", id, `memory create ${id}`);
   return true;
 }
 
@@ -432,13 +600,17 @@ async function pushMemoryPatchJob(id: string): Promise<boolean> {
   // Empty text is domain-invalid (the UI deletes on empty blur); never
   // send a body the schema can't accept — wait for the next real state.
   if (!memory.text.trim()) return true;
+  const keys = dirtyKeys("memories", id);
+  if (!keys) return true;
+  const body = pick(memoryWireFields(currentMemory(id) ?? memory), keys);
+  if (Object.keys(body).length === 0) return true;
   const res = await request(`/api/memories/${encodeURIComponent(id)}`, {
     method: "PATCH",
-    body: JSON.stringify(memoryBody(currentMemory(id) ?? memory)),
+    body: JSON.stringify(body),
   });
   if (!res) return false;
   if (res.status === 404) return pushMemoryCreateJob(id);
-  if (!res.ok) return reportRejection(res, `memory patch ${id}`);
+  if (!res.ok) return reportRejection(res, "memories", id, `memory patch ${id}`);
   return true;
 }
 
@@ -449,7 +621,7 @@ async function pushMemoryDeleteJob(id: string): Promise<boolean> {
     if (!pullInFlight) removeTombstone("memories", id);
     return true;
   }
-  return reportRejection(res, `memory delete ${id}`);
+  return reportRejection(res, "memories", id, `memory delete ${id}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -458,8 +630,12 @@ async function pushMemoryDeleteJob(id: string): Promise<boolean> {
 
 const hooks: SyncHooks = {
   taskUpserted(task, opts) {
-    if (opts.created) void pushNow("tasks", task.id, () => pushTaskCreateJob(task.id));
-    else schedulePatch("tasks", task.id, () => pushTaskPatchJob(task.id));
+    if (opts.created) {
+      void pushNow("tasks", task.id, () => pushTaskCreateJob(task.id));
+      return;
+    }
+    if (opts.changedKeys && opts.changedKeys.length === 0) return;
+    schedulePatch("tasks", task.id, opts.changedKeys ?? ALL, () => pushTaskPatchJob(task.id));
   },
   taskDeleted(taskId) {
     addTombstone("tasks", taskId);
@@ -469,8 +645,14 @@ const hooks: SyncHooks = {
     void pushNow("labels", label.id, () => pushLabelJob(label.id));
   },
   memoryUpserted(memory, opts) {
-    if (opts.created) void pushNow("memories", memory.id, () => pushMemoryCreateJob(memory.id));
-    else schedulePatch("memories", memory.id, () => pushMemoryPatchJob(memory.id));
+    if (opts.created) {
+      void pushNow("memories", memory.id, () => pushMemoryCreateJob(memory.id));
+      return;
+    }
+    if (opts.changedKeys && opts.changedKeys.length === 0) return;
+    schedulePatch("memories", memory.id, opts.changedKeys ?? ALL, () =>
+      pushMemoryPatchJob(memory.id),
+    );
   },
   memoryDeleted(memoryId) {
     addTombstone("memories", memoryId);
@@ -494,20 +676,7 @@ export function resetLocalWorkspace(): void {
   useStore.setState({ tasks: [], labels: [], memories: [] });
   ledger = emptyLedger();
   saveLedger();
-}
-
-// ---------------------------------------------------------------------------
-// Pull + reconcile.
-// ---------------------------------------------------------------------------
-
-export interface ServerSyncState {
-  hydrated: boolean;
-  authenticated: boolean;
-  error: string | null;
-}
-
-export function getSyncStatus(): { rejected: number } {
-  return { rejected: 0 };
+  publishStatus();
 }
 
 /** Resolves once every push chain that exists right now has settled. */
@@ -520,16 +689,46 @@ export async function whenSyncIdle(): Promise<void> {
   }
 }
 
-export function syncFromServer(): Promise<{ authenticated: boolean; error: string | null }> {
-  return pullAndReconcile();
+// ---------------------------------------------------------------------------
+// Pull + reconcile.
+// ---------------------------------------------------------------------------
+
+export interface ServerSyncState extends SyncStatus {
+  hydrated: boolean;
+  authenticated: boolean;
+  error: string | null;
 }
 
+interface PullResult {
+  authenticated: boolean;
+  error: string | null;
+}
+
+let pullPromise: Promise<PullResult> | null = null;
+
+/**
+ * Single-flight pull. Concurrent callers (React strict-mode double mount,
+ * two frames) share one snapshot, so `pullInFlight` can never be cleared
+ * by one pull while another is still reconciling.
+ */
+export function syncFromServer(): Promise<PullResult> {
+  if (!pullPromise) {
+    pullPromise = pullAndReconcile().finally(() => {
+      pullPromise = null;
+    });
+  }
+  return pullPromise;
+}
+
+const SERVER_STATUS: SyncStatus = { rejected: 0 };
+
 export function useServerSync(): ServerSyncState {
-  const [state, setState] = React.useState<ServerSyncState>({
+  const [state, setState] = React.useState<PullResult & { hydrated: boolean }>({
     hydrated: false,
     authenticated: false,
     error: null,
   });
+  const status = React.useSyncExternalStore(subscribeStatus, getSyncStatus, () => SERVER_STATUS);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -552,10 +751,10 @@ export function useServerSync(): ServerSyncState {
     };
   }, []);
 
-  return state;
+  return { ...state, ...status };
 }
 
-async function pullAndReconcile(): Promise<{ authenticated: boolean; error: string | null }> {
+async function pullAndReconcile(): Promise<PullResult> {
   const meRes = await fetch("/api/auth/me", { credentials: "include" });
   if (meRes.status === 401) {
     pushesEnabled = false;
@@ -569,9 +768,9 @@ async function pullAndReconcile(): Promise<{ authenticated: boolean; error: stri
     // in localStorage predates per-user tracking — claim it for the
     // signed-in account so no local data is silently lost.
     const store = useStore.getState();
-    for (const t of store.tasks) markDirty("tasks", t.id);
-    for (const m of store.memories) markDirty("memories", m.id);
-    for (const l of store.labels) markDirty("labels", l.id);
+    for (const t of store.tasks) markDirty("tasks", t.id, ALL);
+    for (const m of store.memories) markDirty("memories", m.id, ALL);
+    for (const l of store.labels) markDirty("labels", l.id, ALL);
   } else if (ledger.lastUserId && ledger.lastUserId !== me.user.id) {
     // Different account on a shared browser: never replay the previous
     // user's workspace into this one.
@@ -605,18 +804,32 @@ async function pullAndReconcile(): Promise<{ authenticated: boolean; error: stri
   return { authenticated: true, error: null };
 }
 
+/**
+ * Field-level merge: the server copy, with the locally dirty keys laid
+ * over it. A whole-entity mark (`*`) keeps the local row.
+ */
+function overlayDirty<T extends object>(server: T, local: T, keys: readonly string[]): T {
+  if (keys.includes(ALL)) return local;
+  const merged = { ...server } as Record<string, unknown>;
+  for (const key of keys) {
+    if (key in local) merged[key] = (local as Record<string, unknown>)[key];
+  }
+  return merged as T;
+}
+
 function reconcile(serverTasks: Task[], serverLabels: Label[], serverMemories: Memory[]): void {
   const local = useStore.getState();
 
-  // Tasks: dirty-local wins, clean rows follow the server, tombstones and
-  // remote deletions are honored.
+  // Tasks: dirty keys win, every other field follows the server, tombstones
+  // and remote deletions are honored.
   const serverTaskIds = new Set(serverTasks.map((t) => t.id));
   const localTaskById = new Map(local.tasks.map((t) => [t.id, t]));
   const mergedTasks: Task[] = serverTasks
     .filter((t) => !ledger.deleted.tasks.includes(t.id))
     .map((serverTask) => {
       const localTask = localTaskById.get(serverTask.id);
-      return localTask && isDirty("tasks", serverTask.id) ? localTask : serverTask;
+      const keys = localTask ? dirtyKeys("tasks", serverTask.id) : null;
+      return localTask && keys ? overlayDirty(serverTask, localTask, keys) : serverTask;
     });
   for (const localTask of local.tasks) {
     if (serverTaskIds.has(localTask.id)) continue;
@@ -631,7 +844,8 @@ function reconcile(serverTasks: Task[], serverLabels: Label[], serverMemories: M
     .filter((m) => !ledger.deleted.memories.includes(m.id))
     .map((serverMemory) => {
       const localMemory = localMemoryById.get(serverMemory.id);
-      return localMemory && isDirty("memories", serverMemory.id) ? localMemory : serverMemory;
+      const keys = localMemory ? dirtyKeys("memories", serverMemory.id) : null;
+      return localMemory && keys ? overlayDirty(serverMemory, localMemory, keys) : serverMemory;
     });
   for (const localMemory of local.memories) {
     if (serverMemoryIds.has(localMemory.id)) continue;
@@ -661,38 +875,44 @@ function reconcile(serverTasks: Task[], serverLabels: Label[], serverMemories: M
   for (const { localId, canonical } of collisions) {
     const affected = useStore.getState().remapLabel(localId, canonical);
     clearDirty("labels", localId);
-    for (const taskId of affected) {
-      if (serverTaskIds.has(taskId)) markDirty("tasks", taskId);
-    }
+    for (const taskId of affected) markDirty("tasks", taskId, ["labelIds"]);
   }
 }
 
-/** Replay everything the ledger says never reached the server. */
+/**
+ * Replay everything the ledger says never reached the server. Labels go
+ * before the tasks that reference them (task jobs also await the label
+ * chains, so the order is enforced, not just likely). Rejected entities
+ * are skipped: the server already said no to that exact change.
+ */
 function flushPending(): void {
   const state = useStore.getState();
 
   for (const id of [...ledger.deleted.tasks]) {
-    void pushNow("tasks", id, () => pushTaskDeleteJob(id));
+    void replay("tasks", id, () => pushTaskDeleteJob(id));
   }
   for (const id of [...ledger.deleted.memories]) {
-    void pushNow("memories", id, () => pushMemoryDeleteJob(id));
+    void replay("memories", id, () => pushMemoryDeleteJob(id));
   }
-  for (const id of [...ledger.dirty.labels]) {
-    void pushNow("labels", id, () => pushLabelJob(id));
+  for (const id of Object.keys(ledger.dirty.labels)) {
+    if (isRejected("labels", id)) continue;
+    void replay("labels", id, () => pushLabelJob(id));
   }
-  for (const id of [...ledger.dirty.tasks]) {
+  for (const id of Object.keys(ledger.dirty.tasks)) {
     if (!state.tasks.some((t) => t.id === id)) {
       clearDirty("tasks", id);
       continue;
     }
-    void pushNow("tasks", id, () => pushTaskPatchJob(id));
+    if (isRejected("tasks", id)) continue;
+    void replay("tasks", id, () => pushTaskPatchJob(id));
   }
-  for (const id of [...ledger.dirty.memories]) {
+  for (const id of Object.keys(ledger.dirty.memories)) {
     if (!state.memories.some((m) => m.id === id)) {
       clearDirty("memories", id);
       continue;
     }
-    void pushNow("memories", id, () => pushMemoryPatchJob(id));
+    if (isRejected("memories", id)) continue;
+    void replay("memories", id, () => pushMemoryPatchJob(id));
   }
 }
 
