@@ -1299,6 +1299,24 @@ export function createPostgresRepos(): Repos {
         await tx.execute(
           sql`select pg_advisory_xact_lock(hashtext(${`execution_task:${userId}:${input.taskId}`}))`,
         );
+        // The key first, like the memory repo: a replay of any earlier row
+        // (finished or not) is a replay, whatever else is live on the task.
+        const [replayed] = await tx
+          .select()
+          .from(schema.executions)
+          .where(
+            and(
+              eq(schema.executions.userId, userId),
+              eq(schema.executions.idempotencyKey, input.idempotencyKey),
+            ),
+          );
+        if (replayed) {
+          return {
+            created: false as const,
+            reason: "replay" as const,
+            execution: rowToExecution(replayed),
+          };
+        }
         const [live] = await tx
           .select()
           .from(schema.executions)
@@ -1311,13 +1329,6 @@ export function createPostgresRepos(): Repos {
           )
           .orderBy(desc(schema.executions.createdAt))
           .limit(1);
-        if (live && live.idempotencyKey === input.idempotencyKey) {
-          return {
-            created: false as const,
-            reason: "replay" as const,
-            execution: rowToExecution(live),
-          };
-        }
         if (live)
           return {
             created: false as const,

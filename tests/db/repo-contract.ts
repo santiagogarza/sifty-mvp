@@ -1120,15 +1120,23 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect(burst.filter((r) => r.created)).toHaveLength(1);
       expect(new Set(burst.map((r) => r.execution.id)).size).toBe(1);
       expect(await repos.executions.listForTask(a.id, burstTask.id, { limit: 10 })).toHaveLength(1);
-      // Once it is terminal, a new key creates again.
-      await repos.executions.transition(a.id, burst[0]!.execution.id, {
+      // Once it is terminal, a new key creates again…
+      const winner = burst.find((r) => r.created)!;
+      await repos.executions.transition(a.id, winner.execution.id, {
         from: ["queued"],
         to: "cancelled",
         patch: { cancelReason: "user" },
       });
-      expect((await repos.executions.create(a.id, create(burstTask.id, "after"))).created).toBe(
-        true,
+      const after = await repos.executions.create(a.id, create(burstTask.id, "after"));
+      expect(after.created).toBe(true);
+      // …and a replay of the finished run's key is still a replay of that
+      // row, not a "live" answer about the newer one.
+      const stale = await repos.executions.create(
+        a.id,
+        create(burstTask.id, winner.execution.idempotencyKey),
       );
+      expect(stale).toMatchObject({ created: false, reason: "replay" });
+      expect(stale.execution.id).toBe(winner.execution.id);
       // Same key, other tenant: their own row.
       const theirs = await repos.executions.create(b.id, create(bTask.id, "k1"));
       expect(theirs.created).toBe(true);
