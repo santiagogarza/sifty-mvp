@@ -1,6 +1,7 @@
 import {
   boolean,
   date,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -193,13 +194,19 @@ export const aiRuns = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     taskId: text("task_id"),
     promptVersion: text("prompt_version").notNull(),
+    /** Pipeline stage (`lib/ai/models.ts`). Null on rows written before 0003. */
+    stage: text("stage"),
+    /** Canonical `provider/model` slug of the model that answered. */
     model: text("model").notNull(),
+    /** "gateway" | "direct" | "offline" | "unknown". */
     transport: text("transport").notNull(),
     status: text("status", { enum: ["succeeded", "failed"] }).notNull(),
     durationMs: integer("duration_ms").notNull(),
     inputTokens: integer("input_tokens"),
     outputTokens: integer("output_tokens"),
-    costCents: integer("cost_cents"),
+    // Fractional: a Haiku triage costs well under one cent, so integer cents
+    // rounded every run to zero and made spend reporting useless.
+    costCents: doublePrecision("cost_cents"),
     offline: boolean("offline").notNull().default(false),
     error: text("error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

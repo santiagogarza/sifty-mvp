@@ -23,6 +23,7 @@ export async function recordAiRun(input: RecordRunInput): Promise<{ id: string }
     userId: input.userId,
     taskId: input.taskId ?? null,
     promptVersion: input.meta.promptVersion,
+    stage: input.meta.stage,
     model: input.meta.model,
     transport: input.meta.transport,
     status: input.status,

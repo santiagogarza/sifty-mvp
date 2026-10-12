@@ -1,7 +1,12 @@
 import { generateObject } from "ai";
-import { DEFAULT_MODEL_ID, type ModelOption, estimateCostCents, getModel } from "./models";
+import type { Stage } from "./models";
 import { TRIAGE_SYSTEM_PROMPT, buildTriageUserPrompt } from "./prompts";
-import { MissingAiKeyError, resolveProvider } from "./provider";
+import {
+  MissingAiKeyError,
+  type ResolvedProvider,
+  resolveProvider,
+  usageFromResult,
+} from "./provider";
 import { TRIAGE_PROMPT_VERSION, TriageOutput } from "./triage-schema";
 
 /**
@@ -9,17 +14,19 @@ import { TRIAGE_PROMPT_VERSION, TriageOutput } from "./triage-schema";
  *
  * Two modes:
  *
- *  1. **Online (default).** Calls the configured language model through the
- *     AI Gateway (or direct provider) and validates the response against the
- *     `TriageOutput` Zod schema. The schema is the contract the UI relies
- *     on — anything that doesn't parse is treated as a model error and
- *     surfaced to the user as a retryable failure.
+ *  1. **Online (default).** Calls the `triage` stage's model (see
+ *     `lib/ai/models.ts`; transport chosen by `lib/ai/provider.ts`) and
+ *     validates the response against the `TriageOutput` Zod schema. The
+ *     schema is the contract the UI relies on — anything that doesn't parse
+ *     is treated as a model error and surfaced to the user as a retryable
+ *     failure.
  *
  *  2. **Offline (debug).** A deterministic regex heuristic. Only used when
  *     `offline: true` is passed explicitly (the API route enables this via
- *     `?offline=1`). Never a silent fallback when keys are missing — that
- *     hid misconfigurations. If no key is available and offline isn't
- *     requested, we throw `MissingAiKeyError` and the route returns 503.
+ *     `?offline=1` or `SIFTY_AI_OFFLINE=1`). Never a silent fallback when
+ *     keys are missing — that hid misconfigurations. If the transport is
+ *     misconfigured and offline isn't requested, `resolveProvider` throws
+ *     and the route returns 503.
  */
 
 export interface TriageInput {
@@ -27,15 +34,18 @@ export interface TriageInput {
   sourceContext: string | null;
   recentLabels?: string[];
   preferences?: string[];
-  /** Sifty model id (see `lib/ai/models.ts`). Defaults to `DEFAULT_MODEL_ID`. */
-  modelId?: string | null;
+  /** Settings → AI model preference (see `MODEL_PREFERENCES`). Defaults to the stage route. */
+  modelPreference?: string | null;
   /** Force the deterministic heuristic. Off by default. */
   offline?: boolean;
 }
 
 export interface TriageMeta {
   promptVersion: string;
+  stage: Stage | null;
+  /** Canonical `provider/model` slug of the model that answered. */
   model: string;
+  /** "gateway", "direct", "offline", or "unknown" for failures before resolution. */
   transport: string;
   durationMs: number;
   inputTokens: number | null;
@@ -60,6 +70,7 @@ export async function triageTask(input: TriageInput): Promise<TriageResult> {
       output,
       meta: {
         promptVersion: TRIAGE_PROMPT_VERSION,
+        stage: "triage",
         model: HEURISTIC_MODEL,
         transport: "offline",
         durationMs: Date.now() - start,
@@ -71,15 +82,13 @@ export async function triageTask(input: TriageInput): Promise<TriageResult> {
     };
   }
 
-  const resolved = resolveProvider(input.modelId ?? DEFAULT_MODEL_ID);
-  return runOnline(input, resolved.option, resolved.model, resolved.transport, start);
+  const resolved = resolveProvider("triage", { preference: input.modelPreference });
+  return runOnline(input, resolved, start);
 }
 
 async function runOnline(
   input: TriageInput,
-  option: ModelOption,
-  model: Awaited<ReturnType<typeof resolveProvider>>["model"],
-  transport: string,
+  resolved: ResolvedProvider,
   start: number,
 ): Promise<TriageResult> {
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -92,7 +101,7 @@ async function runOnline(
   });
 
   const result = await generateObject({
-    model,
+    model: resolved.model,
     schema: TriageOutput,
     schemaName: "TriageOutput",
     schemaDescription: "Sifty triage output for a single captured task.",
@@ -101,26 +110,25 @@ async function runOnline(
     temperature: 0.2,
   });
 
-  const inputTokens = result.usage?.inputTokens ?? null;
-  const outputTokens = result.usage?.outputTokens ?? null;
-  const costCents = estimateCostCents({ model: option, inputTokens, outputTokens });
+  const usage = usageFromResult(resolved, result);
 
   return {
     output: result.object,
     meta: {
       promptVersion: TRIAGE_PROMPT_VERSION,
-      model: option.gatewaySlug,
-      transport,
+      stage: resolved.stage,
+      model: usage.model,
+      transport: resolved.transport,
       durationMs: Date.now() - start,
-      inputTokens,
-      outputTokens,
-      costCents,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      costCents: usage.costCents,
       offline: false,
     },
   };
 }
 
-export { MissingAiKeyError, getModel };
+export { MissingAiKeyError };
 
 // ---------------------------------------------------------------------------
 // Heuristic triage — debug-only fallback used when `offline: true` is set.

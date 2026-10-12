@@ -5,7 +5,14 @@ import { PageShell } from "@/components/app-shell/page-shell";
 import { useTheme } from "@/components/app-shell/theme-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DEFAULT_MODEL_ID, MODEL_OPTIONS } from "@/lib/ai/models";
+import {
+  DEFAULT_MODEL_PREFERENCE,
+  MODELS,
+  MODEL_PREFERENCES,
+  type ModelPreferenceOption,
+  type StageRoute,
+  getModelPreference,
+} from "@/lib/ai/models";
 import { useStore } from "@/lib/store/store";
 import { resetLocalWorkspace } from "@/lib/store/sync";
 import { cn } from "@/lib/utils/cn";
@@ -24,11 +31,11 @@ export interface SettingsAccount {
 
 export function SettingsClient({ account }: { account: SettingsAccount }) {
   const { theme, setTheme } = useTheme();
-  const preferredModelId = useStore((s) => s.preferredModelId);
-  const setPreferredModelId = useStore((s) => s.setPreferredModelId);
+  const modelPreference = useStore((s) => s.modelPreference);
+  const setModelPreference = useStore((s) => s.setModelPreference);
   const hydrated = useStore((s) => s.hydrated);
-  const activeModelId = hydrated ? preferredModelId : DEFAULT_MODEL_ID;
-  const activeModel = MODEL_OPTIONS.find((m) => m.id === activeModelId) ?? MODEL_OPTIONS[0]!;
+  const activePreferenceId = hydrated ? modelPreference : DEFAULT_MODEL_PREFERENCE;
+  const activePreference = getModelPreference(activePreferenceId);
   const [signingOut, setSigningOut] = React.useState(false);
 
   const signOut = async () => {
@@ -122,18 +129,18 @@ export function SettingsClient({ account }: { account: SettingsAccount }) {
 
       <SectionCard
         title="AI model"
-        description="Triage runs through the AI Gateway. Pick a model that matches your trade-off between speed and depth. Edits you make are protected from being overwritten."
+        description="Pick the trade-off between speed and depth. Each choice sets a primary model and a fallback from another provider, so an outage never stalls your list. Edits you make are protected from being overwritten."
       >
         <div className="grid sm:grid-cols-2 gap-2 max-w-2xl">
-          {MODEL_OPTIONS.map((m) => {
-            const active = m.id === activeModelId;
+          {MODEL_PREFERENCES.map((p) => {
+            const active = p.id === activePreferenceId;
             return (
               <button
-                key={m.id}
+                key={p.id}
                 type="button"
-                onClick={() => setPreferredModelId(m.id)}
+                onClick={() => setModelPreference(p.id)}
                 aria-pressed={active}
-                data-testid={`model-option-${m.id}`}
+                data-testid={`model-option-${p.id}`}
                 className={cn(
                   "rounded-[var(--radius-md)] border px-3.5 py-3 text-left transition-colors",
                   active
@@ -147,14 +154,18 @@ export function SettingsClient({ account }: { account: SettingsAccount }) {
                       size={14}
                       className={active ? "text-[var(--accent)]" : "text-[var(--fg-muted)]"}
                     />
-                    <div className="text-[13.5px] text-[var(--fg)]">{m.label}</div>
+                    <div className="text-[13.5px] text-[var(--fg)]">{p.label}</div>
                   </div>
-                  <Badge tone={m.provider === "anthropic" ? "ember" : "mist"}>{m.provider}</Badge>
+                  <Badge tone={primaryProvider(p) === "anthropic" ? "ember" : "mist"}>
+                    {primaryProvider(p)}
+                  </Badge>
                 </div>
                 <div className="text-[12px] text-[var(--fg-muted)] mt-1.5 leading-[1.5]">
-                  {m.description}
+                  {p.description}
                 </div>
-                <div className="text-[11px] text-[var(--fg-subtle)] mt-1">{m.gatewaySlug}</div>
+                <div className="text-[11px] text-[var(--fg-subtle)] mt-1">
+                  Sift: {routeLine(p.routes.fast)} · Plan: {routeLine(p.routes.deep)}
+                </div>
               </button>
             );
           })}
@@ -163,11 +174,11 @@ export function SettingsClient({ account }: { account: SettingsAccount }) {
 
       <SectionCard
         title="AI behavior"
-        description="Provider keys come from the server environment (AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY). Sifty never asks for a key in the browser."
+        description="Provider keys and the transport (AI Gateway or direct) are set in the server environment. Sifty never asks for a key in the browser."
       >
         <div className="grid grid-cols-2 gap-3 max-w-md">
           <Stat label="Prompt version" value="triage.v1" />
-          <Stat label="Active model" value={activeModel.label} />
+          <Stat label="Triage model" value={MODELS[activePreference.routes.fast.primary].label} />
           <Stat label="Min visible delay" value="450 ms" />
           <Stat label="Edited fields protected" value="Yes" />
         </div>
@@ -192,6 +203,15 @@ export function SettingsClient({ account }: { account: SettingsAccount }) {
       </SectionCard>
     </PageShell>
   );
+}
+
+function primaryProvider(p: ModelPreferenceOption): string {
+  return MODELS[p.routes.fast.primary].provider;
+}
+
+/** "Claude Haiku 4.5 → GPT-5 mini" */
+function routeLine(route: StageRoute): string {
+  return [route.primary, ...route.fallbacks].map((slug) => MODELS[slug].label).join(" → ");
 }
 
 function accountDescription(account: SettingsAccount): string {

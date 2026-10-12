@@ -1,7 +1,7 @@
 import { BRIEF_PROMPT_VERSION, generateAgentBrief } from "@/lib/ai/agent-brief";
 import { gateAiRequest, resolveOfflineMode } from "@/lib/ai/ai-gate";
 import { recordAiRun } from "@/lib/ai/ai-runs";
-import { MissingAiKeyError } from "@/lib/ai/provider";
+import { AiConfigError } from "@/lib/ai/provider";
 import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
 import { reportError } from "@/lib/observability/report-error";
@@ -13,6 +13,9 @@ export const maxDuration = 60;
 
 const Body = z.object({
   taskId: z.string().min(1).max(64),
+  /** Settings → AI model preference id. Unknown values fall back to the stage default. */
+  modelPreference: z.string().min(1).max(64).optional(),
+  /** Pre-registry clients sent a raw model id here; still accepted as a preference. */
   modelId: z.string().min(1).max(64).optional(),
 });
 
@@ -51,7 +54,7 @@ export async function POST(req: Request) {
       task,
       labelNames,
       preferences,
-      modelId: parsed.data.modelId,
+      modelPreference: parsed.data.modelPreference ?? parsed.data.modelId ?? null,
       offline,
     });
 
@@ -68,12 +71,12 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ brief: result.markdown, task: updated });
   } catch (err) {
-    if (err instanceof MissingAiKeyError) {
+    if (err instanceof AiConfigError) {
+      reportError(err, { area: "agent-brief.config", userId: session.user.id });
       return NextResponse.json(
         {
-          error:
-            "No AI provider key is configured. Set AI_GATEWAY_API_KEY (or a provider-specific key) and reload.",
-          code: "no_ai_key",
+          error: "AI is not configured on this server. Check the AI_TRANSPORT settings.",
+          code: err.code,
         },
         { status: 503 },
       );
@@ -91,7 +94,8 @@ export async function POST(req: Request) {
       taskId: task.id,
       meta: {
         promptVersion: BRIEF_PROMPT_VERSION,
-        model: parsed.data.modelId ?? "unknown",
+        stage: "plan",
+        model: "unknown",
         transport: "unknown",
         durationMs: 0,
         inputTokens: null,
