@@ -125,6 +125,15 @@ function isBillingUnit(r: { siftId: string | null; stage: string | null }): bool
   return r.siftId === null || r.stage === SIFT_ACCOUNTING_STAGE;
 }
 
+/**
+ * Open and not past its deadline. The asking run closes an ignored
+ * question when its 7-day sleep fires; when that run is gone (deploy,
+ * failure), the deadline still hides the row from the inbox and the badge.
+ */
+function isLive(d: Decision, now = Date.now()): boolean {
+  return d.status === "open" && (d.expiresAt === null || Date.parse(d.expiresAt) > now);
+}
+
 export interface MemoryReposHandle extends Repos {
   __reset(): void;
   __state(): Readonly<State>;
@@ -516,19 +525,19 @@ export function createMemoryRepos(): MemoryReposHandle {
     },
     async listOpen(userId, opts) {
       return Array.from(state.decisions.values())
-        .filter((d) => d.userId === userId && d.status === "open")
+        .filter((d) => d.userId === userId && isLive(d))
         .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || (a.id < b.id ? 1 : -1))
         .slice(0, opts.limit)
         .map(stripUserId);
     },
     async countOpen(userId) {
       let n = 0;
-      for (const d of state.decisions.values()) if (d.userId === userId && d.status === "open") n++;
+      for (const d of state.decisions.values()) if (d.userId === userId && isLive(d)) n++;
       return n;
     },
     async listOpenForTask(userId, taskId, opts) {
       return Array.from(state.decisions.values())
-        .filter((d) => d.userId === userId && d.status === "open" && d.taskId === taskId)
+        .filter((d) => d.userId === userId && isLive(d) && d.taskId === taskId)
         .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
         .slice(0, opts.limit)
         .map(stripUserId);

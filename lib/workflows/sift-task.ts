@@ -88,11 +88,13 @@ export async function siftTask(input: SiftInput): Promise<SiftOutcome> {
     if (finished !== "applied") return { outcome: finished, at: "finish" };
 
     slot.release();
-    const resolution = await Promise.race([hook, deadline(DECISION_TTL_MS)]);
+    let resolution = await Promise.race([hook, deadline(DECISION_TTL_MS)]);
+    if (resolution.status === "expired") {
+      // The deadline won the race, but the user may have answered in the
+      // same instant: the step reports what the row actually says.
+      resolution = await expireDecisionStep(input, first.question.decisionId);
+    }
     if (resolution.status !== "answered") {
-      if (resolution.status === "expired") {
-        await expireDecisionStep(input, first.question.decisionId);
-      }
       return { outcome: "completed", decision: resolution.status };
     }
 
@@ -194,7 +196,10 @@ async function foldAnswerStep(input: SiftInput, answer: DecisionAnswer): Promise
   return foldAnswer(input, answer);
 }
 
-async function expireDecisionStep(input: SiftInput, decisionId: string): Promise<StepOutcome> {
+async function expireDecisionStep(
+  input: SiftInput,
+  decisionId: string,
+): Promise<DecisionResolutionPayload> {
   "use step";
   return expireDecision(input, decisionId);
 }

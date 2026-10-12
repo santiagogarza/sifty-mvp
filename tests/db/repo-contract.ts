@@ -565,6 +565,35 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect(await repos.decisions.countOpen(a.id)).toBe(0);
     });
 
+    it("decisions: a row past its deadline is neither listed nor counted, even while still `open`", async () => {
+      const repos = getRepos();
+      const u = await createUser(repos, "dec-ttl@example.com");
+      const task = await repos.tasks.create(u.id, { sourceText: "Stale", sourceContext: null });
+      const stale = await repos.decisions.create(u.id, {
+        kind: "clarifying_question",
+        taskId: task.id,
+        payload: question("Still here?", [], "sift_old"),
+        resumeToken: null,
+        expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      });
+      const live = await repos.decisions.create(u.id, {
+        kind: "clarifying_question",
+        taskId: task.id,
+        payload: question("Fresh?", [], "sift_new"),
+        resumeToken: null,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      });
+      expect((await repos.decisions.listOpen(u.id, { limit: 10 })).map((d) => d.id)).toEqual([
+        live.id,
+      ]);
+      expect(await repos.decisions.countOpen(u.id)).toBe(1);
+      expect(
+        (await repos.decisions.listOpenForTask(u.id, task.id, { limit: 10 })).map((d) => d.id),
+      ).toEqual([live.id]);
+      // The row itself is untouched: the asking run (if alive) still closes it.
+      expect((await repos.decisions.get(u.id, stale.id))?.status).toBe("open");
+    });
+
     it("tasks: siftedWithAssumptions round-trips and defaults to false", async () => {
       const repos = getRepos();
       const u = await createUser(repos, "assume@example.com");

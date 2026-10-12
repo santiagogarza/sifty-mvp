@@ -575,6 +575,13 @@ export function createPostgresRepos(): Repos {
     },
   };
 
+  // Open and not past its deadline; see `isLive` in the memory repo.
+  const liveDecision = (now: Date) =>
+    and(
+      eq(schema.decisions.status, "open"),
+      or(isNull(schema.decisions.expiresAt), gt(schema.decisions.expiresAt, now)),
+    );
+
   const decisions: DecisionRepo = {
     async create(userId, input: DecisionCreateInput) {
       const db = getDb();
@@ -617,7 +624,7 @@ export function createPostgresRepos(): Repos {
       const rows = await db
         .select()
         .from(schema.decisions)
-        .where(and(eq(schema.decisions.userId, userId), eq(schema.decisions.status, "open")))
+        .where(and(eq(schema.decisions.userId, userId), liveDecision(new Date())))
         .orderBy(desc(schema.decisions.createdAt), desc(schema.decisions.id))
         .limit(opts.limit);
       return rows.map(rowToDecision);
@@ -627,7 +634,7 @@ export function createPostgresRepos(): Repos {
       const [row] = await db
         .select({ value: count() })
         .from(schema.decisions)
-        .where(and(eq(schema.decisions.userId, userId), eq(schema.decisions.status, "open")));
+        .where(and(eq(schema.decisions.userId, userId), liveDecision(new Date())));
       return row?.value ?? 0;
     },
     async listOpenForTask(userId, taskId, opts) {
@@ -639,7 +646,7 @@ export function createPostgresRepos(): Repos {
           and(
             eq(schema.decisions.userId, userId),
             eq(schema.decisions.taskId, taskId),
-            eq(schema.decisions.status, "open"),
+            liveDecision(new Date()),
           ),
         )
         .orderBy(desc(schema.decisions.createdAt))

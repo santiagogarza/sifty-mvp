@@ -1,4 +1,5 @@
 import { type Repos, getRepos } from "@/lib/db/repos";
+import type { DecisionResolutionPayload } from "@/lib/decisions/hook";
 import { answerText, openClarifyingQuestion } from "@/lib/decisions/service";
 import { AI_CONTEXT_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
 import type { DecisionAnswer, SiftStage, Task } from "@/lib/domain/types";
@@ -299,17 +300,29 @@ export function withAnswer(sourceContext: string | null, answer: string): string
 }
 
 /**
- * The 7-day deadline passed with no answer: close the decision so the
- * inbox stops showing it. No-op when the user resolved it meanwhile.
+ * The deadline fired. Close the decision as `expired` unless the user got
+ * there first: the deadline and the answer can race, and when the CAS
+ * loses to an answer the run must still carry that answer through the
+ * second pass instead of ending with the task parked on `pending`.
  */
-export async function expireDecision(input: SiftInput, decisionId: string): Promise<StepOutcome> {
+export async function expireDecision(
+  input: SiftInput,
+  decisionId: string,
+): Promise<DecisionResolutionPayload> {
   const repos = getRepos();
   const resolved = await repos.decisions.resolve(input.userId, decisionId, {
     status: "expired",
     answer: null,
   });
-  if (resolved) console.log(`[workflow] sift ${input.siftId}: question expired unanswered`);
-  return "applied";
+  if (resolved) {
+    console.log(`[workflow] sift ${input.siftId}: question expired unanswered`);
+    return { status: "expired" };
+  }
+  const current = await repos.decisions.get(input.userId, decisionId);
+  if (current?.status === "answered" && current.answer) {
+    return { status: "answered", answer: current.answer };
+  }
+  return { status: current?.status === "dismissed" ? "dismissed" : "expired" };
 }
 
 async function owned(repos: Repos, input: SiftInput): Promise<Task | "missing" | "superseded"> {

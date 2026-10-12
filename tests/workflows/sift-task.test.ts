@@ -241,6 +241,38 @@ describe("siftTask with a clarifying question (offline stages)", () => {
     expect((await repos.tasks.get(user.id, task.id))?.aiAttempts).toBe(1);
   });
 
+  it("when the deadline fires in the same instant as an answer, the answer still runs the second pass", async () => {
+    const { siftTask } = await import("@/lib/workflows/sift-task");
+    const { repos, user, task, input } = await seed({ offline: true });
+
+    const run = siftTask(input);
+    await until(
+      () => repos.decisions.countOpen(user.id),
+      (n) => n === 1,
+      "the decision",
+    );
+    const [decision] = await repos.decisions.listOpenForTask(user.id, task.id, { limit: 5 });
+    // The user wins the CAS (the route's work) but the deadline is what
+    // wakes the run: the hook payload is never delivered.
+    await repos.decisions.resolve(user.id, decision!.id, {
+      status: "answered",
+      answer: { text: null, option: "Something sent", via: "app" },
+    });
+    await until(
+      async () => sleepResolve !== null,
+      (v) => v,
+      "the deadline timer",
+    );
+    sleepResolve!();
+
+    await expect(run).resolves.toEqual({ outcome: "completed", decision: "answered" });
+    const done = (await repos.tasks.get(user.id, task.id))!;
+    expect(done.aiStatus).toBe("ready");
+    expect(done.aiAttempts).toBe(2);
+    expect(done.sourceContext).toBe("Answer: Something sent");
+    expect((await repos.decisions.get(user.id, decision!.id))?.status).toBe("answered");
+  });
+
   it("a confident capture asks nothing and completes in one pass", async () => {
     const { siftTask } = await import("@/lib/workflows/sift-task");
     const { repos, user, input } = await seed({
