@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
-import { ConfidencePill, confidenceBand } from "@/components/tasks/confidence-pill";
+import {
+  ConfidencePill,
+  confidenceBand,
+  confidencePercent,
+} from "@/components/tasks/confidence-pill";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
@@ -66,5 +70,20 @@ describe("ConfidencePill", () => {
   it("renders nothing for tasks without a confidence", () => {
     render(<ConfidencePill task={{ aiStatus: "ready", confidence: 0, rationale: null }} />);
     expect(screen.queryByTestId("confidence-pill")).toBeNull();
+  });
+
+  it("tooltip without a rationale shows only the confidence line", async () => {
+    const user = userEvent.setup();
+    render(<ConfidencePill task={{ aiStatus: "ready", confidence: 0.7, rationale: null }} />);
+    await user.tab();
+    expect((await screen.findAllByText("Confidence: 70%")).length).toBeGreaterThan(0);
+    // The rationale paragraph is the only <p> the tooltip ever renders.
+    expect(document.querySelector("[data-radix-popper-content-wrapper] p")).toBeNull();
+  });
+
+  it("clamps out-of-range confidences", () => {
+    expect(confidencePercent(1.4)).toBe(100);
+    expect(confidencePercent(-0.2)).toBe(0);
+    expect(confidencePercent(0.874)).toBe(87);
   });
 });

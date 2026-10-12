@@ -87,6 +87,17 @@ describe("TaskRow complete circle", () => {
     expect(updateTask).toHaveBeenCalledWith("task_3", { lifecycle: "active" });
   });
 
+  it("shows the compact Unsure pill only for low-confidence sifted tasks (SIF-11)", () => {
+    const low = makeTask({ id: "task_low", lifecycle: "inbox", confidence: 0.38 });
+    const { unmount } = render(<TaskRow task={low} onOpen={vi.fn()} labels={[]} />);
+    expect(screen.getByTestId("confidence-pill")).toHaveTextContent("Unsure");
+    unmount();
+
+    const high = makeTask({ id: "task_high", lifecycle: "inbox", confidence: 0.9 });
+    render(<TaskRow task={high} onOpen={vi.fn()} labels={[]} />);
+    expect(screen.queryByTestId("confidence-pill")).toBeNull();
+  });
+
   it("clicking the title opens the sheet and leaves lifecycle alone", async () => {
     const task = makeTask({ id: "task_4", lifecycle: "active", title: "Draft launch post" });
     const { updateTask, onOpen } = renderRow(task);
