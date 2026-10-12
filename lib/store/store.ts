@@ -77,6 +77,11 @@ interface SiftyState {
   addSubtask: (taskId: string, title: string) => void;
   removeSubtask: (taskId: string, subtaskId: string) => void;
   setLifecycle: (taskId: string, lifecycle: Lifecycle) => void;
+  /**
+   * Bulk lifecycle move (e.g. multi-select → Someday). Each task goes
+   * through `updateTask` so the sync hooks push every change individually.
+   */
+  moveTasksToLifecycle: (ids: string[], lifecycle: Lifecycle) => void;
   setAiStatus: (taskId: string, status: AiStatus, error?: string | null) => void;
   applyTriage: (
     taskId: string,
@@ -281,6 +286,13 @@ export const useStore = create<SiftyState>()(
 
         setLifecycle: (taskId, lifecycle) => {
           get().updateTask(taskId, { lifecycle });
+        },
+
+        moveTasksToLifecycle: (ids, lifecycle) => {
+          const existing = new Set(get().tasks.map((t) => t.id));
+          for (const taskId of ids) {
+            if (existing.has(taskId)) get().updateTask(taskId, { lifecycle });
+          }
         },
 
         setAiStatus: (taskId, status, error) => {

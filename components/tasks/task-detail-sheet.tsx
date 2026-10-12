@@ -77,7 +77,10 @@ export function TaskDetailSheet({
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
-      <SheetContent aria-describedby={undefined}>
+      <SheetContent
+        aria-describedby={undefined}
+        onPointerDownOutside={(e) => forwardShiftClickToRow(e.detail.originalEvent)}
+      >
         {task ? (
           <>
             <VisuallyHidden>
@@ -91,6 +94,23 @@ export function TaskDetailSheet({
       </SheetContent>
     </Sheet>
   );
+}
+
+/**
+ * The modal overlay swallows pointer events (and Radix sets pointer-events:
+ * none on the body), so a Shift+click aimed at a list row would only dismiss
+ * the sheet. Replay it on the row under the pointer, located by rect, so
+ * click-then-Shift+click range selection still works.
+ */
+function forwardShiftClickToRow({ shiftKey, clientX, clientY }: PointerEvent) {
+  if (!shiftKey) return;
+  const row = Array.from(
+    document.querySelectorAll<HTMLElement>('[role="listbox"] [role="option"]'),
+  ).find((el) => {
+    const r = el.getBoundingClientRect();
+    return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
+  });
+  row?.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
 }
 
 function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
@@ -1196,5 +1216,10 @@ function effortLabel(e: Effort): string {
   return { quick: "Quick", small: "Small", medium: "Medium", deep: "Deep" }[e];
 }
 function effortHint(e: Effort): string {
-  return { quick: "<10 min", small: "<30 min", medium: "1–3 hr", deep: "Multi-session" }[e];
+  return {
+    quick: "<10 min",
+    small: "<30 min",
+    medium: "1–3 hr",
+    deep: "Multi-session",
+  }[e];
 }
