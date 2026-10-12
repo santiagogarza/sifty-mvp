@@ -49,7 +49,10 @@ export const STRIPE_WEBHOOK_POLICY = perMinute(
 );
 
 /** Account export: one heavy read of everything the user owns. */
-export const ACCOUNT_EXPORT_POLICY = perMinute("RATELIMIT_ACCOUNT_EXPORT_PER_MIN", 3);
+export const ACCOUNT_EXPORT_POLICY = perMinute(
+  () => process.env.RATELIMIT_ACCOUNT_EXPORT_PER_MIN,
+  3,
+);
 
 /** Checkout / portal initiation: per user. */
 export const STRIPE_USER_POLICY = perMinute(() => process.env.RATELIMIT_STRIPE_USER_PER_MIN, 12);
