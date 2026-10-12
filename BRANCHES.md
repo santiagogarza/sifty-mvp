@@ -14,7 +14,8 @@ purposes and must not be mixed. Read this before opening a PR or pushing.
 
 - The real Sifty: user accounts, billing, AI features, production quality.
 - All product work targets this branch. Open a PR into `production`.
-- Vercel's production branch setting points here; every merge deploys.
+- Vercel's Production Branch setting must be `production`; once set, every
+  merge to `production` deploys.
 - CI runs on PRs into `production`.
 - May diverge freely from `master`. It is expected to grow features
   `master` never gets.
@@ -34,6 +35,14 @@ purposes and must not be mixed. Read this before opening a PR or pushing.
 - The demo setup script (see https://github.com/santiagogarza/demos) resets
   them locally. Do not open PRs against them and do not rebase them onto
   `production`.
+
+## Merge policy
+
+- PRs into `production` are squash-merged by their author once all three
+  hold: GitHub Actions CI is green, Bugbot has no blocking comments, and the
+  "Sifty Merge Gate" review says ship.
+- PRs into `master`, and any change to `demo-done` / `dragging-bug`, are
+  never merged by agents. Only Santi merges those.
 
 ## Never
 
