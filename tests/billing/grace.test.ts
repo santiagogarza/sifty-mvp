@@ -33,7 +33,7 @@ function inGrace(customer: string): EntitlementSnapshot {
     {
       type: "invoice.payment_failed",
       created: Math.floor(FAILED_AT.getTime() / 1000),
-      data: { object: { customer } },
+      data: { object: { customer, subscription: `sub_${customer}` } },
     },
     FAILED_AT,
   );

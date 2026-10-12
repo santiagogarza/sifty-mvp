@@ -45,7 +45,8 @@ function makeEvent(opts: MakeEventOptions): { id: string; body: string } {
     (opts.type === "invoice.payment_failed" || opts.type === "invoice.paid"
       ? {
           customer: opts.customer ?? "cus_X",
-          subscription: opts.subscriptionId ?? "sub_X",
+          // Fixtures pair `cus_<x>` with `sub_<x>`, matching `payingUser`.
+          subscription: opts.subscriptionId ?? `sub_${(opts.customer ?? "cus_X").slice(4)}`,
           status: opts.status ?? "paid",
           amount_due: 1000,
           currency: "usd",
