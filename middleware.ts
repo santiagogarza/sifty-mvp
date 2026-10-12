@@ -1,23 +1,31 @@
 import { CREATOR_EMAIL, SESSION_COOKIE_NAME } from "@/lib/auth/session-shared";
+import { enforceRateLimit } from "@/lib/ratelimit/guard";
+import { AUTH_IP_POLICY } from "@/lib/ratelimit/policies";
 import { jwtVerify } from "jose";
 import { type NextRequest, NextResponse } from "next/server";
 
 /**
  * Middleware.
  *
- * Two responsibilities:
+ * Three responsibilities:
  *
- * 1. Gate the signed-in app routes (`/today`, `/focus`, ...) — redirect
+ * 1. Rate-limit auth mutations (`POST /api/auth/*`) per client IP before
+ *    any handler runs. This lives here rather than in the individual auth
+ *    routes so it covers whatever the auth layer exposes under that prefix,
+ *    including endpoints added by a library.
+ * 2. Gate the signed-in app routes (`/today`, `/focus`, ...) — redirect
  *    unauthenticated users to `/sign-in?next=<original>`.
- * 2. Light pre-check on the JWT cookie. We don't load the DB here; the
+ * 3. Light pre-check on the JWT cookie. We don't load the DB here; the
  *    server-side `getSession()` does that on each request. The middleware
  *    only catches the obviously-missing-or-tampered-cookie case so we don't
  *    spin up a route handler just to redirect.
  *
  * `SIFTY_DISABLE_AUTH=1` is the local-dev escape hatch — when set, the
- * middleware lets every request through (matching the bypass in
- * `getSession()`).
+ * middleware lets every page request through (matching the bypass in
+ * `getSession()`). The auth rate limit still applies.
  */
+
+const AUTH_API_PREFIX = "/api/auth";
 
 const ISSUER = "sifty";
 const AUDIENCE = "sifty-app";
@@ -38,6 +46,18 @@ const SIGN_IN_PATH = "/sign-in";
 
 export async function middleware(req: NextRequest): Promise<NextResponse> {
   const { pathname } = req.nextUrl;
+
+  if (pathname === AUTH_API_PREFIX || pathname.startsWith(`${AUTH_API_PREFIX}/`)) {
+    if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") {
+      return NextResponse.next();
+    }
+    const limit = await enforceRateLimit(req, {
+      route: "auth",
+      ip: AUTH_IP_POLICY,
+      message: "Too many attempts. Try again in a minute.",
+    });
+    return limit.ok ? NextResponse.next() : limit.response;
+  }
 
   if (process.env.SIFTY_DISABLE_AUTH === "1") {
     return NextResponse.next();
@@ -83,6 +103,8 @@ export const config = {
      * - public files (anything with a file extension)
      */
     "/((?!api|_next/static|_next/image|favicon.ico|manifest.webmanifest|.*\\..*).*)",
+    // Auth API, for the per-IP rate limit only.
+    "/api/auth/:path*",
   ],
 };
 

@@ -1,0 +1,265 @@
+import { resolveProvider } from "@/lib/ai/provider";
+import {
+  __resetRateLimits,
+  createMemoryStore,
+  createUpstashStore,
+  setRateLimitStoreForTesting,
+} from "@/lib/ratelimit/limiter";
+import { middleware } from "@/middleware";
+import { NextRequest } from "next/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mockResolvedProvider } from "../helpers/ai";
+import { createUserWithCookie } from "../helpers/auth";
+import { FakeUpstashRedis } from "../helpers/fake-upstash-redis";
+import { getTestRepos } from "../setup";
+
+vi.mock("ai", () => ({ generateObject: vi.fn() }));
+vi.mock("@/lib/ai/provider", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/ai/provider")>("@/lib/ai/provider");
+  return { ...actual, resolveProvider: vi.fn() };
+});
+
+const T0 = Date.UTC(2026, 0, 1, 12, 0, 10);
+
+/**
+ * Every route is exercised against both stores so the limits mean the same
+ * thing with and without Redis.
+ */
+const STORES = [
+  { name: "in-process", make: () => createMemoryStore() },
+  {
+    name: "upstash (fake Redis)",
+    make: () => createUpstashStore(new FakeUpstashRedis().asRedis()),
+  },
+];
+
+function json(url: string, body: unknown, headers: Record<string, string> = {}) {
+  return new Request(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  });
+}
+
+async function expect429(res: Response) {
+  expect(res.status).toBe(429);
+  expect(Number(res.headers.get("Retry-After"))).toBeGreaterThan(0);
+  expect((await res.json()).code).toBe("rate_limited");
+}
+
+describe.each(STORES)("per-route rate limits — $name", ({ make }) => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(T0);
+    __resetRateLimits();
+    setRateLimitStoreForTesting(make());
+    vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_dummy");
+    vi.stubEnv("STRIPE_PRICE_MONTHLY", "price_monthly_test");
+    vi.stubEnv("INVITE_CODE_PEPPER", "test-pepper-with-enough-length-0123");
+    vi.stubEnv("AUTH_SECRET", "test-auth-secret-do-not-use-in-production-please-32");
+    vi.mocked(resolveProvider).mockReturnValue(mockResolvedProvider("triage"));
+  });
+
+  afterEach(() => {
+    __resetRateLimits();
+    vi.useRealTimers();
+  });
+
+  it("/api/triage: per-IP cap spans users; per-user cap spans IPs", async () => {
+    vi.stubEnv("RATELIMIT_TRIAGE_IP_PER_MIN", "3");
+    vi.stubEnv("RATELIMIT_TRIAGE_PER_MIN", "2");
+    const repos = getTestRepos();
+    const a = await createUserWithCookie(repos, { email: "a@example.com", isCreator: false });
+    const b = await createUserWithCookie(repos, { email: "b@example.com", isCreator: false });
+    const { generateObject } = await import("ai");
+    vi.mocked(generateObject).mockResolvedValue({
+      object: {
+        title: "T",
+        description: null,
+        nextAction: null,
+        urgency: 0.4,
+        importance: 0.4,
+        effort: "small",
+        dueHint: null,
+        delegationCandidate: "self",
+        suggestedLabels: [],
+        subtasks: [],
+        rationale: null,
+        confidence: 0.7,
+        clarifyingQuestion: null,
+      },
+      usage: { inputTokens: 10, outputTokens: 5 },
+    } as unknown as Awaited<ReturnType<typeof generateObject>>);
+    const { POST } = await import("@/app/api/triage/route");
+    const fire = (cookie: string, ip: string) =>
+      POST(
+        json(
+          "http://localhost/api/triage",
+          { sourceText: "Test" },
+          { cookie, "x-forwarded-for": ip },
+        ),
+      );
+
+    // Same IP, two users: the third request from that IP is refused even
+    // though each user is under their own cap.
+    expect((await fire(a.cookie, "9.9.9.9")).status).toBe(200);
+    expect((await fire(b.cookie, "9.9.9.9")).status).toBe(200);
+    expect((await fire(a.cookie, "9.9.9.9")).status).toBe(200);
+    await expect429(await fire(b.cookie, "9.9.9.9"));
+
+    // Same user from fresh IPs: already used 2 of 2 → refused regardless of IP.
+    await expect429(await fire(a.cookie, "7.7.7.7"));
+    // The other user had 1 of 2 → one more from a fresh IP passes.
+    expect((await fire(b.cookie, "8.8.8.8")).status).toBe(200);
+  });
+
+  it("/api/invites/redeem: per IP across users and per user across IPs", async () => {
+    vi.stubEnv("RATELIMIT_REDEEM_IP_PER_MIN", "3");
+    vi.stubEnv("RATELIMIT_REDEEM_PER_MIN", "2");
+    const repos = getTestRepos();
+    const a = await createUserWithCookie(repos, { email: "ra@example.com" });
+    const b = await createUserWithCookie(repos, { email: "rb@example.com" });
+    const { POST } = await import("@/app/api/invites/redeem/route");
+    const fire = (cookie: string, ip: string) =>
+      POST(
+        json(
+          "http://localhost/api/invites/redeem",
+          { code: `sifty-${"b".repeat(20)}` },
+          { cookie, "x-forwarded-for": ip },
+        ),
+      );
+
+    expect((await fire(a.cookie, "1.1.1.1")).status).toBe(404);
+    expect((await fire(b.cookie, "1.1.1.1")).status).toBe(404);
+    expect((await fire(a.cookie, "1.1.1.1")).status).toBe(404);
+    await expect429(await fire(b.cookie, "1.1.1.1"));
+    await expect429(await fire(a.cookie, "2.2.2.2"));
+    expect((await fire(b.cookie, "3.3.3.3")).status).toBe(404);
+  });
+
+  it("/api/stripe/checkout and /api/stripe/portal share one per-user budget and a per-IP one", async () => {
+    vi.stubEnv("RATELIMIT_STRIPE_USER_PER_MIN", "2");
+    vi.stubEnv("RATELIMIT_STRIPE_IP_PER_MIN", "3");
+    const repos = getTestRepos();
+    const a = await createUserWithCookie(repos, { email: "sa@example.com" });
+    const b = await createUserWithCookie(repos, { email: "sb@example.com" });
+    const checkout = (await import("@/app/api/stripe/checkout/route")).POST;
+    const portal = (await import("@/app/api/stripe/portal/route")).POST;
+    const headers = (cookie: string, ip: string) => ({ cookie, "x-forwarded-for": ip });
+
+    // Portal 400s (no Stripe customer) but still consumes a token.
+    expect(
+      (await portal(json("http://localhost/api/stripe/portal", {}, headers(a.cookie, "5.5.5.5"))))
+        .status,
+    ).toBe(400);
+    expect(
+      (await portal(json("http://localhost/api/stripe/portal", {}, headers(a.cookie, "5.5.5.5"))))
+        .status,
+    ).toBe(400);
+    // Third for user a (from a new IP): per-user cap.
+    await expect429(
+      await checkout(
+        json(
+          "http://localhost/api/stripe/checkout",
+          { cadence: "monthly" },
+          headers(a.cookie, "6.6.6.6"),
+        ),
+      ),
+    );
+    // IP 5.5.5.5 has used 2 of 3; user b gets one, then the IP cap bites.
+    expect(
+      (await portal(json("http://localhost/api/stripe/portal", {}, headers(b.cookie, "5.5.5.5"))))
+        .status,
+    ).toBe(400);
+    await expect429(
+      await portal(json("http://localhost/api/stripe/portal", {}, headers(b.cookie, "5.5.5.5"))),
+    );
+  });
+
+  it("/api/stripe/webhook: per-IP cap on forged requests", async () => {
+    vi.stubEnv("RATELIMIT_STRIPE_WEBHOOK_PER_MIN", "2");
+    const { POST } = await import("@/app/api/stripe/webhook/route");
+    const fire = () =>
+      POST(
+        new Request("http://localhost/api/stripe/webhook", {
+          method: "POST",
+          headers: { "x-forwarded-for": "4.4.4.4" },
+          body: "{}",
+        }),
+      );
+    expect((await fire()).status).toBe(400);
+    expect((await fire()).status).toBe(400);
+    await expect429(await fire());
+  });
+
+  it("/api/auth/sign-in and sign-up: per-email cap regardless of IP", async () => {
+    vi.stubEnv("RATELIMIT_AUTH_EMAIL_PER_MIN", "3");
+    const signIn = (await import("@/app/api/auth/sign-in/route")).POST;
+    const signUp = (await import("@/app/api/auth/sign-up/route")).POST;
+    const attempt = (ip: string, email = "Victim@Example.com") =>
+      signIn(
+        json(
+          "http://localhost/api/auth/sign-in",
+          { email, password: "wrong-password" },
+          { "x-forwarded-for": ip },
+        ),
+      );
+
+    expect((await attempt("1.1.1.1")).status).toBe(401);
+    expect((await attempt("2.2.2.2")).status).toBe(401);
+    // Email is normalised: a sign-up attempt for the same mailbox counts too.
+    expect(
+      (
+        await signUp(
+          json(
+            "http://localhost/api/auth/sign-up",
+            { email: "victim@example.com", password: "password-123" },
+            { "x-forwarded-for": "3.3.3.3" },
+          ),
+        )
+      ).status,
+    ).toBe(200);
+    await expect429(await attempt("4.4.4.4"));
+    // Another account is unaffected.
+    expect((await attempt("4.4.4.4", "other@example.com")).status).toBe(401);
+  });
+
+  it("middleware: POST /api/auth/* is capped per IP; GET is not", async () => {
+    vi.stubEnv("RATELIMIT_AUTH_IP_PER_MIN", "2");
+    const post = (path: string, ip: string) =>
+      middleware(
+        new NextRequest(`http://localhost${path}`, {
+          method: "POST",
+          headers: { "x-forwarded-for": ip },
+        }),
+      );
+
+    expect((await post("/api/auth/sign-in", "1.2.3.4")).status).toBe(200);
+    expect((await post("/api/auth/sign-up", "1.2.3.4")).status).toBe(200);
+    const limited = await post("/api/auth/magic-link", "1.2.3.4");
+    await expect429(limited);
+    // Other IPs and reads are unaffected.
+    expect((await post("/api/auth/sign-in", "5.6.7.8")).status).toBe(200);
+    const read = await middleware(
+      new NextRequest("http://localhost/api/auth/me", {
+        headers: { "x-forwarded-for": "1.2.3.4" },
+      }),
+    );
+    expect(read.status).toBe(200);
+  });
+
+  it("middleware: the auth limit applies even with SIFTY_DISABLE_AUTH=1", async () => {
+    vi.stubEnv("SIFTY_DISABLE_AUTH", "1");
+    vi.stubEnv("RATELIMIT_AUTH_IP_PER_MIN", "1");
+    const post = () =>
+      middleware(
+        new NextRequest("http://localhost/api/auth/sign-in", {
+          method: "POST",
+          headers: { "x-forwarded-for": "1.2.3.4" },
+        }),
+      );
+    expect((await post()).status).toBe(200);
+    await expect429(await post());
+  });
+});

@@ -1,10 +1,11 @@
+import { botDeniedResponse, verifyNotBot } from "@/lib/abuse/botid";
 import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
 import { InviteNotConfiguredError } from "@/lib/invites/codes";
 import { REDEEM_MESSAGES, type RedeemFailure, redeemInviteCode } from "@/lib/invites/service";
 import { reportError } from "@/lib/observability/report-error";
-import { buildRateLimitKey, consumeToken, rateLimitResponseInit } from "@/lib/ratelimit/limiter";
-import { REDEEM_POLICY, clientIdFromRequest } from "@/lib/ratelimit/policies";
+import { enforceRateLimit } from "@/lib/ratelimit/guard";
+import { REDEEM_IP_POLICY, REDEEM_POLICY } from "@/lib/ratelimit/policies";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -25,23 +26,24 @@ const STATUS_BY_REASON: Record<RedeemFailure, number> = {
 
 /**
  * Redeem an invite code for the signed-in user. Rate-limited per user and
- * per client so the endpoint cannot be used to probe codes, even though
- * their entropy already makes probing pointless.
+ * per client IP so the endpoint cannot be used to probe codes, even though
+ * their entropy already makes probing pointless; BotID keeps scripted
+ * redemption farms out.
  */
 export async function POST(req: Request) {
   const session = await getSession(req);
   if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
-  const limit = consumeToken(
-    buildRateLimitKey("redeem", session.user.id, clientIdFromRequest(req)),
-    REDEEM_POLICY,
-  );
-  if (!limit.ok) {
-    return NextResponse.json(
-      { error: "Too many attempts. Try again in a minute." },
-      rateLimitResponseInit(limit),
-    );
-  }
+  const limit = await enforceRateLimit(req, {
+    route: "redeem",
+    ip: REDEEM_IP_POLICY,
+    subject: { id: session.user.id, policy: REDEEM_POLICY },
+    message: "Too many attempts. Try again in a minute.",
+  });
+  if (!limit.ok) return limit.response;
+
+  const bot = await verifyNotBot("invites.redeem");
+  if (bot.isBot) return botDeniedResponse();
 
   const json = await req.json().catch(() => null);
   const parsed = Body.safeParse(json);
