@@ -95,6 +95,28 @@ describe("narrow patches", () => {
   });
 });
 
+describe("narrow memory patches", () => {
+  it("sends only the changed memory key and keeps server-side fields", async () => {
+    const client = await bootAndPull();
+    const memory = client.store.getState().addMemory({ text: "Prefers mornings" });
+    await settle(client);
+    await client.repos.memories.update(client.userId, memory.id, { pinned: true });
+
+    client.calls.length = 0;
+    client.store.getState().updateMemory(memory.id, { text: "Prefers early mornings" });
+    await settle(client);
+
+    const patches = client.calls.filter((c) => c.method === "PATCH");
+    expect(patches).toHaveLength(1);
+    expect(Object.keys(patches[0]!.body as object)).toEqual(["text"]);
+    const server = (await client.repos.memories.list(client.userId)).find(
+      (m) => m.id === memory.id,
+    );
+    expect(server?.text).toBe("Prefers early mornings");
+    expect(server?.pinned).toBe(true);
+  });
+});
+
 describe("reconcile", () => {
   it("overlays the dirty keys onto the server copy instead of keeping the whole stale entity", async () => {
     const client = await bootAndPull();
@@ -128,6 +150,27 @@ describe("reconcile", () => {
     expect(server?.title).toBe("Renew passport");
     expect(server?.due).toBe("2026-12-01");
     expect(server?.editedFields.sort()).toEqual(["due", "title"]);
+  });
+
+  it("carries a pending lifecycle change's completedAt through a reload", async () => {
+    const client = await bootAndPull();
+    const id = await captureSynced(client, "File the expense report");
+
+    const offline = client.intercept((method) => {
+      if (method === "PATCH") throw new TypeError("Failed to fetch");
+      return null;
+    });
+    client.store.getState().setLifecycle(id, "done");
+    await settle(client);
+    offline();
+    const completedAt = client.store.getState().tasks.find((t) => t.id === id)?.completedAt;
+    expect(completedAt).toBeTruthy();
+
+    const reloaded = await bootAndPull(client);
+    const local = reloaded.store.getState().tasks.find((t) => t.id === id);
+    expect(local?.lifecycle).toBe("done");
+    expect(local?.completedAt).toBe(completedAt);
+    expect((await reloaded.repos.tasks.get(reloaded.userId, id))?.completedAt).toBeTruthy();
   });
 
   it("shares one pull between concurrent mounts", async () => {
@@ -206,6 +249,50 @@ describe("rejections", () => {
     expect((await reloaded.repos.tasks.get(reloaded.userId, id))?.title).toBe(
       "Pay the invoice today",
     );
+  });
+
+  it("keeps a 408 retryable", async () => {
+    const client = await bootAndPull();
+    const id = await captureSynced(client, "Book the dentist");
+
+    const timeout = client.intercept((method) =>
+      method === "PATCH" ? new Response(null, { status: 408 }) : null,
+    );
+    client.store.getState().updateTask(id, { title: "Dentist" }, { editedFields: ["title"] });
+    await settle(client);
+    timeout();
+    expect(client.sync.getSyncStatus().rejected).toBe(0);
+
+    const reloaded = await bootAndPull(client);
+    expect((await reloaded.repos.tasks.get(reloaded.userId, id))?.title).toBe("Dentist");
+  });
+
+  it("rejects the task that references a rejected label instead of deferring it forever", async () => {
+    const client = await bootAndPull();
+    const id = await captureSynced(client, "Plan the offsite");
+
+    client.calls.length = 0;
+    const reject = client.intercept((method) =>
+      method === "PUT"
+        ? new Response(JSON.stringify({ error: "Invalid input" }), { status: 400 })
+        : null,
+    );
+    const label = client.store.getState().ensureLabel("Offsite");
+    client.store
+      .getState()
+      .updateTask(id, { labelIds: [label.id] }, { editedFields: ["labelIds"] });
+    await settle(client);
+    reject();
+
+    expect(client.calls.filter((c) => c.method === "PATCH")).toHaveLength(0);
+    expect(client.sync.getSyncStatus().rejected).toBe(2);
+    expect((await client.repos.tasks.get(client.userId, id))?.labelIds).toEqual([]);
+
+    const reloaded = await bootAndPull(client);
+    expect(reloaded.calls.filter((c) => c.method === "PUT" || c.method === "PATCH")).toHaveLength(
+      0,
+    );
+    expect(reloaded.sync.getSyncStatus().rejected).toBe(2);
   });
 
   it("keeps a 429 retryable", async () => {

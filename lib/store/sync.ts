@@ -809,7 +809,7 @@ async function pullAndReconcile(): Promise<PullResult> {
  * over it. A whole-entity mark (`*`) keeps the local row.
  */
 function overlayDirty<T extends object>(server: T, local: T, keys: readonly string[]): T {
-  if (keys.includes(ALL)) return local;
+  if (keys.includes(ALL)) return { ...local };
   const merged = { ...server } as Record<string, unknown>;
   for (const key of keys) {
     if (key in local) merged[key] = (local as Record<string, unknown>)[key];
@@ -830,13 +830,17 @@ function reconcile(serverTasks: Task[], serverLabels: Label[], serverMemories: M
       const localTask = localTaskById.get(serverTask.id);
       const keys = localTask ? dirtyKeys("tasks", serverTask.id) : null;
       if (!localTask || !keys) return serverTask;
+      const merged = overlayDirty(serverTask, localTask, keys);
       // Protections are a set that only grows (the server unions them the
       // same way): an edit protected on another device must survive here,
       // or a re-triage from this device would overwrite it.
-      return {
-        ...overlayDirty(serverTask, localTask, keys),
-        editedFields: Array.from(new Set([...serverTask.editedFields, ...localTask.editedFields])),
-      };
+      merged.editedFields = Array.from(
+        new Set([...serverTask.editedFields, ...localTask.editedFields]),
+      );
+      // completedAt is derived from lifecycle on both sides; a pending
+      // lifecycle change carries its own timestamp until it lands.
+      if (keys.includes("lifecycle")) merged.completedAt = localTask.completedAt;
+      return merged;
     });
   for (const localTask of local.tasks) {
     if (serverTaskIds.has(localTask.id)) continue;
