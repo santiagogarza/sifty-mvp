@@ -126,7 +126,17 @@ export function nextDueDate(
  */
 export function buildNextInstance(
   parent: Task,
-  opts: { id: string; completedOn: string; lifecycle: Lifecycle },
+  opts: {
+    id: string;
+    completedOn: string;
+    lifecycle: Lifecycle;
+    /**
+     * The successor must be sifted afresh (the parent never finished its
+     * own sift, or was still waiting on a question). It is created
+     * `pending` so the completion path, or a retry of it, enqueues the run.
+     */
+    needsSift?: boolean;
+  },
 ): {
   create: { id: string; sourceText: string; sourceContext: string | null };
   patch: Partial<Task>;
@@ -153,9 +163,10 @@ export function buildNextInstance(
     description: pick("description"),
     nextAction: pick("nextAction"),
     lifecycle: opts.lifecycle,
-    // Already organized: nothing to resume, and idle keeps an unsifted
-    // parent's copy out of the stale-triage sweep.
-    aiStatus: parent.aiStatus === "ready" ? "ready" : "idle",
+    // A sifted parent's copy is already organized. Anything else is owed a
+    // sift and says so (`pending`), so a failed or crashed enqueue is
+    // retried by the next completion attempt instead of leaving it idle.
+    aiStatus: parent.aiStatus === "ready" && !opts.needsSift ? "ready" : "pending",
     aiError: null,
     urgency,
     importance,

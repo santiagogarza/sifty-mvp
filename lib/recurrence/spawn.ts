@@ -13,8 +13,9 @@ import type { Lifecycle, Task } from "@/lib/domain/types";
  * and spawned its own successor) and must not be reset to a copy of its
  * parent. Un-completing and completing again is a new completion (new
  * `completedAt`), but it spawns nothing while the series still has an
- * open instance, so a mis-click never doubles the series; a successor the
- * user deleted, on the other hand, no longer blocks it.
+ * open successor, so a mis-click never doubles the series; a successor the
+ * user deleted, on the other hand, no longer blocks it, and neither does an
+ * older instance the user re-opened.
  *
  * The copy carries the parent's sift output (priority, labels, plan,
  * rationale) and is created `ready`, so a recurring task costs AI once.
@@ -34,6 +35,8 @@ export async function spawnNextInstance(
     completedOn?: string | null;
     /** IANA zone of the completing client. */
     timeZone?: string | null;
+    /** Spawn the successor `pending` (owed a sift) even from a `ready` parent. */
+    needsSift?: boolean;
     now?: Date;
   },
 ): Promise<{ task: Task; created: boolean } | null> {
@@ -47,9 +50,12 @@ export async function spawnNextInstance(
   // it is a stub whose copy patch never landed; fall through and apply it.
   if (existing?.seriesId) return { task: existing, created: false };
   if (!existing) {
+    // Only a *successor* (created after this instance) stands in for a new
+    // one. An older open row — the previous instance un-completed by a
+    // mis-click — must not stop the series from moving forward.
     const open = (
       await repos.tasks.listBySeries(userId, seriesId, { lifecycles: OPEN_LIFECYCLES })
-    ).find((t) => t.id !== parent.id);
+    ).find((t) => t.id !== parent.id && t.createdAt > parent.createdAt);
     if (open) return { task: open, created: false };
   }
 
@@ -61,6 +67,7 @@ export async function spawnNextInstance(
     id: nextId,
     completedOn: args.completedOn ?? localDay(args.now ?? new Date(), args.timeZone ?? null),
     lifecycle,
+    needsSift: args.needsSift,
   });
 
   // create() is idempotent for the owner: a concurrent spawn of the same

@@ -93,6 +93,12 @@ interface SiftyState {
    * "all future" mode, the default people expect from a template.
    */
   instanceScope: Record<string, true>;
+  /**
+   * Status each task had just before it was completed in this session; the
+   * sync layer sends it with the completion so the server knows where a
+   * recurring task's next instance belongs even when the push lands late.
+   */
+  completedFrom: Record<string, Lifecycle>;
 
   setHydrated: (v: boolean) => void;
   setModelPreference: (preference: ModelPreference) => void;
@@ -226,6 +232,7 @@ export const useStore = create<SiftyState>()(
         viewMode: "list",
         welcomeDismissed: false,
         instanceScope: {},
+        completedFrom: {},
 
         setHydrated: (v) => set({ hydrated: v }),
         setModelPreference: (preference) => set({ modelPreference: preference }),
@@ -285,6 +292,9 @@ export const useStore = create<SiftyState>()(
 
         updateTask: (id, patch, opts) => {
           const prev = findTask(id);
+          if (patch.lifecycle === "done" && prev && prev.lifecycle !== "done") {
+            set((s) => ({ completedFrom: { ...s.completedFrom, [id]: prev.lifecycle } }));
+          }
           set((s) => ({
             tasks: s.tasks.map((t) => {
               if (t.id !== id) return t;

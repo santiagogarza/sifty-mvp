@@ -128,6 +128,7 @@ describe("spawnNextInstance", () => {
 
   it("un-complete then complete again spawns nothing while the successor is still open", async () => {
     const { repos, user, parent } = await seedRecurring();
+    await new Promise((r) => setTimeout(r, 5)); // the successor is created strictly later
     const first = await spawnNextInstance(repos, user.id, { parent, previousLifecycle: "active" });
 
     await repos.tasks.update(user.id, parent.id, { lifecycle: "active" });
@@ -144,6 +145,22 @@ describe("spawnNextInstance", () => {
     expect((await repos.tasks.list(user.id)).filter((t) => t.seriesId === parent.id)).toHaveLength(
       2,
     );
+  });
+
+  it("an older instance the user re-opened does not block the series", async () => {
+    const { repos, user, parent } = await seedRecurring();
+    const first = await spawnNextInstance(repos, user.id, { parent, previousLifecycle: "active" });
+    // Mis-click: the previous instance is un-completed, so two rows are open.
+    await repos.tasks.update(user.id, parent.id, { lifecycle: "active" });
+    // Completing the real next instance must still move the series forward.
+    const successor = (await repos.tasks.update(user.id, first!.task.id, { lifecycle: "done" }))!;
+    const second = await spawnNextInstance(repos, user.id, {
+      parent: successor,
+      previousLifecycle: "active",
+    });
+    expect(second?.created).toBe(true);
+    expect(second?.task.id).not.toBe(parent.id);
+    expect(second?.task.due).toBe("2026-10-30");
   });
 
   it("a deleted successor does not block the series: re-completing spawns a fresh one", async () => {

@@ -107,14 +107,17 @@ export const TaskPatchSchema = z
     editedFields: z.array(z.enum(TASK_EDITABLE_FIELDS)).max(20).optional(),
     /**
      * Completion context for a recurring task, not task fields: the user's
-     * calendar day of completion (what the next due is computed from), and
-     * the client's IANA zone as a fallback when the day is absent.
+     * calendar day of completion (what the next due is computed from), the
+     * client's IANA zone as a fallback when the day is absent, and the
+     * status the task had before it was completed (where the next instance
+     * lands) for when the server can no longer tell.
      */
     completedOn: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .optional(),
     timeZone: z.string().max(64).refine(isValidTimeZone, "unknown time zone").optional(),
+    completedFrom: z.enum(LIFECYCLE).optional(),
   })
   .strict();
 

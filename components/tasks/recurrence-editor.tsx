@@ -38,6 +38,8 @@ export function RecurrenceRow({ task }: { task: Task }) {
       setRecurrence(task.id, null);
       return;
     }
+    // Clicking the frequency already in force keeps its chosen days / day.
+    if (rule?.freq === freq) return;
     const next = defaultRecurrence(freq, anchor);
     // Keep the mode and any parked instance edits across a frequency change.
     setRecurrence(task.id, {

@@ -252,6 +252,140 @@ describe("completing a recurring task over the API", () => {
     }
   });
 
+  it("completing a task waiting on a question expires the question and sifts the successor afresh", async () => {
+    const { setWorkflowClientForTesting } = await import("@/lib/workflows/dispatch");
+    const start = vi.fn().mockResolvedValue({ runId: "wrun_fresh" });
+    const resume = vi.fn().mockResolvedValue({ ok: true, runId: "wrun_q" });
+    setWorkflowClientForTesting({ start, wait: vi.fn(), resume });
+    vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
+    vi.stubEnv("RATELIMIT_TRIAGE_PER_MIN", "100000");
+    try {
+      const repos = getTestRepos();
+      const { user, cookie } = await createUserWithCookie(repos, { email: "asked@example.com" });
+      const created = await repos.tasks.create(user.id, {
+        sourceText: "Plan the offsite",
+        sourceContext: null,
+      });
+      // The sift asked a question and parked: the task is `ready` with the asking run's id.
+      await repos.tasks.update(user.id, created.id, {
+        lifecycle: "active",
+        aiStatus: "ready",
+        siftId: "sift_q",
+        clarifyingQuestion: "Which quarter?",
+        recurrence: { freq: "monthly", mode: "fixed", dayOfMonth: 1 },
+        seriesId: created.id,
+      });
+      const { openClarifyingQuestion } = await import("@/lib/decisions/service");
+      const decision = await openClarifyingQuestion(repos, user.id, {
+        id: "dec_q1",
+        taskId: created.id,
+        siftId: "sift_q",
+        question: "Which quarter?",
+        options: ["Q1", "Q2"],
+        confidence: 0.4,
+      });
+      expect(decision.status).toBe("open");
+
+      const res = await patch(created.id, cookie, { lifecycle: "done", completedOn: "2026-10-12" });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        task: { aiStatus: string; siftId: string | null; clarifyingQuestion: string | null };
+        spawned: {
+          id: string;
+          aiStatus: string;
+          siftId: string | null;
+          clarifyingQuestion: string | null;
+        };
+      };
+      // The question is closed, its run released, and nothing can land on the finished row.
+      expect((await repos.decisions.get(user.id, "dec_q1"))?.status).toBe("expired");
+      expect(resume).toHaveBeenCalledTimes(1);
+      expect(body.task).toMatchObject({ aiStatus: "idle", siftId: null, clarifyingQuestion: null });
+      // The live successor gets a fresh sift (which may ask again, on the right row).
+      expect(body.spawned).toMatchObject({ aiStatus: "pending", clarifyingQuestion: null });
+      expect(body.spawned.siftId).toBeTruthy();
+      expect(start).toHaveBeenCalledTimes(1);
+      expect(start.mock.calls[0]![1][0]).toMatchObject({ taskId: body.spawned.id });
+      expect(await repos.decisions.listOpenForTask(user.id, created.id, { limit: 10 })).toEqual([]);
+    } finally {
+      setWorkflowClientForTesting(null);
+    }
+  });
+
+  it("a successor whose owed sift failed to enqueue is retried by the next completion attempt", async () => {
+    const { setWorkflowClientForTesting } = await import("@/lib/workflows/dispatch");
+    const start = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("queue down"))
+      .mockResolvedValue({ runId: "wrun_2" });
+    setWorkflowClientForTesting({ start, wait: vi.fn(), resume: vi.fn() });
+    vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
+    vi.stubEnv("RATELIMIT_TRIAGE_PER_MIN", "100000");
+    try {
+      const repos = getTestRepos();
+      const { user, cookie } = await createUserWithCookie(repos, { email: "retry@example.com" });
+      const created = await repos.tasks.create(user.id, {
+        sourceText: "Backup laptop",
+        sourceContext: null,
+      });
+      await repos.tasks.update(user.id, created.id, {
+        lifecycle: "active",
+        aiStatus: "pending",
+        recurrence: { freq: "weekly", mode: "fixed", weekdays: [1] },
+        seriesId: created.id,
+      });
+
+      const first = (await (await patch(created.id, cookie, { lifecycle: "done" })).json()) as {
+        spawned: { id: string; aiStatus: string; siftId: string | null };
+      };
+      // The run did not start: the successor is left failed (retryable), not idle.
+      expect(first.spawned.aiStatus).toBe("failed");
+
+      const second = (await (await patch(created.id, cookie, { lifecycle: "done" })).json()) as {
+        spawned: { id: string; aiStatus: string; siftId: string | null };
+      };
+      expect(second.spawned.id).toBe(first.spawned.id);
+      expect(second.spawned.aiStatus).toBe("pending");
+      expect(second.spawned.siftId).toBeTruthy();
+      expect(start).toHaveBeenCalledTimes(2);
+    } finally {
+      setWorkflowClientForTesting(null);
+    }
+  });
+
+  it("the successor lands where the client says the task lived, else where the row was, else the Inbox", async () => {
+    const repos = getTestRepos();
+    const { user, cookie } = await createUserWithCookie(repos, { email: "landing@example.com" });
+    const make = async (lifecycle: "someday" | "waiting" | "active") => {
+      const t = await repos.tasks.create(user.id, {
+        sourceText: `Series ${lifecycle}`,
+        sourceContext: null,
+      });
+      await repos.tasks.update(user.id, t.id, {
+        lifecycle,
+        aiStatus: "ready",
+        recurrence: { freq: "daily", mode: "fixed" },
+        seriesId: t.id,
+      });
+      return t.id;
+    };
+    const spawnedOf = async (res: Response) =>
+      ((await res.json()) as { spawned: { lifecycle: string } }).spawned.lifecycle;
+
+    // Client knows best.
+    const a = await make("someday");
+    expect(
+      await spawnedOf(await patch(a, cookie, { lifecycle: "done", completedFrom: "waiting" })),
+    ).toBe("waiting");
+    // No client hint: the row before this write.
+    const b = await make("waiting");
+    expect(await spawnedOf(await patch(b, cookie, { lifecycle: "done" }))).toBe("waiting");
+    // Retry after a crashed spawn: the row is already done; the Inbox is the review gate.
+    const c = await make("active");
+    await repos.tasks.update(user.id, c, { lifecycle: "done" });
+    expect(await spawnedOf(await patch(c, cookie, { lifecycle: "done" }))).toBe("inbox");
+  });
+
   it("spawns nothing for a one-off task or a non-completing patch", async () => {
     const repos = getTestRepos();
     const { user, cookie } = await createUserWithCookie(repos, { email: "once@example.com" });

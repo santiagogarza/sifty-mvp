@@ -419,6 +419,8 @@ function completionContext(task: Task): Record<string, unknown> {
   const out: Record<string, unknown> = {
     completedOn: toLocalIsoDate(task.completedAt ? new Date(task.completedAt) : new Date()),
   };
+  const completedFrom = useStore.getState().completedFrom[task.id];
+  if (completedFrom) out.completedFrom = completedFrom;
   try {
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     if (timeZone) out.timeZone = timeZone;

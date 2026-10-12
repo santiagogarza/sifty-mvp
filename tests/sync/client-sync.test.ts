@@ -90,12 +90,19 @@ describe("recurring completion", () => {
     await settle(client);
 
     const patch = client.calls.find((c) => c.method === "PATCH" && c.path === `/api/tasks/${id}`);
-    const body = patch?.body as { lifecycle: string; completedOn: string; timeZone?: string };
+    const body = patch?.body as {
+      lifecycle: string;
+      completedOn: string;
+      completedFrom: string;
+      timeZone?: string;
+    };
     expect(body.lifecycle).toBe("done");
     expect(body.completedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // Where the task lived when it was completed, so the successor lands there.
+    expect(body.completedFrom).toBe("inbox");
     // Narrow: the completion context rides along, nothing else does.
     expect(Object.keys(body).sort()).toEqual(
-      ["completedOn", "lifecycle", ...(body.timeZone ? ["timeZone"] : [])].sort(),
+      ["completedFrom", "completedOn", "lifecycle", ...(body.timeZone ? ["timeZone"] : [])].sort(),
     );
 
     // The server spawned the next instance and the client shows it without a pull.

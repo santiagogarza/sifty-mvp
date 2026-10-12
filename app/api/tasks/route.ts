@@ -77,6 +77,7 @@ export async function POST(req: Request) {
     modelPreference,
     completedOn,
     timeZone,
+    completedFrom,
     ...enrichment
   } = parsed.data;
   const repos = getRepos();
@@ -123,7 +124,7 @@ export async function POST(req: Request) {
         req,
         session,
         task,
-        previousLifecycle: "inbox",
+        previousLifecycle: completedFrom ?? "inbox",
         completedOn,
         timeZone,
         modelPreference,

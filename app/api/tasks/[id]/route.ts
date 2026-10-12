@@ -44,7 +44,7 @@ export async function PATCH(req: Request, ctx: RouteContext) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
-  const { editedFields, completedOn, timeZone, ...patch } = parsed.data;
+  const { editedFields, completedOn, timeZone, completedFrom, ...patch } = parsed.data;
   const repos = getRepos();
   const userId = session.user.id;
   const completing = patch.lifecycle === "done";
@@ -54,11 +54,20 @@ export async function PATCH(req: Request, ctx: RouteContext) {
 
   let spawned: Task | null = null;
   if (completing && task.recurrence) {
+    // Where the next instance lands: what the client saw before it
+    // completed the task, else the row as it was before this write. A
+    // retry after a crashed spawn sees the row already done; the Inbox is
+    // the review gate, so a misplaced instance gets looked at.
+    const previousLifecycle =
+      completedFrom ??
+      (before && before.lifecycle !== "done" && before.lifecycle !== "dropped"
+        ? before.lifecycle
+        : "inbox");
     const completed = await completeRecurring(repos, {
       req,
       session,
       task,
-      previousLifecycle: before?.lifecycle ?? "active",
+      previousLifecycle,
       completedOn,
       timeZone,
     });

@@ -186,6 +186,11 @@ describe("TaskDetailSheet repeat", () => {
     current = useStore.getState().tasks.find((t) => t.id === "task_src")!;
     expect(current.recurrence?.weekdays).toEqual([1]);
 
+    // Clicking the frequency already in force keeps the chosen days.
+    await user.click(screen.getByRole("menuitemradio", { name: "Weekly" }));
+    current = useStore.getState().tasks.find((t) => t.id === "task_src")!;
+    expect(current.recurrence?.weekdays).toEqual([1]);
+
     await user.click(screen.getByRole("menuitemradio", { name: /After completion/ }));
     current = useStore.getState().tasks.find((t) => t.id === "task_src")!;
     expect(current.recurrence?.mode).toBe("after_completion");

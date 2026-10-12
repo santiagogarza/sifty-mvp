@@ -216,7 +216,7 @@ describe("buildNextInstance", () => {
     expect(editedFields).toEqual(["title", "due"]);
   });
 
-  it("keeps the series id once the series exists and copies an unsifted parent as idle", () => {
+  it("keeps the series id once the series exists and copies an unsifted parent as pending", () => {
     const parent = task({ seriesId: "task_origin", aiStatus: "failed", aiError: "boom" });
     const { patch } = buildNextInstance(parent, {
       id: "task_next",
@@ -224,9 +224,22 @@ describe("buildNextInstance", () => {
       lifecycle: "inbox",
     });
     expect(patch.seriesId).toBe("task_origin");
-    expect(patch.aiStatus).toBe("idle");
+    expect(patch.aiStatus).toBe("pending");
     expect(patch.aiError).toBeNull();
     expect(patch.lifecycle).toBe("inbox");
+    // A sifted parent copies ready — unless the caller says a sift is owed.
+    expect(
+      buildNextInstance(task(), { id: "x", completedOn: "2026-10-16", lifecycle: "active" }).patch
+        .aiStatus,
+    ).toBe("ready");
+    expect(
+      buildNextInstance(task(), {
+        id: "x",
+        completedOn: "2026-10-16",
+        lifecycle: "active",
+        needsSift: true,
+      }).patch.aiStatus,
+    ).toBe("pending");
   });
 
   it("restores the series values over instance-only edits and drops them from the rule", () => {
