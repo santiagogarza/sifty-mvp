@@ -22,6 +22,13 @@ export async function POST(req: Request) {
     );
   }
 
+  if (!process.env.STRIPE_SECRET_KEY) {
+    return NextResponse.json(
+      { error: "Billing is not configured yet.", code: "billing_not_configured" },
+      { status: 503 },
+    );
+  }
+
   const repos = getRepos();
   const ent = await repos.entitlements.get(session.user.id);
   if (!ent?.stripeCustomerId) {

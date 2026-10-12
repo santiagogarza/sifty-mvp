@@ -3,7 +3,9 @@ import { PageShell } from "@/components/app-shell/page-shell";
 import { BillingPanel } from "@/components/billing/billing-panel";
 import { countAiRunsToday } from "@/lib/ai/ai-runs";
 import { getSession } from "@/lib/auth/session";
-import { deriveEntitlement } from "@/lib/entitlements/entitlements";
+import { hasOpenStripeSubscription } from "@/lib/billing/events";
+import { getBillingStatus } from "@/lib/billing/stripe";
+import { deriveEntitlement, paymentProblem } from "@/lib/entitlements/entitlements";
 import { redirect } from "next/navigation";
 
 export const metadata = { title: "Billing — Sifty" };
@@ -19,6 +21,7 @@ export default async function BillingPage() {
     snapshot: session.entitlement,
     siftsToday: await countAiRunsToday(session.user.id),
   });
+  const snapshot = session.entitlement;
 
   return (
     <PageShell title="Billing">
@@ -29,8 +32,15 @@ export default async function BillingPage() {
       <BillingPanel
         user={{ email: session.user.email, isCreator: session.user.isCreator }}
         entitlement={entitlement}
-        hasSubscription={!!session.entitlement?.stripeSubscriptionId}
-        subscriptionActive={session.entitlement?.subscriptionActive ?? false}
+        billingConfigured={getBillingStatus().configured}
+        stripe={{
+          customer: !!snapshot?.stripeCustomerId,
+          open: hasOpenStripeSubscription(snapshot),
+          active: snapshot?.subscriptionActive ?? false,
+          status: snapshot?.stripeStatus ?? null,
+          currentPeriodEnd: snapshot?.currentPeriodEnd ?? null,
+        }}
+        paymentProblem={paymentProblem(snapshot, session.user.isCreator)}
       />
     </PageShell>
   );
