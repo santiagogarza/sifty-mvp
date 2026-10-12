@@ -265,12 +265,25 @@ export function tierLabel(tier: Tier): string {
   }
 }
 
+/**
+ * Calendar day for billing deadlines (trial end, comp end, grace end).
+ * Pinned to UTC so the server render, the client hydration, and the email
+ * (`formatEmailDate`, also UTC) all name the same day regardless of where
+ * the server or the browser sits.
+ */
+export function formatBillingDay(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 /** One-line description for account surfaces. */
 export function tierSummary(
   ent: Pick<Entitlement, "tier" | "trialEndsAt" | "compedUntil">,
 ): string {
-  const fmt = (iso: string) =>
-    new Date(iso).toLocaleDateString(undefined, { month: "long", day: "numeric" });
+  const fmt = (iso: string) => formatBillingDay(iso);
   switch (ent.tier) {
     case "creator":
       return "Creator — unlimited";

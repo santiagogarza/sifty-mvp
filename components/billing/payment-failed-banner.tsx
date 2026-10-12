@@ -1,4 +1,4 @@
-import type { PaymentProblem } from "@/lib/entitlements/entitlements";
+import { type PaymentProblem, formatBillingDay } from "@/lib/entitlements/entitlements";
 import Link from "next/link";
 
 /**
@@ -10,7 +10,7 @@ import Link from "next/link";
 export function PaymentFailedBanner({ problem }: { problem: PaymentProblem }) {
   const message =
     problem.kind === "grace"
-      ? `Your last Sifty Pro payment didn't go through. Update your payment method by ${formatDay(problem.graceEndsAt)} to keep Pro.`
+      ? `Your last Sifty Pro payment didn't go through. Update your payment method by ${formatBillingDay(problem.graceEndsAt)} to keep Pro.`
       : "Your Sifty Pro payment is still failing, so Pro is paused. Update your payment method to turn it back on.";
   return (
     <div
@@ -27,8 +27,4 @@ export function PaymentFailedBanner({ problem }: { problem: PaymentProblem }) {
       </Link>
     </div>
   );
-}
-
-function formatDay(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric" });
 }

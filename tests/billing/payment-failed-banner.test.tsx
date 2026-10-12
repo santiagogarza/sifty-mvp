@@ -20,6 +20,16 @@ describe("PaymentFailedBanner", () => {
     );
   });
 
+  it("names the UTC calendar day, matching the email, whatever the local timezone", () => {
+    // 03:00Z on the 19th is still the 18th in the Americas; the email says the 19th.
+    render(
+      createElement(PaymentFailedBanner, {
+        problem: { kind: "grace", graceEndsAt: "2026-10-19T03:00:00.000Z" },
+      }),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(/by October 19 to keep Pro/);
+  });
+
   it("says Pro is paused once the grace period lapsed", () => {
     render(createElement(PaymentFailedBanner, { problem: { kind: "lapsed" } }));
     expect(screen.getByRole("alert")).toHaveTextContent(/Pro is paused/);
