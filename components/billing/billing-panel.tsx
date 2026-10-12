@@ -9,6 +9,7 @@ import type { Entitlement } from "@/lib/domain/types";
 import {
   FREE_SIFTS_PER_DAY,
   type PaymentProblem,
+  formatBillingDay,
   tierLabel,
   tierSummary,
 } from "@/lib/entitlements/entitlements";
@@ -110,7 +111,7 @@ export function BillingPanel({
         ) : null}
         {stripe.active && stripe.status === "trialing" && stripe.currentPeriodEnd ? (
           <div className="text-[13px] text-[var(--fg-muted)] mt-1">
-            Card on file. Your first charge is on {formatDay(stripe.currentPeriodEnd)}.
+            Card on file. Your first charge is on {formatBillingDay(stripe.currentPeriodEnd)}.
           </div>
         ) : null}
         {tier === "creator" ? (
@@ -129,7 +130,7 @@ export function BillingPanel({
           <div className="text-eyebrow mb-2">Payment needed</div>
           <p className="text-[13px] text-[var(--fg)] leading-[1.5] max-w-prose">
             {paymentProblem.kind === "grace"
-              ? `Your last payment didn't go through. Pro stays on until ${formatDay(paymentProblem.graceEndsAt)}; update your card before then to keep it.`
+              ? `Your last payment didn't go through. Pro stays on until ${formatBillingDay(paymentProblem.graceEndsAt)}; update your card before then to keep it.`
               : "Your payment is still failing, so Pro is paused. Update your card to turn it back on; nothing else changes."}
           </p>
           <Button variant="primary" disabled={pending} onClick={openPortal} className="mt-4">
@@ -197,10 +198,6 @@ export function BillingPanel({
 
 function daysUntil(iso: string): number {
   return Math.max(0, Math.ceil((Date.parse(iso) - Date.now()) / (1000 * 60 * 60 * 24)));
-}
-
-function formatDay(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { month: "long", day: "numeric" });
 }
 
 function statusLine(ent: Entitlement): string {
