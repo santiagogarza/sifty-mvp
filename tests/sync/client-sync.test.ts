@@ -16,6 +16,14 @@ vi.mock("@/lib/ai/sift/enqueue", () => ({
   wantsSift: (task: { aiStatus: string }) =>
     task.aiStatus === "pending" || task.aiStatus === "running" || task.aiStatus === "failed",
 }));
+// Deleting a task releases any sift suspended on a question about it,
+// through the same runtime package; stub that seam for the same reason.
+vi.mock("@/lib/workflows/dispatch", () => ({
+  resumeWorkflowHook: async () => ({ ok: false, reason: "not_found" }),
+  startWorkflow: async () => ({ runId: "wrun_sync_test" }),
+  waitForRun: async () => ({ status: "pending" }),
+  setWorkflowClientForTesting: () => {},
+}));
 
 /**
  * Client sync behavior, end to end: store mutation → `lib/store/sync` →

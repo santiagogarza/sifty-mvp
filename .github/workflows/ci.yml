@@ -124,56 +124,50 @@ jobs:
 
   smoke:
     name: Smoke the production deployment
-    # Pushes to production only: wait for Vercel's GitHub Deployment for this
-    # commit to succeed, then probe the live URL. Previews are behind Vercel
-    # Authentication and need a bypass secret; that is a follow-up.
+    # Pushes to production only: wait until the live alias reports this
+    # commit in /api/health (`release` is the short VERCEL_GIT_COMMIT_SHA),
+    # then probe it. Vercel's GitHub Deployment record is not reliable enough
+    # to gate on (it never appeared for d9188fe), so it is only used for the
+    # inspector link. Previews are behind Vercel Authentication and need a
+    # bypass secret; that is a follow-up.
     if: github.event_name == 'push' && github.ref_name == 'production'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     permissions:
       contents: read
       deployments: read
+    env:
+      SMOKE_URL: https://sifty-app.vercel.app
     steps:
       - uses: actions/checkout@v5
 
-      - name: Wait for the Vercel production deployment of ${{ github.sha }}
-        id: wait
+      - name: Wait until ${{ env.SMOKE_URL }} serves ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          want="${GITHUB_SHA:0:7}"
+          for i in $(seq 1 80); do
+            body=$(curl -sS --max-time 20 "$SMOKE_URL/api/health" || true)
+            release=$(printf '%s' "$body" | jq -r '.release // ""' 2>/dev/null || true)
+            echo "$(date -u +%H:%M:%S) release=${release:-?} (want $want)"
+            if [ "$release" = "$want" ]; then exit 0; fi
+            sleep 15
+          done
+          echo "timed out: $SMOKE_URL never reported release $want"; exit 1
+
+      - name: Probe the stable production alias
+        run: bash scripts/smoke-deployment.sh "$SMOKE_URL"
+
+      - name: Vercel inspector link (informational)
+        if: always()
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          for i in $(seq 1 60); do
-            dep=$(gh api "repos/${GITHUB_REPOSITORY}/deployments?sha=${GITHUB_SHA}&environment=Production&per_page=5" \
-              --jq '[.[]|select(.creator.login=="vercel[bot]")][0].id // empty')
-            if [ -n "$dep" ]; then
-              status=$(gh api "repos/${GITHUB_REPOSITORY}/deployments/$dep/statuses?per_page=1" --jq '.[0] // empty')
-              state=$(printf '%s' "$status" | jq -r '.state // "pending"')
-              url=$(printf '%s' "$status" | jq -r '.environment_url // ""')
-              echo "deployment $dep state=$state"
-              case "$state" in
-                success)
-                  # The whole value must be a bare https origin on an allowed host:
-                  # no path, query, fragment, userinfo, port, or stray characters.
-                  if [[ "$url" =~ ^https://([a-z0-9-]+-santiagogarzas-projects\.vercel\.app)/?$ ]]; then
-                    echo "url=https://${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"; exit 0
-                  fi
-                  printf 'environment_url is not an allowed production origin: %q\n' "$url"; exit 1 ;;
-                failure|error|inactive) echo "Vercel deployment did not succeed ($state)"; exit 1 ;;
-              esac
-            else
-              echo "no vercel[bot] Production deployment for ${GITHUB_SHA} yet"
-            fi
-            sleep 15
-          done
-          echo "timed out waiting for the Vercel deployment"; exit 1
-
-      - name: Probe the deployment URL
-        env:
-          SMOKE_URL: ${{ steps.wait.outputs.url }}
-        run: bash scripts/smoke-deployment.sh "$SMOKE_URL"
-
-      - name: Probe the stable production alias
-        run: bash scripts/smoke-deployment.sh https://sifty-app.vercel.app
+          dep=$(gh api "repos/${GITHUB_REPOSITORY}/deployments?sha=${GITHUB_SHA}&environment=Production&per_page=5" \
+            --jq '[.[]|select(.creator.login=="vercel[bot]")][0].id // empty' || true)
+          if [ -z "$dep" ]; then echo "no vercel[bot] GitHub deployment record for ${GITHUB_SHA} (not required)"; exit 0; fi
+          gh api "repos/${GITHUB_REPOSITORY}/deployments/$dep/statuses?per_page=1" \
+            --jq '.[0] | "state=\(.state) log=\(.log_url // "") url=\(.environment_url // "")"' || true
 
   e2e:
     name: Playwright smoke

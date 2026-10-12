@@ -1,5 +1,6 @@
 import { bucketFromScalars } from "@/lib/domain/priority";
 import type {
+  Decision,
   Label,
   Memory,
   Subtask,
@@ -17,6 +18,8 @@ import {
   DAILY_PLAN_LEASE_MS,
   type DailyPlanRecord,
   type DailyPlanRepo,
+  type DecisionCreateInput,
+  type DecisionRepo,
   type EntitlementRepo,
   type EntitlementSnapshot,
   IdConflictError,
@@ -63,6 +66,7 @@ interface State {
   tasks: Map<string, Task & { userId: string }>;
   labels: Map<string, Label & { userId: string }>;
   memories: Map<string, Memory & { userId: string }>;
+  decisions: Map<string, Decision & { userId: string }>;
   aiRuns: Array<{
     id: string;
     userId: string;
@@ -101,6 +105,7 @@ function emptyState(): State {
     tasks: new Map(),
     labels: new Map(),
     memories: new Map(),
+    decisions: new Map(),
     aiRuns: [],
     taskEvents: [],
     stripeEvents: new Set(),
@@ -119,6 +124,15 @@ function emptyState(): State {
  */
 function isBillingUnit(r: { siftId: string | null; stage: string | null }): boolean {
   return r.siftId === null || r.stage === SIFT_ACCOUNTING_STAGE;
+}
+
+/**
+ * Open and not past its deadline. The asking run closes an ignored
+ * question when its 7-day sleep fires; when that run is gone (deploy,
+ * failure), the deadline still hides the row from the inbox and the badge.
+ */
+function isLive(d: Decision, now = Date.now()): boolean {
+  return d.status === "open" && (d.expiresAt === null || Date.parse(d.expiresAt) > now);
 }
 
 export interface MemoryReposHandle extends Repos {
@@ -189,6 +203,7 @@ export function createMemoryRepos(): MemoryReposHandle {
       for (const [id, t] of state.tasks) if (t.userId === userId) state.tasks.delete(id);
       for (const [id, l] of state.labels) if (l.userId === userId) state.labels.delete(id);
       for (const [id, m] of state.memories) if (m.userId === userId) state.memories.delete(id);
+      for (const [id, d] of state.decisions) if (d.userId === userId) state.decisions.delete(id);
       state.aiRuns = state.aiRuns.filter((r) => r.userId !== userId);
       state.taskEvents = state.taskEvents.filter((e) => e.userId !== userId);
       state.inviteRedemptions = state.inviteRedemptions.filter((r) => r.userId !== userId);
@@ -313,6 +328,7 @@ export function createMemoryRepos(): MemoryReposHandle {
         plan: null,
         recurrence: null,
         seriesId: null,
+        siftedWithAssumptions: false,
         labelIds: [],
         subtasks: [],
         editedFields: [],
@@ -367,6 +383,8 @@ export function createMemoryRepos(): MemoryReposHandle {
       const existing = state.tasks.get(taskId);
       if (!existing || existing.userId !== userId) return false;
       state.tasks.delete(taskId);
+      // Mirrors `decisions.task_id ON DELETE CASCADE`.
+      for (const [id, d] of state.decisions) if (d.taskId === taskId) state.decisions.delete(id);
       return true;
     },
     async addSubtask(userId, taskId, subtask: Subtask) {
@@ -487,6 +505,71 @@ export function createMemoryRepos(): MemoryReposHandle {
       if (!existing || existing.userId !== userId) return false;
       state.memories.delete(id);
       return true;
+    },
+  };
+
+  const decisions: DecisionRepo = {
+    async create(userId, input: DecisionCreateInput) {
+      if (input.id) {
+        const existing = state.decisions.get(input.id);
+        if (existing && existing.userId !== userId) throw new IdConflictError(input.id);
+        if (existing) return stripUserId(existing);
+      }
+      const now = new Date().toISOString();
+      const decision: Decision & { userId: string } = {
+        id: input.id ?? makeId("dec"),
+        kind: input.kind,
+        status: "open",
+        taskId: input.taskId,
+        payload: input.payload,
+        answer: null,
+        resumeToken: input.resumeToken,
+        createdAt: now,
+        updatedAt: now,
+        resolvedAt: null,
+        expiresAt: input.expiresAt,
+        userId,
+      };
+      state.decisions.set(decision.id, decision);
+      return stripUserId(decision);
+    },
+    async get(userId, id) {
+      const d = state.decisions.get(id);
+      if (!d || d.userId !== userId) return null;
+      return stripUserId(d);
+    },
+    async listOpen(userId, opts) {
+      return Array.from(state.decisions.values())
+        .filter((d) => d.userId === userId && isLive(d))
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || (a.id < b.id ? 1 : -1))
+        .slice(0, opts.limit)
+        .map(stripUserId);
+    },
+    async countOpen(userId) {
+      let n = 0;
+      for (const d of state.decisions.values()) if (d.userId === userId && isLive(d)) n++;
+      return n;
+    },
+    async listOpenForTask(userId, taskId, opts) {
+      return Array.from(state.decisions.values())
+        .filter((d) => d.userId === userId && d.status === "open" && d.taskId === taskId)
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+        .slice(0, opts.limit)
+        .map(stripUserId);
+    },
+    async resolve(userId, id, input) {
+      const d = state.decisions.get(id);
+      if (!d || d.userId !== userId || d.status !== "open") return null;
+      const now = new Date().toISOString();
+      const next = {
+        ...d,
+        status: input.status,
+        answer: input.answer,
+        resolvedAt: now,
+        updatedAt: now,
+      };
+      state.decisions.set(id, next);
+      return stripUserId(next);
     },
   };
 
@@ -880,6 +963,7 @@ export function createMemoryRepos(): MemoryReposHandle {
     tasks,
     labels,
     memories,
+    decisions,
     aiRuns,
     taskEvents,
     stripeEvents,

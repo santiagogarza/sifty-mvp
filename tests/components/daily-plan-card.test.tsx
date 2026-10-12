@@ -45,6 +45,7 @@ function task(id: string, title: string): Task {
     plan: null,
     recurrence: null,
     seriesId: null,
+    siftedWithAssumptions: false,
     labelIds: [],
     subtasks: [],
     editedFields: [],

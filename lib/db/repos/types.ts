@@ -1,4 +1,9 @@
 import type {
+  Decision,
+  DecisionAnswer,
+  DecisionKind,
+  DecisionPayload,
+  DecisionStatus,
   Label,
   LabelTone,
   Memory,
@@ -244,6 +249,47 @@ export interface MemoryRepo {
   create(userId: string, input: MemoryCreateInput): Promise<Memory>;
   update(userId: string, id: string, patch: Partial<Memory>): Promise<Memory | null>;
   delete(userId: string, id: string): Promise<boolean>;
+}
+
+export interface DecisionCreateInput {
+  /** Caller-fixed id when the hook token must be known before the row exists. */
+  id?: string;
+  kind: DecisionKind;
+  taskId: string | null;
+  payload: DecisionPayload;
+  resumeToken: string | null;
+  expiresAt: string | null;
+}
+
+export type DecisionResolution = Exclude<DecisionStatus, "open">;
+
+export interface DecisionRepo {
+  create(userId: string, input: DecisionCreateInput): Promise<Decision>;
+  get(userId: string, id: string): Promise<Decision | null>;
+  /**
+   * Open decisions still inside their deadline, newest first. What the
+   * inbox and the badge show; a row past `expiresAt` is hidden even if
+   * the run that would close it is gone. Every read is bounded.
+   */
+  listOpen(userId: string, opts: { limit: number }): Promise<Decision[]>;
+  /** Same filter as `listOpen`. */
+  countOpen(userId: string): Promise<number>;
+  /**
+   * Every `open` decision attached to one task, newest first, at most
+   * `limit` — deadline included, so a re-sift or a delete can close a row
+   * whose run already died.
+   */
+  listOpenForTask(userId: string, taskId: string, opts: { limit: number }): Promise<Decision[]>;
+  /**
+   * Compare-and-set out of `open`: returns the resolved row, or null when
+   * the decision does not exist for this user or was already resolved, so
+   * two answers (two tabs, a link and the app) can never both win.
+   */
+  resolve(
+    userId: string,
+    id: string,
+    input: { status: DecisionResolution; answer: DecisionAnswer | null },
+  ): Promise<Decision | null>;
 }
 
 export interface AiRunRecord {
@@ -636,6 +682,7 @@ export interface Repos {
   tasks: TaskRepo;
   labels: LabelRepo;
   memories: MemoryRepo;
+  decisions: DecisionRepo;
   aiRuns: AiRunRepo;
   taskEvents: TaskEventRepo;
   stripeEvents: StripeEventRepo;

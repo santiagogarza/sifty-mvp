@@ -42,6 +42,7 @@ const PROTECTED_PREFIXES = [
   "/waiting",
   "/someday",
   "/done",
+  "/decisions",
   "/memory",
   "/settings",
   "/redeem",

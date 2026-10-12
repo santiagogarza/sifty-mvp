@@ -35,6 +35,7 @@ function seed(patch: Partial<Task> & { id: string }): Task {
     plan: null,
     recurrence: null,
     seriesId: null,
+    siftedWithAssumptions: false,
     labelIds: ["label_a", "label_b"],
     subtasks: [
       { id: "st_1", title: "Review calendar", done: true, order: 0 },

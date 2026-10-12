@@ -44,6 +44,7 @@ const task: Task = {
   plan: null,
   recurrence: null,
   seriesId: null,
+  siftedWithAssumptions: false,
   labelIds: [],
   subtasks: [{ id: "st_1", title: "Review calendar", done: true, order: 0 }],
   editedFields: [],

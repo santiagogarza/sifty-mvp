@@ -37,6 +37,7 @@ export function taskFromCapture(capture: GoldenCapture, todayIso: string): Task 
     plan: null,
     recurrence: null,
     seriesId: null,
+    siftedWithAssumptions: false,
     labelIds: [],
     subtasks: [],
     editedFields: [],

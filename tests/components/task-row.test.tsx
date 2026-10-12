@@ -37,6 +37,7 @@ function makeTask(overrides: Partial<Task> & { id: string; lifecycle: Lifecycle 
     plan: null,
     recurrence: null,
     seriesId: null,
+    siftedWithAssumptions: false,
     labelIds: [],
     subtasks: [],
     editedFields: [],

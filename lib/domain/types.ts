@@ -210,6 +210,11 @@ export interface Task {
   siftId: ID | null;
   siftStage: SiftStage | null;
   plan: TaskPlan | null;
+  /**
+   * The user dismissed the clarifying question Sifty asked about this task,
+   * so the sift stands on Sifty's own assumptions. Cleared by the next sift.
+   */
+  siftedWithAssumptions: boolean;
 
   /** Repeat rule; null for a one-off. */
   recurrence: Recurrence | null;
@@ -262,6 +267,72 @@ export interface AiRun {
   outputTokens: number | null;
   costCents: number | null;
   error: string | null;
+}
+
+/**
+ * Decisions: everything waiting on the human, in one inbox.
+ *
+ * A decision is opened by a workflow (a sift that is unsure, later a memory
+ * extraction or an execution that needs approval) and resolved once by the
+ * user. `resumeToken` names the workflow hook that is suspended on it, so
+ * answering resumes the run that asked. `approval` and `draft_review` are
+ * reserved for Phase 3 (autonomous execution) and never opened yet.
+ */
+export const DECISION_KINDS = [
+  "clarifying_question",
+  "memory_proposal",
+  "approval",
+  "draft_review",
+] as const;
+export type DecisionKind = (typeof DECISION_KINDS)[number];
+
+export const DECISION_STATUSES = ["open", "answered", "dismissed", "expired"] as const;
+export type DecisionStatus = (typeof DECISION_STATUSES)[number];
+
+/** What a `clarifying_question` decision asks. */
+export interface ClarifyingQuestionPayload {
+  kind: "clarifying_question";
+  question: string;
+  /** Short answers the user can tap; empty when free text is the only sensible answer. */
+  options: string[];
+  /** The sift that asked; the answer re-runs this sift, not a new one. */
+  siftId: ID;
+  confidence: number;
+}
+
+/** What a `memory_proposal` decision proposes (opened by 2.4, memory extraction). */
+export interface MemoryProposalPayload {
+  kind: "memory_proposal";
+  text: string;
+  memoryKind: Memory["kind"];
+  rationale: string | null;
+}
+
+export type DecisionPayload = ClarifyingQuestionPayload | MemoryProposalPayload;
+
+/** The user's answer. Free text, a tapped option, or both. */
+export interface DecisionAnswer {
+  text: string | null;
+  option: string | null;
+  /** "app" when answered in the Decisions view or the task sheet, "link" from a one-tap link. */
+  via: "app" | "link";
+}
+
+export interface Decision {
+  id: ID;
+  kind: DecisionKind;
+  status: DecisionStatus;
+  taskId: ID | null;
+  payload: DecisionPayload;
+  answer: DecisionAnswer | null;
+  /** Hook token the asking workflow run is suspended on; null when nothing waits. */
+  resumeToken: string | null;
+  createdAt: ISODate;
+  updatedAt: ISODate;
+  /** When the decision left `open`. */
+  resolvedAt: ISODate | null;
+  /** When an unanswered decision expires on its own; null = never. */
+  expiresAt: ISODate | null;
 }
 
 export interface Memory {

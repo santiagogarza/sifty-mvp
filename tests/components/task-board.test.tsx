@@ -35,6 +35,7 @@ function makeTask(id: string, confidence: number): Task {
     plan: null,
     recurrence: null,
     seriesId: null,
+    siftedWithAssumptions: false,
     labelIds: [],
     subtasks: [],
     editedFields: [],

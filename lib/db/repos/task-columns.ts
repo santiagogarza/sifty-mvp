@@ -60,6 +60,9 @@ export function taskPatchColumns(
   if ("plan" in patch) columns.plan = patch.plan ?? null;
   if ("recurrence" in patch) columns.recurrence = patch.recurrence ?? null;
   if ("seriesId" in patch) columns.seriesId = patch.seriesId ?? null;
+  if (patch.siftedWithAssumptions !== undefined) {
+    columns.siftedWithAssumptions = patch.siftedWithAssumptions;
+  }
   if (patch.subtasks !== undefined) columns.subtasks = patch.subtasks;
 
   if (

@@ -1,4 +1,4 @@
-import { formatRelativeDay, isOverdue, isToday, parseDay } from "@/lib/utils/dates";
+import { formatRelativeDay, formatTimeAgo, isOverdue, isToday, parseDay } from "@/lib/utils/dates";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 /**
@@ -47,5 +47,27 @@ describe("day-only due dates in a west-of-UTC zone", () => {
   it("the ISO parse it replaces would have been a day early", () => {
     const wrong = new Date("2026-10-13");
     expect(wrong.getDate()).toBe(12);
+  });
+});
+
+describe("formatTimeAgo", () => {
+  const now = new Date(2026, 9, 12, 15, 0);
+
+  it("counts up from just now through minutes and hours within the day", () => {
+    expect(formatTimeAgo(new Date(now.getTime() - 20_000), now)).toBe("just now");
+    expect(formatTimeAgo(new Date(now.getTime() - 12 * 60_000), now)).toBe("12m ago");
+    expect(formatTimeAgo(new Date(now.getTime() - 3 * 3_600_000), now)).toBe("3h ago");
+    // Clocks that disagree never produce a negative age.
+    expect(formatTimeAgo(new Date(now.getTime() + 60_000), now)).toBe("just now");
+  });
+
+  it("falls back to the relative day once the day boundary is crossed", () => {
+    expect(formatTimeAgo(new Date(2026, 9, 11, 23, 30), now)).toBe("Yesterday");
+    expect(formatTimeAgo(new Date(2026, 9, 8, 9, 0), now)).toBe("4 days ago");
+    expect(formatTimeAgo("2026-09-01T09:00:00.000Z", now)).toMatch(/Sep 1/);
+  });
+
+  it("is empty for an unparsable timestamp", () => {
+    expect(formatTimeAgo("not a date", now)).toBe("");
   });
 });

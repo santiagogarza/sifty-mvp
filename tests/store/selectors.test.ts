@@ -50,6 +50,7 @@ function makeTask(patch: Partial<Task>): Task {
     plan: null,
     recurrence: null,
     seriesId: null,
+    siftedWithAssumptions: false,
     labelIds: [],
     subtasks: [],
     editedFields: [],

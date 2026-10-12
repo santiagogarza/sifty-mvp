@@ -75,6 +75,14 @@ describe("middleware", () => {
     expect(location.searchParams.get("next")).toBe("/admin/costs");
   });
 
+  it("gates /decisions and returns there after sign-in, focus included", async () => {
+    const res = await middleware(new NextRequest("http://localhost/decisions?focus=dec_1"));
+    expect(res.status).toBe(307);
+    const location = new URL(res.headers.get("location") ?? "", "http://localhost");
+    expect(location.pathname).toBe("/sign-in");
+    expect(location.searchParams.get("next")).toBe("/decisions?focus=dec_1");
+  });
+
   it("leaves the public site pages open to signed-out visitors", async () => {
     for (const path of ["/", "/pricing", "/privacy", "/terms"]) {
       const res = await middleware(new NextRequest(`http://localhost${path}`));

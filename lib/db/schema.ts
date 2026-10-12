@@ -165,6 +165,8 @@ export const tasks = pgTable(
     }>(),
     /** First instance's id for every task in a recurring series; null for a one-off. */
     seriesId: text("series_id"),
+    /** The user dismissed the sift's clarifying question; cleared by the next sift. */
+    siftedWithAssumptions: boolean("sifted_with_assumptions").notNull().default(false),
     /** Field names the user has manually edited; protected from re-triage. */
     editedFields: jsonb("edited_fields").$type<string[]>().notNull().default([]),
     /** Inline subtasks (small list, no need for a join). */
@@ -229,6 +231,40 @@ export const memories = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("memories_user_pinned_idx").on(t.userId, t.pinned)],
+);
+
+/**
+ * Decisions: the one inbox for everything waiting on the human. Opened by a
+ * workflow, resolved once (`open` → `answered` | `dismissed` | `expired`);
+ * `resume_token` names the hook the asking run is suspended on.
+ */
+export const decisions = pgTable(
+  "decisions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind", {
+      enum: ["clarifying_question", "memory_proposal", "approval", "draft_review"],
+    }).notNull(),
+    status: text("status", { enum: ["open", "answered", "dismissed", "expired"] })
+      .notNull()
+      .default("open"),
+    /** A decision about a deleted task is moot and goes with it. */
+    taskId: text("task_id").references(() => tasks.id, { onDelete: "cascade" }),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    answer: jsonb("answer").$type<Record<string, unknown>>(),
+    resumeToken: text("resume_token"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("decisions_user_status_created_idx").on(t.userId, t.status, t.createdAt),
+    index("decisions_task_idx").on(t.taskId),
+  ],
 );
 
 export const taskEvents = pgTable(
@@ -553,6 +589,7 @@ export type DbEntitlement = typeof entitlements.$inferSelect;
 export type DbTask = typeof tasks.$inferSelect;
 export type DbLabel = typeof labels.$inferSelect;
 export type DbMemory = typeof memories.$inferSelect;
+export type DbDecision = typeof decisions.$inferSelect;
 export type DbAiRun = typeof aiRuns.$inferSelect;
 export type DbSession = typeof sessions.$inferSelect;
 export type DbAccount = typeof accounts.$inferSelect;

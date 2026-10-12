@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { toast } from "@/components/ui/toast";
 import { isTriageInFlight, resiftTask } from "@/lib/ai/run-triage";
+import { selectOpenForTask, useDecisionsStore } from "@/lib/decisions/client";
 import {
   assigneeDisplayValue,
   delegationLabel,
@@ -267,7 +269,15 @@ function DetailBody({
         </div>
 
         {task.aiStatus === "failed" ? <OrganizeFailed task={task} /> : null}
-        {task.clarifyingQuestion ? <ClarifyingQuestion task={task} /> : null}
+        {/* Triage writes the question mid-run, before the decision behind it
+            exists; the sheet offers it once the sift has settled so a reply
+            always resumes the run that asked. */}
+        {task.clarifyingQuestion && !siftInProgress(task) ? (
+          <ClarifyingQuestion key={task.id} task={task} />
+        ) : null}
+        {!task.clarifyingQuestion && task.siftedWithAssumptions ? (
+          <SiftedWithAssumptions task={task} />
+        ) : null}
 
         <section {...fillProps(0, "mt-5")}>
           <div className="text-eyebrow mb-1.5">Next action</div>
@@ -719,48 +729,164 @@ function AgentBriefSection({ task }: { task: Task }) {
   );
 }
 
+function siftInProgress(task: Task): boolean {
+  return task.aiStatus === "pending" || task.aiStatus === "running";
+}
+
+/**
+ * The sift's question, answerable in place. When the question is an open
+ * decision (every sift since 2.6) the answer resumes the run that asked,
+ * inside the same sift. Only a task that carries a question with no open
+ * decision behind it *after a fresh fetch* (pre-2.6 data) falls back to
+ * appending the answer to the capture and re-sifting, which costs a sift.
+ */
 function ClarifyingQuestion({ task }: { task: Task }) {
   const updateTask = useStore((s) => s.updateTask);
+  const decision = useDecisionsStore((s) => selectOpenForTask(s, task.id)[0] ?? null);
+  const answerDecision = useDecisionsStore((s) => s.answer);
+  const dismissDecision = useDecisionsStore((s) => s.dismiss);
+  const refresh = useDecisionsStore((s) => s.refresh);
   const [answer, setAnswer] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  // A missing decision means "legacy task" only once a fetch made for this
+  // question — started after it was shown, and successful — says so. A
+  // fetch that failed, or that was already in flight, proves nothing, and
+  // the controls stay disabled rather than risk re-sifting a parked run.
+  const [checked, setChecked] = React.useState(false);
+  React.useEffect(() => {
+    if (decision) {
+      setChecked(true);
+      return;
+    }
+    let cancelled = false;
+    void refresh().then(({ ok }) => {
+      if (!cancelled && ok) setChecked(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [decision, refresh]);
+  const options = decision?.payload.kind === "clarifying_question" ? decision.payload.options : [];
+
+  const reply = async (input: { text?: string; option?: string }) => {
+    if (busy || !checked) return;
+    const text = input.text?.trim() || null;
+    if (!text && !input.option) return;
+    if (decision) {
+      setBusy(true);
+      const result = await answerDecision(decision.id, { text, option: input.option ?? null });
+      setBusy(false);
+      if (!result.ok) toast(result.error);
+      setAnswer("");
+      return;
+    }
+    const line = input.option && text ? `${input.option} — ${text}` : (input.option ?? text ?? "");
+    updateTask(
+      task.id,
+      {
+        sourceContext: task.sourceContext
+          ? `${task.sourceContext}\n\nAnswer: ${line}`
+          : `Answer: ${line}`,
+        clarifyingQuestion: null,
+      },
+      { editedFields: [] },
+    );
+    resiftTask(task.id);
+    setAnswer("");
+  };
+
+  const letSiftyDecide = async () => {
+    if (busy || !checked) return;
+    if (decision) {
+      setBusy(true);
+      const result = await dismissDecision(decision.id);
+      setBusy(false);
+      if (!result.ok) toast(result.error);
+      return;
+    }
+    updateTask(task.id, { clarifyingQuestion: null }, { editedFields: [] });
+  };
+
   return (
-    <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--accent)]/30 bg-[var(--accent-soft)] px-3.5 py-3">
+    <div
+      data-testid="clarifying-question"
+      className="mt-4 rounded-[var(--radius-md)] border border-[var(--accent)]/30 bg-[var(--accent-soft)] px-3.5 py-3"
+    >
       <div className="flex items-start gap-2">
         <Sparkles size={13} className="text-[var(--accent)] mt-0.5" />
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <div className="text-eyebrow mb-1 !text-[var(--accent)]">Sifty asks</div>
           <p className="text-[13.5px] leading-[1.5] text-[var(--fg)]">{task.clarifyingQuestion}</p>
-          <div className="mt-2 flex items-center gap-2">
+          {options.length ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {options.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  disabled={busy || !checked}
+                  onClick={() => void reply({ option })}
+                  className="inline-flex h-7 items-center rounded-full border border-[var(--border-strong)] bg-[var(--bg)] px-2.5 text-[12.5px] text-[var(--fg)] hover:bg-[var(--surface-hover)] disabled:opacity-50"
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <form
+            className="mt-2 flex items-center gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void reply({ text: answer });
+            }}
+          >
             <Input
               value={answer}
-              placeholder="Answer briefly…"
+              placeholder={options.length ? "Or answer in your own words…" : "Answer briefly…"}
               onChange={(e) => setAnswer(e.target.value)}
               className="h-8 text-[13px] bg-[var(--bg)]"
             />
             <Button
               size="sm"
               variant="primary"
-              onClick={() => {
-                const trimmed = answer.trim();
-                if (!trimmed) return;
-                updateTask(
-                  task.id,
-                  {
-                    sourceContext: task.sourceContext
-                      ? `${task.sourceContext}\n\nAnswer: ${trimmed}`
-                      : `Answer: ${trimmed}`,
-                    clarifyingQuestion: null,
-                  },
-                  { editedFields: [] },
-                );
-                resiftTask(task.id);
-                setAnswer("");
-              }}
+              type="submit"
+              disabled={busy || !checked || !answer.trim()}
             >
               Reply
             </Button>
-          </div>
+          </form>
+          <button
+            type="button"
+            onClick={() => void letSiftyDecide()}
+            disabled={busy || !checked}
+            className="mt-2 text-[12px] text-[var(--fg-muted)] hover:text-[var(--fg)] underline-offset-2 hover:underline"
+          >
+            Let Sifty decide
+          </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** After a dismissed question: the sift stands, flagged honestly as a guess. */
+function SiftedWithAssumptions({ task }: { task: Task }) {
+  return (
+    <div
+      data-testid="sifted-with-assumptions"
+      className="mt-4 flex items-start gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-muted)]/60 px-3.5 py-2.5 text-[12.5px] text-[var(--fg-muted)]"
+    >
+      <Sparkles size={12} className="mt-[3px] shrink-0 text-[var(--fg-subtle)]" />
+      <span>
+        Sifted on Sifty's own assumptions — you skipped its question.{" "}
+        <button
+          type="button"
+          onClick={() => resiftTask(task.id)}
+          className="text-[var(--fg)] underline-offset-2 hover:underline"
+        >
+          Re-sift
+        </button>{" "}
+        if it got something wrong.
+      </span>
     </div>
   );
 }

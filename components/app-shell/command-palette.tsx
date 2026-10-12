@@ -14,6 +14,7 @@ import {
   Columns3,
   CreditCard,
   Keyboard,
+  MessageCircleQuestion,
   Rows3,
   Search,
   Settings,
@@ -81,6 +82,13 @@ export function CommandPalette({
           run: () => router.push(view.href),
         };
       }),
+      {
+        id: "go-decisions",
+        group: "navigate",
+        label: "Go to Decisions",
+        icon: <MessageCircleQuestion size={14} />,
+        run: () => router.push("/decisions"),
+      },
       {
         id: "go-memory",
         group: "navigate",

@@ -48,6 +48,14 @@ export const SHORTCUT_GROUPS: ReadonlyArray<ShortcutGroup> = [
     ],
   },
   {
+    title: "Decisions",
+    shortcuts: [
+      { keys: [["↵"]], description: "Type an answer to the highlighted question" },
+      { keys: [["1"]], also: [["2"], ["3"], ["4"]], description: "Pick a suggested answer" },
+      { keys: [["d"]], description: "Let Sifty decide" },
+    ],
+  },
+  {
     title: "Help",
     shortcuts: [{ keys: [["?"]], description: "Show or hide this sheet" }],
   },

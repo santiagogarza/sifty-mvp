@@ -1,4 +1,5 @@
-import { getRun, start } from "workflow/api";
+import { getRun, resumeHook, start } from "workflow/api";
+import { HookNotFoundError } from "workflow/errors";
 
 /**
  * The one place that talks to Workflow's client API (`workflow/api`).
@@ -25,17 +26,35 @@ export type RunOutcome =
   | { status: "failed"; error: string }
   | { status: "pending" };
 
+/**
+ * `not_found`: no run is suspended on that token (it was never registered,
+ * the run ended, or the hook was disposed). The caller decides what that
+ * means — for a decision, "re-run instead of resume".
+ */
+export type ResumeOutcome = { ok: true; runId: string } | { ok: false; reason: "not_found" };
+
 export interface WorkflowClient {
   // biome-ignore lint/suspicious/noExplicitAny: see WorkflowFn.
   start<TArgs extends any[]>(workflow: WorkflowFn<TArgs>, args: TArgs): Promise<StartedRun>;
   /** Resolve with the run's result, or `pending` once `timeoutMs` elapses. */
   wait(runId: string, timeoutMs: number): Promise<RunOutcome>;
+  /** Deliver `payload` to the run suspended on hook `token`. */
+  resume(token: string, payload: unknown): Promise<ResumeOutcome>;
 }
 
 const realClient: WorkflowClient = {
   async start(workflow, args) {
     const run = await start(workflow, args);
     return { runId: run.runId };
+  },
+  async resume(token, payload) {
+    try {
+      const hook = await resumeHook(token, payload);
+      return { ok: true, runId: hook.runId };
+    } catch (err) {
+      if (HookNotFoundError.is(err)) return { ok: false, reason: "not_found" };
+      throw err;
+    }
   },
   async wait(runId, timeoutMs) {
     const run = getRun(runId);
@@ -74,4 +93,8 @@ export function startWorkflow<TArgs extends any[]>(
 
 export function waitForRun(runId: string, timeoutMs: number): Promise<RunOutcome> {
   return (_override ?? realClient).wait(runId, timeoutMs);
+}
+
+export function resumeWorkflowHook(token: string, payload: unknown): Promise<ResumeOutcome> {
+  return (_override ?? realClient).resume(token, payload);
 }

@@ -78,6 +78,7 @@ describe("TaskView first load", () => {
           plan: null,
           recurrence: null,
           seriesId: null,
+          siftedWithAssumptions: false,
           labelIds: [],
           subtasks: [],
           editedFields: [],

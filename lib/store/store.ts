@@ -270,6 +270,7 @@ export const useStore = create<SiftyState>()(
             plan: null,
             recurrence: null,
             seriesId: null,
+            siftedWithAssumptions: false,
             labelIds: [],
             subtasks: [],
             editedFields: [],
@@ -370,6 +371,7 @@ export const useStore = create<SiftyState>()(
             // A copy is a one-off: it never joins the original's series.
             recurrence: null,
             seriesId: null,
+            siftedWithAssumptions: false,
             labelIds: [...source.labelIds],
             subtasks: source.subtasks.map((st) => ({
               id: id("st"),
