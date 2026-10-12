@@ -21,10 +21,12 @@ import type { RateLimitConfig } from "./limiter";
 
 const MINUTE = 60_000;
 
-function perMinute(envVar: string, fallback: number): RateLimitConfig {
+// Takes a reader rather than a key: the Edge runtime (middleware) only
+// exposes env vars through static `process.env.NAME` references.
+function perMinute(read: () => string | undefined, fallback: number): RateLimitConfig {
   return {
     get capacity() {
-      const raw = Number(process.env[envVar]);
+      const raw = Number(read());
       return Number.isFinite(raw) && raw > 0 ? raw : fallback;
     },
     windowMs: MINUTE,
@@ -32,40 +34,43 @@ function perMinute(envVar: string, fallback: number): RateLimitConfig {
 }
 
 /** AI triage / brief: per user. */
-export const TRIAGE_POLICY = perMinute("RATELIMIT_TRIAGE_PER_MIN", 30);
+export const TRIAGE_POLICY = perMinute(() => process.env.RATELIMIT_TRIAGE_PER_MIN, 30);
 /** AI triage / brief: per client IP, across users. */
-export const TRIAGE_IP_POLICY = perMinute("RATELIMIT_TRIAGE_IP_PER_MIN", 90);
+export const TRIAGE_IP_POLICY = perMinute(() => process.env.RATELIMIT_TRIAGE_IP_PER_MIN, 90);
 
 /**
  * Stripe inbound webhooks come from Stripe's IPs and we don't want to
  * meaningfully limit them, but we do want a coarse cap to stop a flood of
  * forged-but-rejected requests from melting the verification path.
  */
-export const STRIPE_WEBHOOK_POLICY = perMinute("RATELIMIT_STRIPE_WEBHOOK_PER_MIN", 240);
+export const STRIPE_WEBHOOK_POLICY = perMinute(
+  () => process.env.RATELIMIT_STRIPE_WEBHOOK_PER_MIN,
+  240,
+);
 
 /** Account export: one heavy read of everything the user owns. */
 export const ACCOUNT_EXPORT_POLICY = perMinute("RATELIMIT_ACCOUNT_EXPORT_PER_MIN", 3);
 
 /** Checkout / portal initiation: per user. */
-export const STRIPE_USER_POLICY = perMinute("RATELIMIT_STRIPE_USER_PER_MIN", 12);
+export const STRIPE_USER_POLICY = perMinute(() => process.env.RATELIMIT_STRIPE_USER_PER_MIN, 12);
 /** Checkout / portal initiation: per client IP (checked before the session lookup). */
-export const STRIPE_IP_POLICY = perMinute("RATELIMIT_STRIPE_IP_PER_MIN", 30);
+export const STRIPE_IP_POLICY = perMinute(() => process.env.RATELIMIT_STRIPE_IP_PER_MIN, 30);
 
 /**
  * Invite-code redemption. Codes carry ~117 bits of entropy so guessing is
  * hopeless anyway; this cap exists so a scripted client cannot turn the
  * endpoint into a hashing treadmill.
  */
-export const REDEEM_POLICY = perMinute("RATELIMIT_REDEEM_PER_MIN", 5);
-export const REDEEM_IP_POLICY = perMinute("RATELIMIT_REDEEM_IP_PER_MIN", 15);
+export const REDEEM_POLICY = perMinute(() => process.env.RATELIMIT_REDEEM_PER_MIN, 5);
+export const REDEEM_IP_POLICY = perMinute(() => process.env.RATELIMIT_REDEEM_IP_PER_MIN, 15);
 
 /**
  * Auth mutations (`POST /api/auth/*`): sign-in, sign-up, sign-out, and
  * whatever the auth layer adds later (magic link, reset). Per email it is a
  * brute-force brake; per IP it bounds credential stuffing across accounts.
  */
-export const AUTH_EMAIL_POLICY = perMinute("RATELIMIT_AUTH_EMAIL_PER_MIN", 5);
-export const AUTH_IP_POLICY = perMinute("RATELIMIT_AUTH_IP_PER_MIN", 20);
+export const AUTH_EMAIL_POLICY = perMinute(() => process.env.RATELIMIT_AUTH_EMAIL_PER_MIN, 5);
+export const AUTH_IP_POLICY = perMinute(() => process.env.RATELIMIT_AUTH_IP_PER_MIN, 20);
 
 /**
  * Best-effort client identifier. In production behind Vercel, the rightmost
