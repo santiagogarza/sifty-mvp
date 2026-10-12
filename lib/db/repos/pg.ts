@@ -727,6 +727,7 @@ function entitlementRowToSnapshot(
     stripeStatus: ent.stripeStatus,
     currentPeriodEnd: ent.currentPeriodEnd?.toISOString() ?? null,
     graceEndsAt: ent.graceEndsAt?.toISOString() ?? null,
+    stripeSyncedAt: ent.stripeSyncedAt?.toISOString() ?? null,
   };
 }
 
@@ -741,6 +742,7 @@ function entitlementColumns(snapshot: EntitlementSnapshot, now: Date) {
     stripeStatus: snapshot.stripeStatus,
     currentPeriodEnd: toDate(snapshot.currentPeriodEnd),
     graceEndsAt: toDate(snapshot.graceEndsAt),
+    stripeSyncedAt: toDate(snapshot.stripeSyncedAt),
     updatedAt: now,
   };
 }

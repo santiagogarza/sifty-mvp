@@ -79,6 +79,12 @@ export const entitlements = pgTable("entitlements", {
    * `expireGracePeriods()`.
    */
   graceEndsAt: timestamp("grace_ends_at", { withTimezone: true }),
+  /**
+   * `created` of the newest Stripe event applied to the tracked
+   * subscription. Stripe does not guarantee delivery order, so older events
+   * for the same subscription are ignored instead of rewinding state.
+   */
+  stripeSyncedAt: timestamp("stripe_synced_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

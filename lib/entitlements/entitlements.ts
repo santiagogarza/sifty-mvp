@@ -147,6 +147,7 @@ export function emptySnapshot(): EntitlementSnapshot {
     stripeStatus: null,
     currentPeriodEnd: null,
     graceEndsAt: null,
+    stripeSyncedAt: null,
   };
 }
 

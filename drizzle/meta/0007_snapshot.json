@@ -1,5 +1,5 @@
 {
-  "id": "87829bb9-bc4e-4b7d-a0cd-95b18c7ac0b6",
+  "id": "d337ee44-34b2-4493-b6ba-e42fa0eb6ad6",
   "prevId": "6e6a085e-024e-4203-9a8b-6d9dac26aa68",
   "version": "7",
   "dialect": "postgresql",
@@ -350,6 +350,12 @@
         },
         "grace_ends_at": {
           "name": "grace_ends_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stripe_synced_at": {
+          "name": "stripe_synced_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false

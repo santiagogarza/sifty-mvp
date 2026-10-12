@@ -64,6 +64,11 @@ export interface EntitlementSnapshot {
    * is already false). Null when no grace period is running.
    */
   graceEndsAt: string | null;
+  /**
+   * `created` of the newest Stripe event applied to the tracked subscription;
+   * older events for that subscription are ignored (out-of-order delivery).
+   */
+  stripeSyncedAt: string | null;
 }
 
 export interface TaskCreateInput {

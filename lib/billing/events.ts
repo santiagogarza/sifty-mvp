@@ -20,7 +20,9 @@ import { GRACE_PERIOD_DAYS, withResolvedTier } from "@/lib/entitlements/entitlem
  *    comp and a comp never hides a paying subscription from the Stripe fields.
  * 3. The reducer is deterministic for an `(entitlement, event, now)` triple.
  *    Time comes from `event.created` when Stripe supplies it, else from the
- *    `now` argument, never from the wall clock. Idempotency at the
+ *    `now` argument, never from the wall clock. `stripeSyncedAt` records the
+ *    newest applied `event.created` for the tracked subscription; older
+ *    events for it are ignored because Stripe does not guarantee order. Idempotency at the
  *    persistence layer (the `stripeEvents` table) prevents duplicated *side
  *    effects*; this reducer protects against state divergence in the case
  *    where the idempotency check fails open.
@@ -37,10 +39,21 @@ import { GRACE_PERIOD_DAYS, withResolvedTier } from "@/lib/entitlements/entitlem
 export interface StripeSubscriptionLike {
   id: string;
   status: string;
-  current_period_end: number;
+  /** Period end on API versions before 2025-03-31; basil and later carry it per item. */
+  current_period_end?: number | null;
   cancel_at_period_end?: boolean;
   customer?: string | { id: string };
-  items?: { data: Array<{ price?: { id: string } }> };
+  items?: { data: Array<{ price?: { id: string }; current_period_end?: number | null }> };
+}
+
+/** ISO period end from whichever API-version shape delivered the subscription. */
+export function subscriptionPeriodEnd(sub: StripeSubscriptionLike): string | null {
+  const candidates = [
+    sub.current_period_end,
+    ...(sub.items?.data ?? []).map((item) => item.current_period_end),
+  ].filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  if (candidates.length === 0) return null;
+  return new Date(Math.max(...candidates) * 1000).toISOString();
 }
 
 export interface StripeInvoiceLike {
@@ -115,8 +128,24 @@ export function applyStripeEvent(
   }
 
   const at = event.created ? new Date(event.created * 1000) : now;
+  const eventAt = event.created ? at.toISOString() : null;
   const resolve = (facts: Partial<EntitlementSnapshot>): EntitlementSnapshot =>
-    withResolvedTier({ ...current, ...facts }, false, at);
+    withResolvedTier(
+      { ...current, ...facts, stripeSyncedAt: eventAt ?? current.stripeSyncedAt },
+      false,
+      at,
+    );
+  /**
+   * Stripe does not guarantee delivery order. An event for the tracked
+   * subscription that is older than the newest one already applied would
+   * rewind state (a late `active` clearing a newer dunning window), so it is
+   * ignored. Equal timestamps are applied: sibling events share a second.
+   */
+  const isOutdated = (subId: string | null): boolean =>
+    !!eventAt &&
+    !!current.stripeSyncedAt &&
+    subId === current.stripeSubscriptionId &&
+    Date.parse(eventAt) < Date.parse(current.stripeSyncedAt);
   /**
    * Invoice events only count for the subscription we track. A retry on an
    * old subscription's invoice after the user re-subscribed, or an invoice
@@ -153,6 +182,7 @@ export function applyStripeEvent(
     const tracked = current.stripeSubscriptionId;
     if (!tracked) return false;
     if (sub.id === tracked) {
+      if (isOutdated(sub.id)) return true;
       return ENDED_STATUSES.has(current.stripeStatus ?? "") && !ENDED_STATUSES.has(sub.status);
     }
     return hasOpenStripeSubscription(current) && !PAYING_STATUSES.has(sub.status);
@@ -163,11 +193,10 @@ export function applyStripeEvent(
     case "customer.subscription.updated": {
       const sub = event.data.object;
       if (isStaleSubscriptionEvent(sub)) return current;
-      const periodEnd = new Date(sub.current_period_end * 1000).toISOString();
       const ids = {
         stripeSubscriptionId: sub.id,
         stripeStatus: sub.status,
-        currentPeriodEnd: periodEnd,
+        currentPeriodEnd: subscriptionPeriodEnd(sub),
       };
       if (PAYING_STATUSES.has(sub.status)) {
         return resolve({ ...ids, subscriptionActive: true, graceEndsAt: null });
@@ -198,7 +227,7 @@ export function applyStripeEvent(
         return current;
       }
       const subId = invoiceSubscription(event.data.object);
-      if (!subId) return current;
+      if (!subId || isOutdated(subId)) return current;
       return resolve({
         subscriptionActive: true,
         stripeStatus: "active",
@@ -214,7 +243,7 @@ export function applyStripeEvent(
       // subscription enters dunning here.
       if (NO_DUNNING_STATUSES.has(current.stripeStatus ?? "")) return current;
       const subId = invoiceSubscription(event.data.object);
-      if (!subId) return current;
+      if (!subId || isOutdated(subId)) return current;
       return resolve({
         subscriptionActive: false,
         stripeStatus: "past_due",

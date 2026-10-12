@@ -422,6 +422,61 @@ describe("applyStripeEvent — dunning grace period", () => {
     expect(replaced.graceEndsAt).toBeNull();
   });
 
+  it("reads current_period_end from items on basil-shaped subscriptions and tolerates neither", () => {
+    const periodEnd = Math.floor((NOW.getTime() + 30 * DAY) / 1000);
+    const basil = applyStripeEvent(lapsedTrial(), {
+      type: "customer.subscription.created",
+      data: {
+        object: {
+          id: "sub_basil",
+          status: "active",
+          customer: "cus_X",
+          items: { data: [{ price: { id: "price_m" }, current_period_end: periodEnd }] },
+        },
+      },
+    });
+    expect(basil.tier).toBe("pro");
+    expect(basil.currentPeriodEnd).toBe(new Date(periodEnd * 1000).toISOString());
+
+    const bare = applyStripeEvent(lapsedTrial(), {
+      type: "customer.subscription.created",
+      data: { object: { id: "sub_bare", status: "active", customer: "cus_X" } },
+    });
+    expect(bare.tier).toBe("pro");
+    expect(bare.currentPeriodEnd).toBeNull();
+  });
+
+  it("ignores events for the tracked subscription that are older than the newest applied one", () => {
+    // Failure at NOW, then a delayed `active` from before it: still dunning.
+    const inGrace = applyStripeEvent(paying(), failed(), NOW);
+    expect(inGrace.stripeSyncedAt).toBe(NOW.toISOString());
+    const lateActive = applyStripeEvent(inGrace, {
+      ...subEvent("customer.subscription.updated", "active"),
+      created: unix(new Date(NOW.getTime() - 60_000)),
+    });
+    expect(lateActive).toBe(inGrace);
+    const latePaid = applyStripeEvent(inGrace, paid(new Date(NOW.getTime() - 60_000)));
+    expect(latePaid).toBe(inGrace);
+
+    // Same second is applied (sibling events); newer is applied.
+    const sameSecond = applyStripeEvent(inGrace, {
+      ...subEvent("customer.subscription.updated", "active"),
+      created: unix(NOW),
+    });
+    expect(sameSecond.subscriptionActive).toBe(true);
+    const newer = applyStripeEvent(inGrace, {
+      ...subEvent("customer.subscription.updated", "active"),
+      created: unix(new Date(NOW.getTime() + 60_000)),
+    });
+    expect(newer.subscriptionActive).toBe(true);
+    expect(newer.stripeSyncedAt).toBe(new Date(NOW.getTime() + 60_000).toISOString());
+
+    // Events without `created` (tests, synthetic replays) are not ordered.
+    const untimed = applyStripeEvent(inGrace, subEvent("customer.subscription.updated", "active"));
+    expect(untimed.subscriptionActive).toBe(true);
+    expect(untimed.stripeSyncedAt).toBe(inGrace.stripeSyncedAt);
+  });
+
   it("payment_failed on an incomplete, paused, or expired subscription changes nothing", () => {
     for (const status of ["incomplete", "incomplete_expired", "paused"]) {
       const before = applyStripeEvent(
