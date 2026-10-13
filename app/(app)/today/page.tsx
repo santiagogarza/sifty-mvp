@@ -2,7 +2,8 @@
 
 import { PageShell } from "@/components/app-shell/page-shell";
 import { TaskView } from "@/components/tasks/task-view";
-import { selectTodayTasks } from "@/lib/store/selectors";
+import { TODAY_BOARD_COLUMNS } from "@/lib/store/board";
+import { isTodayTask, selectTodayTasks } from "@/lib/store/selectors";
 import * as React from "react";
 
 function getTimeGreeting(now: Date): string {
@@ -39,6 +40,9 @@ export default function TodayPage() {
         title="What matters today"
         description="Overdue, due today, and anything Sifty believes belongs in your top of mind."
         selector={selectTodayTasks}
+        boardColumns={TODAY_BOARD_COLUMNS}
+        boardTaskFilter={isTodayTask}
+        highlightColumn="active"
         emptyTitle="Nothing pressing today."
         emptyDescription="When something needs your attention, it'll show up here. Until then, enjoy the quiet."
       />

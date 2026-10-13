@@ -166,7 +166,7 @@ interface CompletionGhost {
  */
 const GHOST_SAFETY_MS = 4000;
 
-function useCompletionGhosts(tasks: Task[]): {
+export function useCompletionGhosts(tasks: Task[]): {
   ghosts: CompletionGhost[];
   dismissGhost: (id: string) => void;
 } {
