@@ -39,6 +39,7 @@ export default function TodayPage() {
         title="What matters today"
         description="Overdue, due today, and anything Sifty believes belongs in your top of mind."
         selector={selectTodayTasks}
+        boardScope="today"
         emptyTitle="Nothing pressing today."
         emptyDescription="When something needs your attention, it'll show up here. Until then, enjoy the quiet."
       />

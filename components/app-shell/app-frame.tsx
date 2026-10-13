@@ -2,6 +2,7 @@
 
 import { CaptureDialog } from "@/components/tasks/capture-dialog";
 import { TaskDetailSheet } from "@/components/tasks/task-detail-sheet";
+import type { Lifecycle } from "@/lib/domain/types";
 import { useServerSync } from "@/lib/store/sync";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
@@ -35,6 +36,8 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const search = useSearchParams();
   const [captureOpen, setCaptureOpen] = React.useState(false);
+  const [captureFileTo, setCaptureFileTo] = React.useState<Lifecycle | null>(null);
+  const [captureDueToday, setCaptureDueToday] = React.useState(false);
   const [commandOpen, setCommandOpen] = React.useState(false);
 
   // Pulls the server snapshot into the store on mount and reconciles; a
@@ -43,7 +46,11 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
 
   const detailTaskId = search.get("task");
 
-  const openCapture = React.useCallback(() => setCaptureOpen(true), []);
+  const openCapture = React.useCallback((opts?: CaptureOptions) => {
+    setCaptureFileTo(opts?.fileTo ?? null);
+    setCaptureDueToday(opts?.dueToday ?? false);
+    setCaptureOpen(true);
+  }, []);
   const openCommand = React.useCallback(() => setCommandOpen(true), []);
 
   const openDetail = React.useCallback(
@@ -71,12 +78,25 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
     <FrameContext.Provider value={value}>
       <div className="relative flex min-h-dvh">
         <Sidebar />
-        <main className="relative z-0 flex-1 flex flex-col min-w-0 pb-[80px] md:pb-0">
+        {/* @container lets the board size itself against the main pane
+            (100cqw) instead of the viewport, which the sidebar offsets. */}
+        <main className="relative z-0 flex-1 flex flex-col min-w-0 pb-[80px] md:pb-0 @container">
           {children}
         </main>
       </div>
       <BottomNav onCapture={openCapture} />
-      <CaptureDialog open={captureOpen} onOpenChange={setCaptureOpen} />
+      <CaptureDialog
+        open={captureOpen}
+        fileTo={captureFileTo}
+        dueToday={captureDueToday}
+        onOpenChange={(next) => {
+          setCaptureOpen(next);
+          if (!next) {
+            setCaptureFileTo(null);
+            setCaptureDueToday(false);
+          }
+        }}
+      />
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} onCapture={openCapture} />
       <TaskDetailSheet taskId={detailTaskId} onClose={closeDetail} />
       <GlobalKeyboard onCapture={openCapture} onCommand={openCommand} />
@@ -92,9 +112,15 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
   );
 }
 
+interface CaptureOptions {
+  fileTo?: Lifecycle;
+  /** Captured from the Today board: due today so the Today lens keeps it. */
+  dueToday?: boolean;
+}
+
 interface FrameApi {
   openDetail: (id: string) => void;
-  openCapture: () => void;
+  openCapture: (opts?: CaptureOptions) => void;
   openCommand: () => void;
 }
 
