@@ -29,6 +29,7 @@ const PROTECTED_PREFIXES = [
   "/waiting",
   "/someday",
   "/done",
+  "/board",
   "/memory",
   "/settings",
 ];

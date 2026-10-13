@@ -13,6 +13,8 @@ export default defineConfig({
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
     exclude: ["tests/e2e/**", "node_modules/**", ".next/**"],
   },
+  // tsconfig keeps `jsx: preserve` for Next; component tests need JSX compiled.
+  oxc: { jsx: { runtime: "automatic" } },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "."),

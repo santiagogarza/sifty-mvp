@@ -1,6 +1,7 @@
 "use client";
 
 import { focusScore } from "@/lib/domain/priority";
+import { STATUSES_IN_ORDER } from "@/lib/domain/status";
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import { dayDelta, isOverdue } from "@/lib/utils/dates";
 import { useMemo } from "react";
@@ -14,8 +15,8 @@ import { useStore } from "./store";
  * server-side code if persistence moves there.
  *
  * Every sidebar view except Today maps 1:1 to a status (`Lifecycle`), so
- * the nav, the Status picker, and a future Kanban board all agree on where
- * a task lives. Today is a smart lens over statuses, defined by
+ * the nav, the Status picker, and the board all agree on where a task
+ * lives. Today is a smart lens over statuses, defined by
  * `isTodayTask` — the single predicate shared by the Today list and the
  * sidebar count so the two can never disagree.
  */
@@ -117,6 +118,29 @@ export function selectDoneTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
 
 export function selectDroppedTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
   return selectByLifecycle(tasks, "dropped", args);
+}
+
+const STATUS_SELECTORS: Record<Lifecycle, (tasks: Task[]) => Task[]> = {
+  inbox: selectInboxTasks,
+  active: selectFocusTasks,
+  waiting: (tasks) => selectByLifecycle(tasks, "waiting"),
+  someday: (tasks) => selectByLifecycle(tasks, "someday"),
+  done: selectDoneTasks,
+  dropped: selectDroppedTasks,
+};
+
+export interface BoardColumn {
+  status: Lifecycle;
+  tasks: Task[];
+}
+
+/**
+ * One column per status, in pipeline order. Each column runs its status
+ * view's own selector, so a column always holds exactly what that list
+ * page shows, in the same order.
+ */
+export function selectBoardColumns(tasks: Task[]): BoardColumn[] {
+  return STATUSES_IN_ORDER.map((status) => ({ status, tasks: STATUS_SELECTORS[status](tasks) }));
 }
 
 export interface TaskCounts {

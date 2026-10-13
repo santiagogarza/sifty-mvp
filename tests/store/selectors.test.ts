@@ -1,8 +1,14 @@
+import { STATUSES_IN_ORDER } from "@/lib/domain/status";
 import type { Task } from "@/lib/domain/types";
 import {
   computeTaskCounts,
   isTodayTask,
+  selectBoardColumns,
+  selectByLifecycle,
+  selectDoneTasks,
+  selectDroppedTasks,
   selectFocusTasks,
+  selectInboxTasks,
   selectTodayTasks,
 } from "@/lib/store/selectors";
 import { describe, expect, it } from "vitest";
@@ -119,5 +125,59 @@ describe("computeTaskCounts", () => {
     // The sidebar badge and the Today list can never disagree.
     expect(counts.today).toBe(selectTodayTasks(tasks).length);
     expect(counts.today).toBe(3);
+  });
+});
+
+describe("selectBoardColumns", () => {
+  const ids = (tasks: Task[]) => tasks.map((t) => t.id);
+
+  it("has one column per status, in pipeline order, even when empty", () => {
+    expect(selectBoardColumns([]).map((c) => c.status)).toEqual([...STATUSES_IN_ORDER]);
+    expect(selectBoardColumns([]).every((c) => c.tasks.length === 0)).toBe(true);
+  });
+
+  it("places every task once, in its status column, ordered like that status's list", () => {
+    const olderInbox = makeTask({ lifecycle: "inbox", createdAt: "2026-07-20T09:00:00Z" });
+    const newerInbox = makeTask({ lifecycle: "inbox", createdAt: "2026-07-21T09:00:00Z" });
+    const scheduled = makeTask({ lifecycle: "active", priorityBucket: "schedule" });
+    const doNow = makeTask({ lifecycle: "active", priorityBucket: "do_now" });
+    const staleWaiting = makeTask({ lifecycle: "waiting", updatedAt: "2026-07-19T09:00:00Z" });
+    const freshWaiting = makeTask({ lifecycle: "waiting", updatedAt: "2026-07-21T09:00:00Z" });
+    const someday = makeTask({ lifecycle: "someday" });
+    const doneEarlier = makeTask({ lifecycle: "done", completedAt: "2026-07-18T09:00:00Z" });
+    const doneLater = makeTask({ lifecycle: "done", completedAt: "2026-07-21T09:00:00Z" });
+    const dropped = makeTask({ lifecycle: "dropped" });
+    const tasks = [
+      olderInbox,
+      scheduled,
+      staleWaiting,
+      doneEarlier,
+      dropped,
+      newerInbox,
+      doNow,
+      freshWaiting,
+      someday,
+      doneLater,
+    ];
+
+    const board = Object.fromEntries(
+      selectBoardColumns(tasks).map((c) => [c.status, ids(c.tasks)]),
+    );
+
+    expect(board).toEqual({
+      inbox: [newerInbox.id, olderInbox.id],
+      active: [doNow.id, scheduled.id],
+      waiting: [freshWaiting.id, staleWaiting.id],
+      someday: [someday.id],
+      done: [doneLater.id, doneEarlier.id],
+      dropped: [dropped.id],
+    });
+    // A column is exactly its list page, so toggling views never reshuffles.
+    expect(board.inbox).toEqual(ids(selectInboxTasks(tasks)));
+    expect(board.active).toEqual(ids(selectFocusTasks(tasks)));
+    expect(board.waiting).toEqual(ids(selectByLifecycle(tasks, "waiting")));
+    expect(board.done).toEqual(ids(selectDoneTasks(tasks)));
+    expect(board.dropped).toEqual(ids(selectDroppedTasks(tasks)));
+    expect(Object.values(board).flat().sort()).toEqual(ids(tasks).sort());
   });
 });
