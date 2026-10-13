@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/utils/cn";
 import * as React from "react";
 import { useFrame } from "./app-frame";
 import { TopBar } from "./top-bar";
@@ -14,11 +15,17 @@ export function PageShell({
   title,
   subtitle,
   rightSlot,
+  wide = false,
   children,
 }: {
   title?: string;
   subtitle?: string;
   rightSlot?: React.ReactNode;
+  /**
+   * Board needs the full main column. List stays in the 820px measure
+   * the rows were designed for.
+   */
+  wide?: boolean;
   children: React.ReactNode;
 }) {
   const { openCapture, openCommand } = useFrame();
@@ -28,10 +35,17 @@ export function PageShell({
         title={title}
         subtitle={subtitle}
         rightSlot={rightSlot}
-        onCapture={openCapture}
+        onCapture={() => openCapture()}
         onCommand={openCommand}
       />
-      <div className="flex-1 px-4 sm:px-6 md:px-8 max-w-[820px] w-full mx-auto">{children}</div>
+      <div
+        className={cn(
+          "mx-auto flex w-full flex-1 flex-col",
+          wide ? "max-w-none px-4 sm:px-6" : "max-w-[820px] px-4 sm:px-6 md:px-8",
+        )}
+      >
+        {children}
+      </div>
     </>
   );
 }
