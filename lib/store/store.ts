@@ -56,15 +56,20 @@ export function getSyncHooks(): SyncHooks | null {
   return syncHooks;
 }
 
+/** How a task view renders its tasks. Global, not per-route. */
+export type ViewMode = "list" | "board";
+
 interface SiftyState {
   hydrated: boolean;
   tasks: Task[];
   labels: Label[];
   memories: Memory[];
   preferredModelId: string;
+  viewMode: ViewMode;
 
   setHydrated: (v: boolean) => void;
   setPreferredModelId: (modelId: string) => void;
+  setViewMode: (mode: ViewMode) => void;
 
   createTask: (input: { sourceText: string; sourceContext?: string | null }) => Task;
   updateTask: (
@@ -142,9 +147,11 @@ export const useStore = create<SiftyState>()(
         labels: [],
         memories: [],
         preferredModelId: DEFAULT_MODEL_ID,
+        viewMode: "list",
 
         setHydrated: (v) => set({ hydrated: v }),
         setPreferredModelId: (modelId) => set({ preferredModelId: modelId }),
+        setViewMode: (mode) => set({ viewMode: mode }),
 
         createTask: ({ sourceText, sourceContext }) => {
           const now = new Date().toISOString();
@@ -395,11 +402,14 @@ export const useStore = create<SiftyState>()(
     {
       name: "sifty-store-v1",
       version: VERSION,
+      // `viewMode` needs no migration entry: persist shallow-merges over the
+      // initial state, so a pre-board payload simply keeps the "list" default.
       partialize: (s) => ({
         tasks: s.tasks,
         labels: s.labels,
         memories: s.memories,
         preferredModelId: s.preferredModelId,
+        viewMode: s.viewMode,
       }),
       migrate: (persisted, version) => {
         const state = persisted as Partial<SiftyState>;
