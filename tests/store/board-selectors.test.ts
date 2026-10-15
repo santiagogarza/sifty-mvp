@@ -1,5 +1,9 @@
 import type { Lifecycle, Task } from "@/lib/domain/types";
-import { BOARD_LIFECYCLES, selectBoardColumns } from "@/lib/store/selectors";
+import {
+  BOARD_LIFECYCLES,
+  lifecycleAfterColumnDrop,
+  selectBoardColumns,
+} from "@/lib/store/selectors";
 import { describe, expect, it } from "vitest";
 
 function makeTask(overrides: Partial<Task> & { id: string; lifecycle: Lifecycle }): Task {
@@ -118,5 +122,24 @@ describe("selectBoardColumns", () => {
     expect(byLabel[0]?.tasks.map((t) => t.id)).toEqual(["match"]);
     const bySearch = selectBoardColumns(tasks, { search: "passport" });
     expect(bySearch[0]?.tasks.map((t) => t.id)).toEqual(["match"]);
+  });
+});
+
+describe("lifecycleAfterColumnDrop", () => {
+  it("moves a card into a different column", () => {
+    expect(lifecycleAfterColumnDrop("inbox", "active")).toBe("active");
+    expect(lifecycleAfterColumnDrop("active", "done")).toBe("done");
+    expect(lifecycleAfterColumnDrop("waiting", "someday")).toBe("someday");
+  });
+
+  it("ignores a drop on the card's current column", () => {
+    expect(lifecycleAfterColumnDrop("inbox", "inbox")).toBeNull();
+    expect(lifecycleAfterColumnDrop("done", "done")).toBeNull();
+  });
+
+  it("ignores a drop that misses every column", () => {
+    expect(lifecycleAfterColumnDrop("inbox", null)).toBeNull();
+    expect(lifecycleAfterColumnDrop("inbox", undefined)).toBeNull();
+    expect(lifecycleAfterColumnDrop("inbox", "task_123")).toBeNull();
   });
 });
