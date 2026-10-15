@@ -176,7 +176,7 @@ export function BoardView({
       }
       nonce.current += 1;
       setSettled({ taskId, status: to, nonce: nonce.current });
-      if (opts.undoable) setUndo({ taskId, from, to });
+      setUndo(opts.undoable ? { taskId, from, to } : null);
     },
     [setLifecycle],
   );

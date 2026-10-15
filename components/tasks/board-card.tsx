@@ -101,7 +101,7 @@ export const BoardCard = React.memo(
                 "transition-[opacity,background-color,border-color] duration-150 ease-[var(--ease-product)]",
                 isDone
                   ? "bg-[var(--done)] border-[var(--done)]"
-                  : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 bg-[var(--surface-muted)] border-[var(--fg-muted)]/40 hover:border-[var(--accent)]",
+                  : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 bg-[var(--surface-muted)] border-[var(--fg-muted)]/40 hover:border-[var(--accent)]",
               )}
             >
               {isDone ? <Check size={10} className="text-white" strokeWidth={3} /> : null}
