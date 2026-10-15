@@ -7,6 +7,8 @@ import { Textarea } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import { runTriage } from "@/lib/ai/run-triage";
 import { TASK_LIMITS } from "@/lib/domain/limits";
+import { statusLabel } from "@/lib/domain/status";
+import type { Lifecycle } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
 import { ArrowUpRight, Sparkles } from "lucide-react";
 import * as React from "react";
@@ -29,9 +31,12 @@ import * as React from "react";
 export function CaptureDialog({
   open,
   onOpenChange,
+  lifecycle = "inbox",
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  /** Status the new task is filed into; a board column's Add passes its own. */
+  lifecycle?: Lifecycle;
 }) {
   const { openDetail } = useFrame();
   const createTask = useStore((s) => s.createTask);
@@ -55,6 +60,7 @@ export function CaptureDialog({
     const task = createTask({
       sourceText: text,
       sourceContext: context.trim() || null,
+      lifecycle,
     });
     onOpenChange(false);
     // Open the sheet on the next frame so this dialog's close (and its
@@ -69,7 +75,15 @@ export function CaptureDialog({
         <div className="flex items-center justify-between px-5 pt-4 pb-2">
           <div className="flex items-center gap-2">
             <Sparkles size={14} className="text-[var(--ai)]" />
-            <DialogTitle>Capture</DialogTitle>
+            <DialogTitle>
+              Capture
+              {lifecycle !== "inbox" ? (
+                <span className="font-normal text-[var(--fg-muted)]">
+                  {" "}
+                  to {statusLabel(lifecycle)}
+                </span>
+              ) : null}
+            </DialogTitle>
           </div>
           <DialogDescription className="hidden sm:block text-[12px]">
             Type the task as you'd say it. Sifty organizes it.

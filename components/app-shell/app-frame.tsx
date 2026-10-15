@@ -2,6 +2,7 @@
 
 import { CaptureDialog } from "@/components/tasks/capture-dialog";
 import { TaskDetailSheet } from "@/components/tasks/task-detail-sheet";
+import type { Lifecycle } from "@/lib/domain/types";
 import { useServerSync } from "@/lib/store/sync";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
@@ -35,6 +36,7 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const search = useSearchParams();
   const [captureOpen, setCaptureOpen] = React.useState(false);
+  const [captureLifecycle, setCaptureLifecycle] = React.useState<Lifecycle>("inbox");
   const [commandOpen, setCommandOpen] = React.useState(false);
 
   // Pulls the server snapshot into the store on mount and reconciles; a
@@ -43,7 +45,14 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
 
   const detailTaskId = search.get("task");
 
-  const openCapture = React.useCallback(() => setCaptureOpen(true), []);
+  const openCapture = React.useCallback((opts?: { lifecycle?: Lifecycle }) => {
+    setCaptureLifecycle(opts?.lifecycle ?? "inbox");
+    setCaptureOpen(true);
+  }, []);
+  const onCaptureOpenChange = React.useCallback((open: boolean) => {
+    setCaptureOpen(open);
+    if (!open) setCaptureLifecycle("inbox");
+  }, []);
   const openCommand = React.useCallback(() => setCommandOpen(true), []);
 
   const openDetail = React.useCallback(
@@ -62,25 +71,38 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [router, pathname, search]);
 
+  const syncError = sync.hydrated && !!sync.error;
+  const openPlainCapture = React.useCallback(() => openCapture(), [openCapture]);
+
   const value = React.useMemo(
-    () => ({ openDetail, openCapture, openCommand }),
-    [openDetail, openCapture, openCommand],
+    () => ({ openDetail, openCapture, openCommand, syncError }),
+    [openDetail, openCapture, openCommand, syncError],
   );
 
   return (
     <FrameContext.Provider value={value}>
       <div className="relative flex min-h-dvh">
         <Sidebar />
-        <main className="relative z-0 flex-1 flex flex-col min-w-0 pb-[80px] md:pb-0">
+        {/* A size container so the board can widen past the reading column
+            using cqw against the pane, not the viewport (sidebar excluded). */}
+        <main className="@container relative z-0 flex-1 flex flex-col min-w-0 pb-[80px] md:pb-0">
           {children}
         </main>
       </div>
-      <BottomNav onCapture={openCapture} />
-      <CaptureDialog open={captureOpen} onOpenChange={setCaptureOpen} />
-      <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} onCapture={openCapture} />
+      <BottomNav onCapture={openPlainCapture} />
+      <CaptureDialog
+        open={captureOpen}
+        onOpenChange={onCaptureOpenChange}
+        lifecycle={captureLifecycle}
+      />
+      <CommandPalette
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        onCapture={openPlainCapture}
+      />
       <TaskDetailSheet taskId={detailTaskId} onClose={closeDetail} />
-      <GlobalKeyboard onCapture={openCapture} onCommand={openCommand} />
-      {sync.hydrated && sync.error ? (
+      <GlobalKeyboard onCapture={openPlainCapture} onCommand={openCommand} />
+      {syncError ? (
         <div
           role="status"
           className="fixed bottom-[92px] md:bottom-4 left-1/2 -translate-x-1/2 z-40 rounded-full border border-[var(--border)] bg-[var(--bg-elevated)]/95 backdrop-blur px-3.5 py-1.5 text-[12px] text-[var(--fg-muted)] shadow-sm"
@@ -94,8 +116,11 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
 
 interface FrameApi {
   openDetail: (id: string) => void;
-  openCapture: () => void;
+  /** Opens capture; `lifecycle` files the new task there instead of Inbox. */
+  openCapture: (opts?: { lifecycle?: Lifecycle }) => void;
   openCommand: () => void;
+  /** The offline notice is showing; bottom-anchored toasts stack above it. */
+  syncError: boolean;
 }
 
 const FrameContext = React.createContext<FrameApi | null>(null);

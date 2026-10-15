@@ -66,7 +66,11 @@ interface SiftyState {
   setHydrated: (v: boolean) => void;
   setPreferredModelId: (modelId: string) => void;
 
-  createTask: (input: { sourceText: string; sourceContext?: string | null }) => Task;
+  createTask: (input: {
+    sourceText: string;
+    sourceContext?: string | null;
+    lifecycle?: Lifecycle;
+  }) => Task;
   updateTask: (
     id: string,
     patch: Partial<Task>,
@@ -146,7 +150,7 @@ export const useStore = create<SiftyState>()(
         setHydrated: (v) => set({ hydrated: v }),
         setPreferredModelId: (modelId) => set({ preferredModelId: modelId }),
 
-        createTask: ({ sourceText, sourceContext }) => {
+        createTask: ({ sourceText, sourceContext, lifecycle = "inbox" }) => {
           const now = new Date().toISOString();
           const text = sourceText.trim();
           const provisionalTitle =
@@ -159,7 +163,7 @@ export const useStore = create<SiftyState>()(
             title: provisionalTitle,
             description: sourceContext?.trim() || null,
             nextAction: null,
-            lifecycle: "inbox",
+            lifecycle,
             aiStatus: "pending",
             aiError: null,
             aiAttempts: 0,
@@ -179,7 +183,7 @@ export const useStore = create<SiftyState>()(
             editedFields: [],
             createdAt: now,
             updatedAt: now,
-            completedAt: null,
+            completedAt: lifecycle === "done" ? now : null,
           };
           set((s) => ({ tasks: [task, ...s.tasks] }));
           syncHooks?.taskUpserted(task, { created: true });
