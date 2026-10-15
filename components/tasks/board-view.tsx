@@ -205,17 +205,18 @@ export function BoardView({
     [move],
   );
 
-  const open = React.useCallback(
-    (id: string) => {
-      const task = tasks.find((t) => t.id === id);
-      if (task) {
-        const index = columns.find((c) => c.status === task.lifecycle)?.tasks.indexOf(task) ?? 0;
-        setSelection({ status: task.lifecycle, index, taskId: id });
-      }
-      onOpen(id);
-    },
-    [tasks, columns, onOpen],
-  );
+  // Read through a ref so `open` stays stable: every memoized card takes it,
+  // and a new identity per write would re-render the whole board.
+  const latest = React.useRef({ columns, onOpen });
+  latest.current = { columns, onOpen };
+  const open = React.useCallback((id: string) => {
+    const { columns, onOpen } = latest.current;
+    for (const column of columns) {
+      const index = column.tasks.findIndex((t) => t.id === id);
+      if (index >= 0) setSelection({ status: column.status, index, taskId: id });
+    }
+    onOpen(id);
+  }, []);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (isEditableTarget(e.target)) return;
