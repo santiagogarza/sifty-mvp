@@ -52,9 +52,11 @@ export const BoardCard = React.memo(
           "group relative rounded-[var(--radius-md)] border bg-[var(--surface)] px-2.5 py-2",
           "select-none [-webkit-touch-callout:none] focus:outline-none",
           "transition-[border-color,box-shadow] duration-150 ease-[var(--ease-product)]",
+          // `!`: globals.css sets an unlayered `* { border-color }`, which
+          // outranks Tailwind's layered border-color utilities.
           selected || overlay
-            ? "border-[var(--accent)]"
-            : "border-[var(--border)] hover:border-[var(--border-strong)]",
+            ? "!border-[var(--accent)]"
+            : "border-[var(--border)] hover:!border-[var(--border-strong)]",
           overlay
             ? "rotate-1 shadow-[0_12px_28px_-8px_oklch(0%_0_0/0.28)]"
             : "shadow-[0_1px_2px_oklch(0%_0_0/0.04)]",
@@ -83,7 +85,9 @@ export const BoardCard = React.memo(
               bucket={task.priorityBucket}
               className={cn(
                 "transition-opacity duration-150",
-                isDone ? "opacity-0" : "group-hover:opacity-0 group-focus-within:opacity-0",
+                isDone
+                  ? "opacity-0"
+                  : !overlay && "group-hover:opacity-0 group-focus-within:opacity-0",
               )}
             />
             <button
@@ -101,7 +105,10 @@ export const BoardCard = React.memo(
                 "transition-[opacity,background-color,border-color] duration-150 ease-[var(--ease-product)]",
                 isDone
                   ? "bg-[var(--done)] border-[var(--done)]"
-                  : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 bg-[var(--surface-muted)] border-[var(--fg-muted)]/40 hover:border-[var(--accent)]",
+                  : cn(
+                      "opacity-0 bg-[var(--surface-muted)] border-[var(--fg-muted)]/40 hover:border-[var(--accent)]",
+                      !overlay && "group-hover:opacity-100 group-focus-within:opacity-100",
+                    ),
               )}
             >
               {isDone ? <Check size={10} className="text-white" strokeWidth={3} /> : null}
@@ -175,7 +182,7 @@ export const DraggableBoardCard = React.memo(function DraggableBoardCard({
       tabIndex={selected ? 0 : -1}
       className={cn(
         isDragging &&
-          "border-dashed border-[var(--border-strong)] bg-transparent shadow-none [&>*]:invisible",
+          "border-dashed !border-[var(--border-strong)] bg-transparent shadow-none [&>*]:invisible",
       )}
     />
   );

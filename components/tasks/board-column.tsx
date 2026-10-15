@@ -56,8 +56,9 @@ export function BoardColumn({
         "flex shrink-0 snap-start flex-col self-start rounded-[var(--radius-lg)] border",
         "w-[288px] md:w-auto md:min-w-[184px] md:flex-1",
         "transition-colors duration-150 ease-[var(--ease-product)]",
+        // `!` for the same unlayered global border-color rule as BoardCard.
         dropTarget
-          ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+          ? "!border-[var(--accent)] bg-[var(--accent-soft)]"
           : "border-[var(--border)] bg-[var(--surface-muted)]",
       )}
     >
@@ -91,7 +92,7 @@ export function BoardColumn({
         {dropTarget ? (
           <div
             aria-hidden
-            className="shrink-0 rounded-[var(--radius-md)] border border-dashed border-[var(--accent)]"
+            className="shrink-0 rounded-[var(--radius-md)] border border-dashed !border-[var(--accent)]"
             style={{ height: slotHeight }}
           />
         ) : tasks.length === 0 ? (
@@ -108,12 +109,12 @@ export function BoardColumn({
       {onAdd && status !== "done" ? (
         <button
           type="button"
+          aria-label={`Add to ${label}`}
           onClick={() => onAdd(status)}
           className="mx-1.5 mb-1.5 flex items-center gap-1.5 rounded-[var(--radius-sm)] px-1.5 py-1 text-[12px] text-[var(--fg-subtle)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]"
         >
           <Plus size={12} />
           Add
-          <span className="sr-only"> to {label}</span>
         </button>
       ) : null}
     </section>
