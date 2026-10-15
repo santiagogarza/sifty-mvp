@@ -117,6 +117,23 @@ export function selectByLifecycle(
 export const BOARD_LIFECYCLES = ["inbox", "active", "waiting", "someday", "done"] as const;
 export type BoardLifecycle = (typeof BOARD_LIFECYCLES)[number];
 
+const BOARD_LIFECYCLE_SET: ReadonlySet<string> = new Set(BOARD_LIFECYCLES);
+
+/**
+ * Lifecycle to write when a card is dropped on `overId`.
+ * Same-column drops are no-ops — order inside a column is derived — and
+ * anything that is not a board column is ignored.
+ */
+export function lifecycleAfterColumnDrop(
+  current: Lifecycle,
+  overId: string | number | null | undefined,
+): BoardLifecycle | null {
+  if (overId == null) return null;
+  const target = String(overId);
+  if (!BOARD_LIFECYCLE_SET.has(target) || target === current) return null;
+  return target as BoardLifecycle;
+}
+
 export interface BoardColumn {
   lifecycle: BoardLifecycle;
   tasks: Task[];

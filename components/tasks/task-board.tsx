@@ -3,7 +3,12 @@
 import { Badge } from "@/components/ui/badge";
 import { statusLabel } from "@/lib/domain/status";
 import type { Label, Task } from "@/lib/domain/types";
-import { type BoardColumn, type BoardLifecycle, selectBoardColumns } from "@/lib/store/selectors";
+import {
+  type BoardColumn,
+  type BoardLifecycle,
+  lifecycleAfterColumnDrop,
+  selectBoardColumns,
+} from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import { formatRelativeDay, isOverdue, isToday } from "@/lib/utils/dates";
@@ -93,10 +98,10 @@ export function TaskBoard({
 
   const onDragEnd = (e: DragEndEvent) => {
     setActiveId(null);
-    const target = e.over?.id as BoardLifecycle | undefined;
-    if (!target) return;
     const task = tasks.find((t) => t.id === e.active.id);
-    if (!task || task.lifecycle !== target) return;
+    if (!task) return;
+    const target = lifecycleAfterColumnDrop(task.lifecycle, e.over?.id);
+    if (!target) return;
     setLifecycle(task.id, target);
   };
 
