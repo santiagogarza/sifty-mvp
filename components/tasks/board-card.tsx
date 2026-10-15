@@ -106,7 +106,7 @@ export const BoardCard = React.memo(
                 isDone
                   ? "bg-[var(--done)] border-[var(--done)]"
                   : cn(
-                      "opacity-0 bg-[var(--surface-muted)] border-[var(--fg-muted)]/40 hover:border-[var(--accent)]",
+                      "opacity-0 bg-[var(--surface-muted)] !border-[var(--fg-muted)]/50 hover:!border-[var(--accent)]",
                       !overlay && "group-hover:opacity-100 group-focus-within:opacity-100",
                     ),
               )}
