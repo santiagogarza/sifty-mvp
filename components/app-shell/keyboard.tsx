@@ -2,6 +2,18 @@
 
 import * as React from "react";
 
+/** True when a key event comes from somewhere the user is typing. */
+export function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  return (
+    tag === "INPUT" ||
+    tag === "TEXTAREA" ||
+    target.isContentEditable ||
+    target.getAttribute("role") === "textbox"
+  );
+}
+
 /**
  * Global keyboard shortcuts. Fires from the document, but ignores keys when
  * the user is typing in an input or textarea so we never steal characters.
@@ -14,17 +26,6 @@ export function GlobalKeyboard({
   onCommand: () => void;
 }) {
   React.useEffect(() => {
-    const isEditableTarget = (target: EventTarget | null): boolean => {
-      if (!(target instanceof HTMLElement)) return false;
-      const tag = target.tagName;
-      return (
-        tag === "INPUT" ||
-        tag === "TEXTAREA" ||
-        target.isContentEditable ||
-        target.getAttribute("role") === "textbox"
-      );
-    };
-
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();

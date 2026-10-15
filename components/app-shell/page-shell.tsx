@@ -28,7 +28,7 @@ export function PageShell({
         title={title}
         subtitle={subtitle}
         rightSlot={rightSlot}
-        onCapture={openCapture}
+        onCapture={() => openCapture()}
         onCommand={openCommand}
       />
       <div className="flex-1 px-4 sm:px-6 md:px-8 max-w-[820px] w-full mx-auto">{children}</div>

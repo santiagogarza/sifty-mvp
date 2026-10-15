@@ -1,6 +1,7 @@
 "use client";
 
 import { focusScore } from "@/lib/domain/priority";
+import { STATUS_VIEWS } from "@/lib/domain/status";
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import { dayDelta, isOverdue } from "@/lib/utils/dates";
 import { useMemo } from "react";
@@ -117,6 +118,29 @@ export function selectDoneTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
 
 export function selectDroppedTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
   return selectByLifecycle(tasks, "dropped", args);
+}
+
+export interface BoardColumnData {
+  status: Lifecycle;
+  tasks: Task[];
+}
+
+/**
+ * Board columns: every status with a view (`STATUS_VIEWS`, so never
+ * Dropped), in pipeline order, each sorted exactly like its own list.
+ */
+export function selectBoardColumns(tasks: Task[], args: ViewArgs = {}): BoardColumnData[] {
+  return STATUS_VIEWS.map(({ status }) => ({
+    status,
+    tasks:
+      status === "inbox"
+        ? selectInboxTasks(tasks, args)
+        : status === "active"
+          ? selectFocusTasks(tasks, args)
+          : status === "done"
+            ? selectDoneTasks(tasks, args)
+            : selectByLifecycle(tasks, status, args),
+  }));
 }
 
 export interface TaskCounts {
