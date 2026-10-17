@@ -2,6 +2,13 @@ import path from "node:path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // tsconfig sets jsx: preserve for Next. Vitest still has to transform
+  // component tests, or importing a .tsx module fails import analysis.
+  oxc: {
+    jsx: {
+      runtime: "automatic",
+    },
+  },
   test: {
     // Default to node — most tests are server logic, jose / Buffer / Uint8Array
     // checks misbehave under jsdom because realm-bound globals don't match.
