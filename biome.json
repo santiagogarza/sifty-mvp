@@ -55,5 +55,13 @@
       "trailingCommas": "all",
       "semicolons": "always"
     }
-  }
+  },
+  "overrides": [
+    {
+      "include": ["tests/**/*.test.tsx"],
+      "organizeImports": {
+        "enabled": false
+      }
+    }
+  ]
 }
