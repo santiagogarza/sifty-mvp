@@ -1,4 +1,30 @@
 import "@testing-library/jest-dom/vitest";
+
+// jsdom omits these. Component tests (and dnd-kit) call them on mount.
+if (typeof window !== "undefined") {
+  if (typeof window.matchMedia !== "function") {
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: (query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }),
+    });
+  }
+  if (typeof window.ResizeObserver !== "function") {
+    window.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+  }
+}
 import { createMemoryRepos, setReposForTesting } from "@/lib/db/repos";
 import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
 

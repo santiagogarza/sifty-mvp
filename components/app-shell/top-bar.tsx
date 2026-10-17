@@ -63,7 +63,7 @@ export function TopBar({
 
         <Button
           variant="primary"
-          onClick={onCapture}
+          onClick={() => onCapture()}
           className="hidden md:inline-flex"
           aria-label="Capture task"
         >

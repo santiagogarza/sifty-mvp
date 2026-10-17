@@ -34,7 +34,7 @@ export function TaskEmptyState({
         </p>
       ) : null}
       <div className="mt-4 inline-flex items-center gap-2">
-        <Button variant="primary" size="sm" onClick={openCapture}>
+        <Button variant="primary" size="sm" onClick={() => openCapture()}>
           Capture a task
         </Button>
         <span className="hidden sm:flex items-center gap-1 text-[11px] text-[var(--fg-subtle)]">

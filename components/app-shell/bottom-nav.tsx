@@ -51,7 +51,7 @@ export function BottomNav({ onCapture }: { onCapture: () => void }) {
                 <button
                   type="button"
                   aria-label="Capture task"
-                  onClick={onCapture}
+                  onClick={() => onCapture()}
                   className="size-12 rounded-full bg-[var(--accent)] text-[var(--accent-fg)]
                   flex items-center justify-center shadow-[0_8px_24px_-6px_oklch(0%_0_0/0.5)]
                   active:translate-y-[1px] transition-transform"
