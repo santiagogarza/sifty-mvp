@@ -2,6 +2,14 @@ import path from "node:path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // Vitest 4 transforms with oxc, which does not parse JSX unless this is set.
+  // Component tests live in *.test.tsx and need the automatic runtime.
+  oxc: {
+    jsx: {
+      runtime: "automatic",
+      importSource: "react",
+    },
+  },
   test: {
     // Default to node — most tests are server logic, jose / Buffer / Uint8Array
     // checks misbehave under jsdom because realm-bound globals don't match.
