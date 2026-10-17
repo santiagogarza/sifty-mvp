@@ -2,6 +2,14 @@ import path from "node:path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // Vitest 4 uses rolldown-vite. Without this, JSX in *.test.tsx is left
+  // untransformed and the suite fails to parse.
+  oxc: {
+    jsx: {
+      runtime: "automatic",
+      importSource: "react",
+    },
+  },
   test: {
     // Default to node — most tests are server logic, jose / Buffer / Uint8Array
     // checks misbehave under jsdom because realm-bound globals don't match.
