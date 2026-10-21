@@ -56,7 +56,7 @@ export function BoardColumn({
         "rounded-[var(--radius-lg)] border p-1.5",
         "transition-colors duration-150 ease-[var(--ease-product)]",
         isTarget
-          ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+          ? "border-[var(--accent)]! bg-[var(--accent-soft)]"
           : "border-[var(--border)] bg-[var(--bg-sunken)]",
       )}
     >
@@ -96,7 +96,7 @@ export function BoardColumn({
         {isTarget ? (
           <div
             aria-hidden
-            className="h-[64px] shrink-0 rounded-[var(--radius-md)] border border-dashed border-[var(--accent)]"
+            className="h-[64px] shrink-0 rounded-[var(--radius-md)] border border-dashed border-[var(--accent)]!"
           />
         ) : null}
         {hidden > 0 ? (
