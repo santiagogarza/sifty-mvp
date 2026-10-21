@@ -3,6 +3,7 @@
 import { useOpenDetail } from "@/components/app-shell/app-frame";
 import { useTheme } from "@/components/app-shell/theme-context";
 import { STATUS_ICONS } from "@/components/tasks/status-icon";
+import { setViewMode, useViewMode } from "@/components/tasks/use-view-mode";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { STATUS_VIEWS } from "@/lib/domain/status";
@@ -48,8 +49,7 @@ export function CommandPalette({
   const openDetail = useOpenDetail();
   const { toggle } = useTheme();
   const tasks = useStore((s) => s.tasks);
-  const viewMode = useStore((s) => s.viewMode);
-  const setViewMode = useStore((s) => s.setViewMode);
+  const viewMode = useViewMode();
 
   const [query, setQuery] = React.useState("");
   const [activeIndex, setActiveIndex] = React.useState(0);
@@ -160,7 +160,7 @@ export function CommandPalette({
     ];
 
     return [...taskItems, ...taskMatches, ...nav, ...sys];
-  }, [tasks, router, openDetail, onCapture, onShortcuts, toggle, viewMode, setViewMode]);
+  }, [tasks, router, openDetail, onCapture, onShortcuts, toggle, viewMode]);
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();

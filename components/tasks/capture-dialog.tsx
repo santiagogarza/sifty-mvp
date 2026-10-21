@@ -8,9 +8,12 @@ import { Kbd } from "@/components/ui/kbd";
 import { watchSift } from "@/lib/ai/run-triage";
 import { TASK_LIMITS } from "@/lib/domain/limits";
 import { describeDay, parseNaturalDate, stripMatch } from "@/lib/domain/nl-date";
+import { statusLabel } from "@/lib/domain/status";
+import type { Lifecycle } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
 import { ArrowUpRight, CalendarDays, Sparkles, X } from "lucide-react";
 import * as React from "react";
+import { StatusIcon } from "./status-icon";
 
 /**
  * Capture dialog.
@@ -38,9 +41,12 @@ import * as React from "react";
 export function CaptureDialog({
   open,
   onOpenChange,
+  lifecycle = "inbox",
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  /** Status the captured task starts in; a board column's Add passes its own. */
+  lifecycle?: Lifecycle;
 }) {
   const { openDetail } = useFrame();
   const createTask = useStore((s) => s.createTask);
@@ -110,6 +116,7 @@ export function CaptureDialog({
       sourceContext: context.trim() || null,
       due: accepted?.due ?? null,
       title: accepted ? stripMatch(text, accepted) : null,
+      lifecycle,
     });
     clearDraft();
     onOpenChange(false);
@@ -127,6 +134,15 @@ export function CaptureDialog({
           <div className="flex items-center gap-2">
             <Sparkles size={14} className="text-[var(--ai)]" />
             <DialogTitle>Capture</DialogTitle>
+            {lifecycle !== "inbox" ? (
+              <span
+                data-testid="capture-lifecycle"
+                className="inline-flex h-5 items-center gap-1 rounded-full bg-[var(--accent-soft)] px-2 text-[11.5px] font-medium text-[var(--accent)]"
+              >
+                <StatusIcon status={lifecycle} size={11} />
+                {statusLabel(lifecycle)}
+              </span>
+            ) : null}
           </div>
           <DialogDescription className="hidden sm:block text-[12px]">
             Type the task as you'd say it. Sifty organizes it.
