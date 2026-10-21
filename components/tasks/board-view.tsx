@@ -150,6 +150,7 @@ export function BoardView({
   React.useEffect(() => {
     if (isEmpty || didInitialFocus.current) return;
     didInitialFocus.current = true;
+    if (document.activeElement?.closest('[role="dialog"]')) return;
     boardRef.current?.focus({ preventScroll: true });
   }, [isEmpty]);
 
