@@ -49,9 +49,8 @@ export const BoardCard = React.memo(function BoardCard({
       onClick={() => onOpen(task.id)}
       onFocus={() => onSelect(task.id)}
       className={cn(
-        "group relative rounded-[var(--radius-md)] focus:outline-none [touch-action:manipulation]",
-        isDragging &&
-          "outline-1 outline-dashed -outline-offset-1 outline-[var(--border-strong)] bg-[var(--surface-muted)]",
+        "group relative rounded-[var(--radius-md)] border border-transparent! outline-none! [touch-action:manipulation]",
+        isDragging && "border-dashed border-[var(--fg-subtle)]! bg-[var(--surface-muted)]",
       )}
     >
       <div className={cn(isDragging && "invisible")}>
@@ -98,11 +97,13 @@ export function BoardCardContent({
       className={cn(
         "surface-card relative rounded-[var(--radius-md)]",
         "transition-[border-color,box-shadow] duration-150 ease-[var(--ease-product)]",
+        // `!`: the unlayered `* { border-color }` and .surface-card rules in
+        // globals.css beat layered utilities, so border colors need it here.
         overlay
-          ? "border-[var(--accent)] shadow-lg"
+          ? "border-[var(--accent)]! shadow-lg"
           : selected
-            ? "border-[var(--accent)]"
-            : "hover:border-[var(--border-strong)]",
+            ? "border-[var(--accent)]!"
+            : "hover:border-[var(--border-strong)]!",
       )}
     >
       {/* The wash animates over the opaque card, so the card never goes see-through. */}
@@ -161,9 +162,9 @@ export function BoardCardContent({
             "after:absolute after:-inset-1.5 after:content-['']",
             "transition-[opacity,background-color,border-color] duration-150 ease-[var(--ease-product)]",
             isDone
-              ? "bg-[var(--done)] border-[var(--done)] opacity-100"
+              ? "bg-[var(--done)] border-[var(--done)]! opacity-100"
               : cn(
-                  "bg-[var(--surface-muted)] border-[var(--fg-muted)]/40 hover:border-[var(--accent)]",
+                  "bg-[var(--surface-muted)] border-[var(--fg-muted)]/40! hover:border-[var(--accent)]!",
                   "opacity-0 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100",
                   selected && "opacity-100",
                 ),

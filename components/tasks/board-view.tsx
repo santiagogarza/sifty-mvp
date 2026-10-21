@@ -327,7 +327,9 @@ export function BoardView({
             }}
             data-testid="board"
             className={cn(
-              "flex gap-3 overflow-x-auto pb-4 focus:outline-none",
+              // The selected card's accent border is the focus indicator; a ring
+              // around the whole board would clip at the viewport edge.
+              "flex gap-3 overflow-x-auto pb-4 outline-none!",
               "snap-x snap-mandatory scroll-px-4 sm:scroll-px-6 md:snap-none",
               BOARD_GUTTER_CLASS,
             )}
