@@ -58,7 +58,10 @@ test("the Board choice carries across routes", async ({ page }) => {
   await page.getByRole("button", { name: "Board", exact: true }).click();
   await expect(boardHeading(page)).toBeVisible();
 
-  await page.getByRole("link", { name: /^Focus/ }).first().click();
+  await page
+    .getByRole("link", { name: /^Focus/ })
+    .first()
+    .click();
   await expect(page).toHaveURL(/\/focus/);
   await expect(boardHeading(page)).toBeVisible();
   await expect(page.getByRole("button", { name: "Board", exact: true })).toHaveAttribute(
