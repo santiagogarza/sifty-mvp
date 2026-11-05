@@ -2,6 +2,8 @@
 import { TaskView } from "@/components/tasks/task-view";
 import { useStore } from "@/lib/store/store";
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -15,23 +17,34 @@ vi.mock("@/components/app-shell/app-frame", () => ({
     openDetail: vi.fn(),
     openCapture: vi.fn(),
     openCommand: vi.fn(),
+    syncError: false,
     get serverReady() {
       return serverReady;
     },
   }),
 }));
 vi.mock("@/components/app-shell/page-header", () => ({
-  PageHeader: ({ title }: { title: string }) => <h1>{title}</h1>,
+  PageHeader: ({
+    eyebrow,
+    title,
+    actions,
+  }: { eyebrow?: string; title: string; actions?: ReactNode }) => (
+    <header>
+      {eyebrow ? <p>{eyebrow}</p> : null}
+      <h1>{title}</h1>
+      {actions}
+    </header>
+  ),
 }));
-vi.mock("@/components/tasks/view-mode-toggle", () => ({ ViewModeToggle: () => null }));
 
 beforeEach(() => {
   serverReady = false;
-  useStore.setState({ hydrated: true, tasks: [], labels: [], viewMode: "list" });
+  useStore.setState({ hydrated: true, tasks: [], labels: [] });
 });
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
 });
 
 function renderInbox() {
@@ -90,5 +103,38 @@ describe("TaskView first load", () => {
     });
     renderInbox();
     expect(screen.getByText("Cached task")).toBeInTheDocument();
+  });
+});
+
+describe("TaskView List / Board toggle", () => {
+  it("swaps the route header for the board header and five columns, and back", async () => {
+    serverReady = true;
+    const user = userEvent.setup();
+    renderInbox();
+    expect(screen.getByRole("heading", { name: "Inbox" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /List/ })).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(screen.getByRole("button", { name: /Board/ }));
+    expect(screen.getByRole("heading", { name: "Everything, by status" })).toBeInTheDocument();
+    expect(screen.getByText("Board", { selector: "p" })).toBeInTheDocument();
+    expect(screen.getAllByRole("region", { name: / column$/ })).toHaveLength(5);
+    expect(localStorage.getItem("sifty.viewMode")).toBe(JSON.stringify("board"));
+
+    await user.click(screen.getByRole("button", { name: /List/ }));
+    expect(screen.getByRole("heading", { name: "Inbox" })).toBeInTheDocument();
+    expect(screen.queryAllByRole("region", { name: / column$/ })).toHaveLength(0);
+  });
+
+  it("a stored Board preference applies on mount, so it carries across routes", () => {
+    serverReady = true;
+    localStorage.setItem("sifty.viewMode", JSON.stringify("board"));
+    render(<TaskView title="Focus" selector={(tasks) => tasks} emptyTitle="Nothing in focus." />);
+    expect(screen.getByRole("heading", { name: "Everything, by status" })).toBeInTheDocument();
+  });
+
+  it("shows skeleton columns in Board mode before the first pull", () => {
+    localStorage.setItem("sifty.viewMode", JSON.stringify("board"));
+    renderInbox();
+    expect(screen.getByTestId("board-skeleton")).toBeInTheDocument();
   });
 });

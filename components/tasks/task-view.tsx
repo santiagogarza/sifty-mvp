@@ -7,10 +7,11 @@ import type { Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import * as React from "react";
+import { BOARD_BREAKOUT_CLASS, BOARD_GUTTER_CLASS, BoardSkeleton, BoardView } from "./board-view";
 import { TaskEmptyState } from "./empty-state";
-import { BOARD_BREAKOUT_CLASS, BOARD_GUTTER_CLASS, TaskBoard } from "./task-board";
 import { TaskList } from "./task-list";
-import { ViewModeToggle } from "./view-mode-toggle";
+import { useViewMode } from "./use-view-mode";
+import { ViewToggle } from "./view-toggle";
 import { WelcomeCard } from "./welcome-card";
 
 /**
@@ -18,9 +19,9 @@ import { WelcomeCard } from "./welcome-card";
  * Hydration-safe: renders skeletons until the persistence rehydrates so the
  * server-rendered shell never shows a flashed empty state.
  *
- * Board mode is workspace-wide: the columns are the lifecycle stages, so the
- * same board renders on every task page (the tabs already are the statuses).
- * The header swaps to a generic "Board" title to keep that honest.
+ * Board mode is workspace-wide: the columns are the statuses, so the same
+ * board renders on every task page and the header says so instead of
+ * keeping the route's own title.
  */
 export function TaskView({
   eyebrow,
@@ -42,64 +43,69 @@ export function TaskView({
   /** Rendered between the welcome card and the list, in list mode only. */
   aboveList?: React.ReactNode;
 }) {
-  const { openDetail, serverReady } = useFrame();
+  const { openDetail, openCapture, serverReady, syncError } = useFrame();
   const tasks = useStore((s) => s.tasks);
   const hydrated = useStore((s) => s.hydrated);
-  const viewMode = useStore((s) => s.viewMode);
+  const board = useViewMode() === "board";
 
   const visible = React.useMemo(() => selector(tasks), [tasks, selector]);
 
   // Local cache first; an empty cache waits for the first pull so a new
   // account never flashes "Inbox zero" before its starter tasks arrive.
   const ready = hydrated && (tasks.length > 0 || serverReady);
-  const board = ready && viewMode === "board";
 
   const header = (
     <PageHeader
-      eyebrow={eyebrow}
-      title={board ? "Board" : title}
+      eyebrow={board ? "Board" : eyebrow}
+      title={board ? "Everything, by status" : title}
       description={
-        board ? "Everything on the board, by status. Drag a card to move it." : description
+        board
+          ? "Drag a card to another column to file it. Same order, words, and icons as the sidebar."
+          : description
       }
       actions={
         <div className="flex items-center gap-2">
           {rightSlot}
-          <ViewModeToggle />
+          <ViewToggle />
         </div>
       }
     />
   );
 
+  const onAdd = React.useCallback(
+    (lifecycle: Task["lifecycle"]) => openCapture({ lifecycle }),
+    [openCapture],
+  );
+
+  if (board) {
+    return (
+      <>
+        {/* The header shares the board's breakout width so its text
+            left-aligns with the first column, not the reading column. */}
+        <div className={cn(BOARD_BREAKOUT_CLASS, BOARD_GUTTER_CLASS)}>{header}</div>
+        {ready ? <WelcomeCard /> : null}
+        {ready ? (
+          <BoardView tasks={tasks} onOpen={openDetail} onAdd={onAdd} syncError={syncError} />
+        ) : (
+          <BoardSkeleton />
+        )}
+      </>
+    );
+  }
+
   return (
     <>
-      {/* In board mode the header shares the board's breakout width so its
-          text left-aligns with the first column instead of the centered
-          reading column. */}
-      {board ? (
-        <div className={cn(BOARD_BREAKOUT_CLASS, BOARD_GUTTER_CLASS)}>{header}</div>
-      ) : (
-        header
-      )}
+      {header}
       {ready ? <WelcomeCard /> : null}
-      {ready && !board ? aboveList : null}
-      {!ready ? (
-        <TaskListSkeleton />
-      ) : board ? (
-        <TaskBoard
-          onOpen={openDetail}
-          emptyState={
-            <TaskEmptyState
-              title="Nothing on the board yet."
-              description="Capture a task and it will land in the Inbox column."
-            />
-          }
-        />
-      ) : (
+      {ready ? aboveList : null}
+      {ready ? (
         <TaskList
           tasks={visible}
           onOpen={openDetail}
           emptyState={<TaskEmptyState title={emptyTitle} description={emptyDescription} />}
         />
+      ) : (
+        <TaskListSkeleton />
       )}
     </>
   );
