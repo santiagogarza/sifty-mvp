@@ -4,6 +4,7 @@ import { applyTriageToTask } from "@/lib/ai/apply-triage";
 import { MissingAiKeyError, triageTask } from "@/lib/ai/triage-agent";
 import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
+import type { Task } from "@/lib/domain/types";
 import { AI_CONTEXT_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
 import { reportError } from "@/lib/observability/report-error";
 import { NextResponse } from "next/server";
@@ -41,6 +42,14 @@ export async function POST(req: Request) {
   const gate = await gateAiRequest({ req, session, bucket: "triage" });
   if (!gate.ok) return gate.response;
 
+  // Validate task ownership / presence before spending a model call.
+  // Pass the snapshot into apply so we don't re-query after the model returns.
+  const repos = getRepos();
+  let taskSnapshot: Task | null = null;
+  if (parsed.data.taskId) {
+    taskSnapshot = await repos.tasks.get(session.user.id, parsed.data.taskId);
+  }
+
   try {
     const result = await triageTask({
       sourceText: parsed.data.sourceText,
@@ -55,11 +64,11 @@ export async function POST(req: Request) {
     // Best-effort: when the task hasn't reached the server yet the client
     // applies locally and the sync layer reconciles later.
     let applied = null;
-    if (parsed.data.taskId) {
+    if (taskSnapshot) {
       applied = await applyTriageToTask(
-        getRepos(),
+        repos,
         session.user.id,
-        parsed.data.taskId,
+        taskSnapshot,
         result.output,
       ).catch((err) => {
         reportError(err, {
