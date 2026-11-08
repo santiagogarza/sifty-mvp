@@ -2,7 +2,10 @@ import type { Task } from "@/lib/domain/types";
 import {
   computeTaskCounts,
   isTodayTask,
+  selectByLifecycle,
   selectFocusTasks,
+  selectInboxTasks,
+  selectSnoozedTasks,
   selectTodayTasks,
 } from "@/lib/store/selectors";
 import { describe, expect, it } from "vitest";
@@ -39,6 +42,7 @@ function makeTask(patch: Partial<Task>): Task {
     priorityBucket: "schedule",
     effort: "small",
     due: null,
+    snoozedUntil: null,
     delegationCandidate: "self",
     assigneeName: null,
     confidence: 0.8,
@@ -119,5 +123,78 @@ describe("computeTaskCounts", () => {
     // The sidebar badge and the Today list can never disagree.
     expect(counts.today).toBe(selectTodayTasks(tasks).length);
     expect(counts.today).toBe(3);
+  });
+});
+
+describe("snooze", () => {
+  const snoozedTasks = () => [
+    makeTask({ lifecycle: "inbox", priorityBucket: "do_now", snoozedUntil: iso(3) }),
+    makeTask({ lifecycle: "active", due: iso(-1), snoozedUntil: iso(1) }),
+    makeTask({ lifecycle: "waiting", due: iso(0), snoozedUntil: iso(2) }),
+    makeTask({ lifecycle: "someday", snoozedUntil: iso(5) }),
+  ];
+
+  it("hides snoozed tasks from every open view, deadlines included", () => {
+    const tasks = snoozedTasks();
+    const args = { now: NOW };
+    expect(selectTodayTasks(tasks, args)).toEqual([]);
+    expect(selectInboxTasks(tasks, args)).toEqual([]);
+    expect(selectFocusTasks(tasks, args)).toEqual([]);
+    expect(selectByLifecycle(tasks, "waiting", args)).toEqual([]);
+    expect(selectByLifecycle(tasks, "someday", args)).toEqual([]);
+  });
+
+  it("lists snoozed tasks in Snoozed, soonest wake day first", () => {
+    const tasks = snoozedTasks();
+    expect(selectSnoozedTasks(tasks, { now: NOW }).map((t) => t.snoozedUntil)).toEqual([
+      iso(1),
+      iso(2),
+      iso(3),
+      iso(5),
+    ]);
+  });
+
+  it("ignores snooze for done and dropped tasks", () => {
+    const done = makeTask({ lifecycle: "done", snoozedUntil: iso(2) });
+    const dropped = makeTask({ lifecycle: "dropped", snoozedUntil: iso(2) });
+    expect(selectSnoozedTasks([done, dropped], { now: NOW })).toEqual([]);
+    expect(selectByLifecycle([dropped], "dropped", { now: NOW })).toEqual([dropped]);
+  });
+
+  it("wakes a task on its wake day, back in its own status", () => {
+    const task = makeTask({ lifecycle: "active", snoozedUntil: iso(2) });
+    const dayBefore = new Date(NOW);
+    dayBefore.setDate(dayBefore.getDate() + 1);
+    const wakeDay = new Date(NOW);
+    wakeDay.setDate(wakeDay.getDate() + 2);
+
+    expect(selectFocusTasks([task], { now: dayBefore })).toEqual([]);
+    expect(selectFocusTasks([task], { now: wakeDay })).toEqual([task]);
+    expect(selectSnoozedTasks([task], { now: wakeDay })).toEqual([]);
+    // A past wake day is simply not snoozed.
+    expect(
+      selectFocusTasks([makeTask({ lifecycle: "active", snoozedUntil: iso(-3) })], { now: NOW }),
+    ).toHaveLength(1);
+  });
+
+  it("keeps counts in agreement with the lists", () => {
+    const tasks = [
+      ...snoozedTasks(),
+      makeTask({ lifecycle: "inbox", priorityBucket: "do_now" }),
+      makeTask({ lifecycle: "active" }),
+      makeTask({ lifecycle: "done", snoozedUntil: iso(1) }),
+    ];
+    const counts = computeTaskCounts(tasks, NOW);
+    const args = { now: NOW };
+    expect(counts).toMatchObject({
+      today: selectTodayTasks(tasks, args).length,
+      inbox: selectInboxTasks(tasks, args).length,
+      focus: selectFocusTasks(tasks, args).length,
+      waiting: selectByLifecycle(tasks, "waiting", args).length,
+      someday: selectByLifecycle(tasks, "someday", args).length,
+      snoozed: selectSnoozedTasks(tasks, args).length,
+      done: 1,
+    });
+    expect(counts).toMatchObject({ today: 1, inbox: 1, focus: 1, snoozed: 4 });
   });
 });

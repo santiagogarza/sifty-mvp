@@ -28,6 +28,7 @@ const PROTECTED_PREFIXES = [
   "/inbox",
   "/waiting",
   "/someday",
+  "/snoozed",
   "/done",
   "/memory",
   "/settings",

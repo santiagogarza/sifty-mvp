@@ -4,11 +4,14 @@ import { PageShell } from "@/components/app-shell/page-shell";
 import { TaskView } from "@/components/tasks/task-view";
 import { statusLabel } from "@/lib/domain/status";
 import type { Task } from "@/lib/domain/types";
-import { selectByLifecycle } from "@/lib/store/selectors";
+import { type ViewArgs, selectByLifecycle } from "@/lib/store/selectors";
 import * as React from "react";
 
 export default function WaitingPage() {
-  const select = React.useCallback((t: Task[]) => selectByLifecycle(t, "waiting"), []);
+  const select = React.useCallback(
+    (t: Task[], args: ViewArgs) => selectByLifecycle(t, "waiting", args),
+    [],
+  );
   return (
     <PageShell title={statusLabel("waiting")}>
       <TaskView

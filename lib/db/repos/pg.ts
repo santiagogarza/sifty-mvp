@@ -345,6 +345,10 @@ export function createPostgresRepos(): Repos {
             priorityBucket: merged.priorityBucket,
             effort: merged.effort,
             due: merged.due,
+            snoozedUntil:
+              merged.lifecycle === "done" || merged.lifecycle === "dropped"
+                ? null
+                : merged.snoozedUntil,
             delegationCandidate: merged.delegationCandidate,
             assigneeName: merged.assigneeName,
             confidence: Math.round(merged.confidence * 100),
@@ -621,6 +625,7 @@ function rowToTask(row: typeof schema.tasks.$inferSelect, labelIds: string[]): T
     priorityBucket: row.priorityBucket,
     effort: row.effort,
     due: row.due,
+    snoozedUntil: row.snoozedUntil,
     delegationCandidate: row.delegationCandidate,
     assigneeName: row.assigneeName,
     confidence: row.confidence / 100,

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { normalizeAssigneeName } from "./assignee";
 import { TASK_LIMITS } from "./limits";
+import { localIsoDate, parseLocalIsoDate } from "./snooze";
 import {
   AI_STATUS,
   DELEGATION_CANDIDATE,
@@ -25,6 +26,8 @@ export const ClientId = z
   .regex(/^[a-z]+_[a-z0-9]+$/i)
   .max(64);
 
+const IsoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
 export const TaskPatchSchema = z
   .object({
     title: z.string().min(1).max(TASK_LIMITS.title).optional(),
@@ -40,9 +43,11 @@ export const TaskPatchSchema = z
     importance: z.number().min(0).max(1).optional(),
     priorityBucket: z.enum(PRIORITY_BUCKET).optional(),
     effort: z.enum(EFFORT).optional(),
-    due: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
+    due: IsoDay.nullable().optional(),
+    snoozedUntil: IsoDay.refine((s) => {
+      const d = parseLocalIsoDate(s);
+      return !!d && localIsoDate(d) === s;
+    }, "Not a calendar day")
       .nullable()
       .optional(),
     delegationCandidate: z.enum(DELEGATION_CANDIDATE).optional(),

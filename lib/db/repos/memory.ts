@@ -200,6 +200,7 @@ export function createMemoryRepos(): MemoryReposHandle {
         priorityBucket: "unset",
         effort: "small",
         due: null,
+        snoozedUntil: null,
         delegationCandidate: "unsure",
         assigneeName: null,
         confidence: 0,
@@ -251,6 +252,9 @@ export function createMemoryRepos(): MemoryReposHandle {
       }
       if (patch.lifecycle && patch.lifecycle !== "done") {
         next.completedAt = null;
+      }
+      if (next.lifecycle === "done" || next.lifecycle === "dropped") {
+        next.snoozedUntil = null;
       }
       state.tasks.set(taskId, next);
       return stripUserId(next);

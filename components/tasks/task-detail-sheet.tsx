@@ -15,6 +15,7 @@ import {
 } from "@/lib/domain/assignee";
 import { LABEL_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
 import { bucketLabel } from "@/lib/domain/priority";
+import { formatSnoozeDate, isSnoozed } from "@/lib/domain/snooze";
 import { STATUSES_IN_ORDER, STATUS_META, statusLabel } from "@/lib/domain/status";
 import {
   type DelegationCandidate,
@@ -30,6 +31,7 @@ import { cn } from "@/lib/utils/cn";
 import { formatExactTime, formatRelativeDay, isOverdue } from "@/lib/utils/dates";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import {
+  AlarmClock,
   ArrowRight,
   Bot,
   CalendarDays,
@@ -46,6 +48,7 @@ import {
 import * as React from "react";
 import { AiThinking } from "./ai-status";
 import { PriorityGlyph } from "./priority-glyph";
+import { SnoozeMenu } from "./snooze-menu";
 import { StatusIcon } from "./status-icon";
 
 /**
@@ -198,6 +201,8 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
             placeholder="Task title"
           />
         </div>
+
+        <SnoozedStrip task={task} />
 
         {task.aiStatus === "failed" ? <OrganizeFailed task={task} /> : null}
         {task.clarifyingQuestion ? <ClarifyingQuestion task={task} /> : null}
@@ -364,6 +369,7 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
           Updated {formatExactTime(task.updatedAt)}
         </span>
         <div className="flex items-center gap-2">
+          <SnoozeButton task={task} />
           <Button
             variant="ghost"
             size="sm"
@@ -381,6 +387,45 @@ function DetailBody({ task, onClose }: { task: Task; onClose: () => void }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function SnoozedStrip({ task }: { task: Task }) {
+  const snoozeTask = useStore((s) => s.snoozeTask);
+  if (!task.snoozedUntil || !isSnoozed(task)) return null;
+  return (
+    <div className="mt-3 ml-8 flex items-center justify-between gap-3 rounded-[var(--radius-md)] bg-[var(--surface-muted)] px-3 py-1.5 animate-fade-in">
+      <span className="flex items-center gap-1.5 text-[12.5px] text-[var(--fg-muted)]">
+        <AlarmClock size={12} />
+        Snoozed until{" "}
+        <span className="text-[var(--fg)]">{formatSnoozeDate(task.snoozedUntil)}</span>
+      </span>
+      <button
+        type="button"
+        onClick={() => snoozeTask(task.id, null)}
+        className="rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[12px] text-[var(--fg-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]"
+      >
+        Unsnooze
+      </button>
+    </div>
+  );
+}
+
+function SnoozeButton({ task }: { task: Task }) {
+  const [open, setOpen] = React.useState(false);
+  if (task.lifecycle === "done" || task.lifecycle === "dropped") return null;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="sm" aria-label="Snooze task">
+          <AlarmClock size={13} />
+          <span className="hidden sm:inline">Snooze</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" side="top">
+        <SnoozeMenu task={task} onDone={() => setOpen(false)} />
+      </PopoverContent>
+    </Popover>
   );
 }
 

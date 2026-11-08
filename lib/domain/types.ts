@@ -103,6 +103,11 @@ export interface Task {
 
   /** ISO date or null. Day-precision; Sifty doesn't track times in MVP. */
   due: ISODate | null;
+  /**
+   * Local wake day (`YYYY-MM-DD`). Hidden from open views until that day;
+   * independent of lifecycle. See `lib/domain/snooze.ts`.
+   */
+  snoozedUntil: ISODate | null;
 
   delegationCandidate: DelegationCandidate;
   /** User-assigned person; independent of AI delegation recommendation. */

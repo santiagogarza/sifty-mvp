@@ -9,9 +9,11 @@ import * as React from "react";
 export function GlobalKeyboard({
   onCapture,
   onCommand,
+  onShortcuts,
 }: {
   onCapture: () => void;
   onCommand: () => void;
+  onShortcuts: () => void;
 }) {
   React.useEffect(() => {
     const isEditableTarget = (target: EventTarget | null): boolean => {
@@ -39,12 +41,15 @@ export function GlobalKeyboard({
       } else if (e.key === "/") {
         e.preventDefault();
         onCommand();
+      } else if (e.key === "?") {
+        e.preventDefault();
+        onShortcuts();
       }
     };
 
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onCapture, onCommand]);
+  }, [onCapture, onCommand, onShortcuts]);
 
   return null;
 }

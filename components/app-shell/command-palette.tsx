@@ -8,7 +8,17 @@ import { Kbd } from "@/components/ui/kbd";
 import { STATUS_VIEWS } from "@/lib/domain/status";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
-import { ArrowRight, Brain, CreditCard, Search, Settings, Sparkles, Sun } from "lucide-react";
+import {
+  AlarmClock,
+  ArrowRight,
+  Brain,
+  CreditCard,
+  Keyboard,
+  Search,
+  Settings,
+  Sparkles,
+  Sun,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
@@ -25,10 +35,12 @@ export function CommandPalette({
   open,
   onOpenChange,
   onCapture,
+  onShortcuts,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onCapture: () => void;
+  onShortcuts: () => void;
 }) {
   const router = useRouter();
   const openDetail = useOpenDetail();
@@ -66,6 +78,13 @@ export function CommandPalette({
           run: () => router.push(view.href),
         };
       }),
+      {
+        id: "go-snoozed",
+        group: "navigate",
+        label: "Go to Snoozed",
+        icon: <AlarmClock size={14} />,
+        run: () => router.push("/snoozed"),
+      },
       {
         id: "go-memory",
         group: "navigate",
@@ -119,10 +138,18 @@ export function CommandPalette({
         icon: <Sun size={14} />,
         run: () => toggle(),
       },
+      {
+        id: "shortcuts",
+        group: "system",
+        label: "Keyboard shortcuts",
+        hint: "?",
+        icon: <Keyboard size={14} />,
+        run: onShortcuts,
+      },
     ];
 
     return [...taskItems, ...taskMatches, ...nav, ...sys];
-  }, [tasks, router, openDetail, onCapture, toggle]);
+  }, [tasks, router, openDetail, onCapture, onShortcuts, toggle]);
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();

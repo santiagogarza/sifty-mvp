@@ -8,6 +8,7 @@ import * as React from "react";
 import { BottomNav } from "./bottom-nav";
 import { CommandPalette } from "./command-palette";
 import { GlobalKeyboard } from "./keyboard";
+import { ShortcutsDialog } from "./shortcuts-dialog";
 import { Sidebar } from "./sidebar";
 import { ThemeProvider } from "./theme-context";
 
@@ -36,6 +37,7 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
   const search = useSearchParams();
   const [captureOpen, setCaptureOpen] = React.useState(false);
   const [commandOpen, setCommandOpen] = React.useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
 
   // Pulls the server snapshot into the store on mount and reconciles; a
   // no-op when the user isn't authenticated (the hook handles 401s).
@@ -45,6 +47,7 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
 
   const openCapture = React.useCallback(() => setCaptureOpen(true), []);
   const openCommand = React.useCallback(() => setCommandOpen(true), []);
+  const openShortcuts = React.useCallback(() => setShortcutsOpen(true), []);
 
   const openDetail = React.useCallback(
     (id: string) => {
@@ -77,9 +80,15 @@ function AppFrameInner({ children }: { children: React.ReactNode }) {
       </div>
       <BottomNav onCapture={openCapture} />
       <CaptureDialog open={captureOpen} onOpenChange={setCaptureOpen} />
-      <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} onCapture={openCapture} />
+      <CommandPalette
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        onCapture={openCapture}
+        onShortcuts={openShortcuts}
+      />
+      <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       <TaskDetailSheet taskId={detailTaskId} onClose={closeDetail} />
-      <GlobalKeyboard onCapture={openCapture} onCommand={openCommand} />
+      <GlobalKeyboard onCapture={openCapture} onCommand={openCommand} onShortcuts={openShortcuts} />
       {sync.hydrated && sync.error ? (
         <div
           role="status"
