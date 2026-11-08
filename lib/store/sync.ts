@@ -57,24 +57,47 @@ function emptyLedger(): Ledger {
   };
 }
 
+/**
+ * Other builds served from the same origin share this key and may store a
+ * different shape (e.g. `dirty.tasks` as an id-keyed object), so every field
+ * is coerced to an id list rather than trusted.
+ */
+function readIds(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((id): id is string => typeof id === "string");
+  if (value && typeof value === "object") return Object.keys(value);
+  return [];
+}
+
+export function parseLedger(raw: string): Ledger | null {
+  try {
+    const parsed = JSON.parse(raw) as {
+      lastUserId?: unknown;
+      dirty?: Partial<Record<EntityKind, unknown>>;
+      deleted?: { tasks?: unknown; memories?: unknown };
+    } | null;
+    if (!parsed || typeof parsed !== "object") return null;
+    return {
+      lastUserId: typeof parsed.lastUserId === "string" ? parsed.lastUserId : null,
+      dirty: {
+        tasks: readIds(parsed.dirty?.tasks),
+        memories: readIds(parsed.dirty?.memories),
+        labels: readIds(parsed.dirty?.labels),
+      },
+      deleted: {
+        tasks: readIds(parsed.deleted?.tasks),
+        memories: readIds(parsed.deleted?.memories),
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
 function loadLedger(): Ledger | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(LEDGER_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<Ledger>;
-    return {
-      lastUserId: parsed.lastUserId ?? null,
-      dirty: {
-        tasks: parsed.dirty?.tasks ?? [],
-        memories: parsed.dirty?.memories ?? [],
-        labels: parsed.dirty?.labels ?? [],
-      },
-      deleted: {
-        tasks: parsed.deleted?.tasks ?? [],
-        memories: parsed.deleted?.memories ?? [],
-      },
-    };
+    return raw ? parseLedger(raw) : null;
   } catch {
     return null;
   }
