@@ -15,13 +15,17 @@ import {
   redeemInviteCode,
   revokeInviteCode,
 } from "@/lib/invites/service";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getTestRepos } from "../setup";
 
 const DAY = 24 * 60 * 60 * 1000;
 
 beforeEach(() => {
   vi.stubEnv("INVITE_CODE_PEPPER", "test-pepper-with-enough-length-0123");
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 async function makeUser(email: string, isCreator = false) {
@@ -106,9 +110,11 @@ describe("redeemInviteCode", () => {
   });
 
   it("a timed code comps for N months from now", async () => {
+    const now = new Date("2026-10-12T00:00:00.000Z");
+    // makeUser's lapsed trial is dated from the wall clock; keep it before `later`.
+    vi.useFakeTimers({ toFake: ["Date"], now });
     const repos = getTestRepos();
     const user = await makeUser("tim@example.com");
-    const now = new Date("2026-10-12T00:00:00.000Z");
     const { code } = await mintInviteCode(repos, { durationMonths: 3 });
     const result = await redeemInviteCode(repos, { userId: user.id, isCreator: false, code, now });
     expect(result.ok).toBe(true);
