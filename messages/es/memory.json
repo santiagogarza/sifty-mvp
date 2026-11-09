@@ -1,1 +1,17 @@
-{}
+{
+  "title": "Memoria",
+  "eyebrow": "Lo que Sifty recuerda de ti",
+  "heading": "Lo que Sifty supone",
+  "description": "Las notas fijadas se incluyen en el contexto de la IA al clasificar. Todo lo que está aquí se puede editar. Sifty nunca guarda una memoria por su cuenta — tú la escribes, o confirmas lo que notó en Decisiones.",
+  "placeholder": "Una preferencia, un dato o un contexto que Sifty debería recordar…",
+  "add": "Agregar memoria",
+  "empty": "Aún no hay memorias.",
+  "kind": {
+    "preference": "preferencia",
+    "fact": "dato",
+    "context": "contexto"
+  },
+  "pin": "Fijar",
+  "unpin": "Dejar de fijar",
+  "delete": "Eliminar memoria"
+}

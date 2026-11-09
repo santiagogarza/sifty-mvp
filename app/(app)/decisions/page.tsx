@@ -7,7 +7,7 @@ import { DecisionsEmptyState } from "@/components/decisions/decisions-empty-stat
 import { DecisionsInbox } from "@/components/decisions/decisions-inbox";
 import { toast } from "@/components/ui/toast";
 import { useDecisionsStore } from "@/lib/decisions/client";
-import { describeWaiting } from "@/lib/decisions/copy";
+import { useTranslations } from "next-intl";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 
@@ -19,8 +19,9 @@ import * as React from "react";
  * same answer / dismiss contract.
  */
 export default function DecisionsPage() {
+  const t = useTranslations("decisions");
   return (
-    <PageShell title="Decisions">
+    <PageShell title={t("title")}>
       <React.Suspense fallback={null}>
         <DecisionsView />
       </React.Suspense>
@@ -28,19 +29,20 @@ export default function DecisionsPage() {
   );
 }
 
-/** What `/api/decisions/link` says about the tap that brought the user here. */
-const LINK_MESSAGES: Record<string, string> = {
-  answered: "Answered — Sifty is re-sifting with your reply.",
-  dismissed: "Dismissed — Sifty kept its own read.",
-  used: "That question was already answered.",
-  gone: "That question is no longer open.",
-  busy: "Too many taps in a minute — the question is still open below.",
-  expired: "That link expired. Anything still open is listed here.",
-  invalid: "That link is not valid. Anything still open is listed here.",
-  malformed: "That link is not valid. Anything still open is listed here.",
-};
+/** `?link=` outcomes from `/api/decisions/link`, mapped to `decisions.link.*`. */
+const LINK_KEYS = {
+  answered: "answered",
+  dismissed: "dismissed",
+  used: "used",
+  gone: "gone",
+  busy: "busy",
+  expired: "expired",
+  invalid: "invalid",
+  malformed: "invalid",
+} as const;
 
 function DecisionsView() {
+  const t = useTranslations("decisions");
   const { serverReady } = useFrame();
   const router = useRouter();
   const pathname = usePathname();
@@ -60,13 +62,13 @@ function DecisionsView() {
   const link = search.get("link");
   React.useEffect(() => {
     if (!link) return;
-    const message = LINK_MESSAGES[link];
-    if (message) toast(message);
+    const key = Object.hasOwn(LINK_KEYS, link) ? LINK_KEYS[link as keyof typeof LINK_KEYS] : null;
+    if (key) toast(t(`link.${key}`));
     const params = new URLSearchParams(search.toString());
     params.delete("link");
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [link, pathname, router, search]);
+  }, [link, pathname, router, search, t]);
 
   const focusId = search.get("focus");
   const count = decisions.length;
@@ -76,17 +78,21 @@ function DecisionsView() {
   return (
     <>
       <PageHeader
-        eyebrow="Waiting on you"
-        title="Decisions"
+        eyebrow={t("eyebrow")}
+        title={t("title")}
         description={
-          count === 0
-            ? "Questions Sifty could not answer on its own, and things it noticed, in one place."
-            : describeWaiting(questions, proposals)
+          questions && proposals
+            ? t("waiting.both", { questions, proposals })
+            : questions
+              ? t("waiting.questions", { questions })
+              : proposals
+                ? t("waiting.proposals", { proposals })
+                : t("description")
         }
       />
       {error && loaded ? (
         <p role="status" className="mb-3 text-[13px] text-[var(--warn)]">
-          Could not load decisions — {error}
+          {t("loadError", { error })}
         </p>
       ) : null}
       {loaded && serverReady ? (

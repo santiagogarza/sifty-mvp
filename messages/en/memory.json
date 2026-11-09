@@ -1,1 +1,17 @@
-{}
+{
+  "title": "Memory",
+  "eyebrow": "Sifty's memory of you",
+  "heading": "What Sifty assumes",
+  "description": "Pinned notes are included in AI context when triaging. Anything here is editable. Sifty never saves a memory on its own — you write it, or confirm what it noticed in Decisions.",
+  "placeholder": "A preference, a fact, or a piece of context Sifty should remember…",
+  "add": "Add memory",
+  "empty": "No memories yet.",
+  "kind": {
+    "preference": "preference",
+    "fact": "fact",
+    "context": "context"
+  },
+  "pin": "Pin",
+  "unpin": "Unpin",
+  "delete": "Delete memory"
+}

@@ -1,1 +1,56 @@
-{}
+{
+  "title": "Decisiones",
+  "eyebrow": "Pendiente de ti",
+  "description": "Preguntas que Sifty no pudo responder por su cuenta y cosas que notó, en un solo lugar.",
+  "waiting": {
+    "both": "{questions, plural, one {Una pregunta} other {# preguntas}} que Sifty no pudo responder por su cuenta, y {proposals, plural, one {una cosa que Sifty notó sobre ti} other {# cosas que Sifty notó sobre ti}}. Un toque para cada una.",
+    "questions": "{questions, plural, one {Una pregunta} other {# preguntas}} que Sifty no pudo responder por su cuenta. Un toque para cada una, o deja que decida.",
+    "proposals": "{proposals, plural, one {Una cosa que Sifty notó sobre ti. Recuérdala, o no.} other {# cosas que Sifty notó sobre ti. Recuérdalas, o no.}}"
+  },
+  "loadError": "No se pudieron cargar las decisiones — {error}",
+  "link": {
+    "answered": "Respondida — Sifty está volviendo a clasificar con tu respuesta.",
+    "dismissed": "Descartada — Sifty mantuvo su propia interpretación.",
+    "used": "Esa pregunta ya se respondió.",
+    "gone": "Esa pregunta ya no está abierta.",
+    "busy": "Demasiados toques en un minuto — la pregunta sigue abierta abajo.",
+    "expired": "Ese enlace expiró. Todo lo que sigue abierto aparece aquí.",
+    "invalid": "Ese enlace no es válido. Todo lo que sigue abierto aparece aquí."
+  },
+  "inbox": {
+    "listLabel": "Decisiones",
+    "noticedTitle": "Algo que Sifty notó",
+    "untitledTask": "Una tarea",
+    "rememberThis": "¿Recordar esto?",
+    "rationale": "De: “{rationale}”",
+    "remember": "Recordar",
+    "notThis": "Esto no",
+    "fallbackQuestion": "Sifty necesita tu opinión.",
+    "suggestedAnswers": "Respuestas sugeridas",
+    "placeholderOr": "O escribe una respuesta…",
+    "placeholder": "Escribe una respuesta…",
+    "answerLabel": "Tu respuesta",
+    "answer": "Responder",
+    "letSiftyDecide": "Dejar que Sifty decida",
+    "toast": {
+      "remembered": "Recordado — Sifty lo usará a partir de la próxima clasificación.",
+      "resifting": "Respondida — Sifty está volviendo a clasificar “{title}”",
+      "answered": "Respondida",
+      "noted": "Entendido — Sifty no volverá a sugerirlo.",
+      "keptRead": "Sifty mantuvo su propia interpretación de “{title}”. Vuelve a clasificar la tarea cuando quieras."
+    },
+    "keys": {
+      "move": "mover",
+      "answer": "escribir una respuesta",
+      "pick": "elegir una opción",
+      "decide": "dejar que Sifty decida"
+    }
+  },
+  "empty": {
+    "title": "Nada pendiente de ti.",
+    "subtitle": "Sifty solo interrumpe cuando adivinar sería peor que preguntar.",
+    "questions": "<hl>Preguntas aclaratorias</hl> — cuando una clasificación no está segura de lo que quisiste decir, aparece aquí una pregunta corta en lugar de una suposición equivocada.",
+    "memory": "<hl>Sugerencias de memoria</hl> — preferencias que Sifty nota en tus ediciones, para que las conserves o las descartes.",
+    "approvals": "<hl>Aprobaciones</hl> — borradores y acciones que preparó un agente, esperando tu visto bueno."
+  }
+}

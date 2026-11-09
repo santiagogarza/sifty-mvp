@@ -4,9 +4,10 @@ import { DecisionsInbox } from "@/components/decisions/decisions-inbox";
 import { useToastStore } from "@/components/ui/toast";
 import { useDecisionsStore } from "@/lib/decisions/client";
 import type { Decision } from "@/lib/domain/types";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "../helpers/intl";
 
 const openDetail = vi.fn();
 vi.mock("@/components/app-shell/app-frame", () => ({
@@ -53,7 +54,7 @@ afterEach(() => {
 });
 
 function renderInbox(focusId?: string) {
-  return render(
+  return renderWithIntl(
     <DecisionsInbox
       decisions={DECISIONS}
       tasks={TASKS}
@@ -163,7 +164,7 @@ describe("DecisionsInbox", () => {
     };
     answer.mockResolvedValue({ ok: true, mode: "remembered" });
     useDecisionsStore.setState({ decisions: [proposal], tasks: TASKS, count: 1, answer, dismiss });
-    render(
+    renderWithIntl(
       <DecisionsInbox
         decisions={[proposal]}
         tasks={TASKS}
@@ -213,7 +214,7 @@ describe("DecisionsInbox", () => {
       expiresAt: null,
     };
     useDecisionsStore.setState({ decisions: [proposal], tasks: {}, count: 1, answer, dismiss });
-    render(
+    renderWithIntl(
       <DecisionsInbox decisions={[proposal]} tasks={{}} emptyState={<DecisionsEmptyState />} />,
     );
     expect(screen.getByRole("button", { name: /Something Sifty noticed/ })).toBeDisabled();
@@ -221,10 +222,69 @@ describe("DecisionsInbox", () => {
   });
 
   it("shows the empty state that explains what lands here", () => {
-    render(<DecisionsInbox decisions={[]} tasks={{}} emptyState={<DecisionsEmptyState />} />);
+    renderWithIntl(
+      <DecisionsInbox decisions={[]} tasks={{}} emptyState={<DecisionsEmptyState />} />,
+    );
     expect(screen.getByTestId("decisions-empty")).toHaveTextContent("Nothing waiting on you.");
     expect(screen.getByTestId("decisions-empty")).toHaveTextContent("Clarifying questions");
     expect(screen.getByTestId("decisions-empty")).toHaveTextContent("Memory suggestions");
     expect(screen.getByTestId("decisions-empty")).toHaveTextContent("Approvals");
+  });
+
+  it("renders in Spanish: answer field, Let Sifty decide, and a localized time", () => {
+    renderWithIntl(
+      <DecisionsInbox decisions={DECISIONS} tasks={TASKS} emptyState={<DecisionsEmptyState />} />,
+      { locale: "es" },
+    );
+    expect(screen.getByRole("listbox", { name: "Decisiones" })).toBeInTheDocument();
+    expect(screen.getAllByLabelText("Tu respuesta")).toHaveLength(2);
+    expect(screen.getAllByPlaceholderText("O escribe una respuesta…")).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Dejar que Sifty decida" })).toHaveLength(2);
+    expect(screen.getAllByTestId("decision-card")[0]).toHaveTextContent("justo ahora");
+  });
+
+  it("a memory proposal renders its Spanish label but still answers with the wire value", async () => {
+    const proposal: Decision = {
+      id: "dec_mem_es",
+      kind: "memory_proposal",
+      status: "open",
+      taskId: null,
+      payload: {
+        kind: "memory_proposal",
+        text: "Ana = contadora",
+        memoryKind: "fact",
+        rationale: null,
+      },
+      answer: null,
+      resumeToken: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      resolvedAt: null,
+      expiresAt: null,
+    };
+    answer.mockResolvedValue({ ok: true, mode: "remembered" });
+    useDecisionsStore.setState({ decisions: [proposal], tasks: {}, count: 1, answer, dismiss });
+    renderWithIntl(
+      <DecisionsInbox decisions={[proposal]} tasks={{}} emptyState={<DecisionsEmptyState />} />,
+      { locale: "es" },
+    );
+    expect(screen.getByTestId("decision-card")).toHaveTextContent("¿Recordar esto?");
+    expect(screen.getByRole("button", { name: /Algo que Sifty notó/ })).toBeDisabled();
+    const remember = screen.getByTestId("memory-proposal-remember");
+    expect(remember).toHaveTextContent("Recordar");
+    await userEvent.click(remember);
+    expect(answer).toHaveBeenCalledWith("dec_mem_es", { text: null, option: "Remember" });
+    expect(useToastStore.getState().toasts.map((t) => t.message)).toContain(
+      "Recordado — Sifty lo usará a partir de la próxima clasificación.",
+    );
+  });
+
+  it("shows the Spanish empty state", () => {
+    renderWithIntl(
+      <DecisionsInbox decisions={[]} tasks={{}} emptyState={<DecisionsEmptyState />} />,
+      { locale: "es" },
+    );
+    expect(screen.getByTestId("decisions-empty")).toHaveTextContent("Nada pendiente de ti.");
+    expect(screen.getByTestId("decisions-empty")).toHaveTextContent("Preguntas aclaratorias");
   });
 });
