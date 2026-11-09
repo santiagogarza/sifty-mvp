@@ -1,10 +1,10 @@
 "use client";
 
 import { STATUS_ICONS } from "@/components/tasks/status-icon";
-import { STATUS_META } from "@/lib/domain/status";
 import { useTaskCounts } from "@/lib/store/selectors";
 import { cn } from "@/lib/utils/cn";
 import { Plus, Settings, Sun } from "lucide-react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as React from "react";
@@ -18,23 +18,25 @@ import * as React from "react";
 export function BottomNav({ onCapture }: { onCapture: () => void }) {
   const pathname = usePathname();
   const counts = useTaskCounts();
+  const t = useTranslations("shell");
+  const tStatus = useTranslations("common.status");
 
   const items = [
-    { href: "/today", label: "Today", icon: Sun, count: counts.today },
+    { href: "/today", label: t("nav.today"), icon: Sun, count: counts.today },
     {
       href: "/focus",
-      label: STATUS_META.active.label,
+      label: tStatus("active.label"),
       icon: STATUS_ICONS.active,
       count: counts.focus,
     },
     null,
     {
       href: "/inbox",
-      label: STATUS_META.inbox.label,
+      label: t("bottomNav.inbox"),
       icon: STATUS_ICONS.inbox,
       count: counts.inbox,
     },
-    { href: "/settings", label: "Settings", icon: Settings, count: 0 },
+    { href: "/settings", label: t("nav.settings"), icon: Settings, count: 0 },
   ] as const;
 
   return (
@@ -50,7 +52,7 @@ export function BottomNav({ onCapture }: { onCapture: () => void }) {
               <li key="capture" className="flex justify-center -mt-6">
                 <button
                   type="button"
-                  aria-label="Capture task"
+                  aria-label={t("topBar.captureTask")}
                   onClick={onCapture}
                   className="size-12 rounded-full bg-[var(--accent)] text-[var(--accent-fg)]
                   flex items-center justify-center shadow-[0_8px_24px_-6px_oklch(0%_0_0/0.5)]

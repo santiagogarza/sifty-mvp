@@ -1,5 +1,6 @@
 import { withBotId } from "botid/next/config";
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
 import { withWorkflow } from "workflow/next";
 import { assertProductionEnv } from "./lib/env/production-guards";
 
@@ -15,4 +16,7 @@ const nextConfig: NextConfig = {
 // `app/.well-known/workflow/` (see README → "Background jobs"). `withBotId`
 // adds the rewrites that proxy BotID's client script through our origin so
 // ad blockers cannot strip it (which would make every sign-up look like a bot).
-export default withBotId(withWorkflow(nextConfig));
+// `withNextIntl` points next-intl at the per-request locale config.
+const withNextIntl = createNextIntlPlugin("./lib/i18n/request.ts");
+
+export default withBotId(withWorkflow(withNextIntl(nextConfig)));

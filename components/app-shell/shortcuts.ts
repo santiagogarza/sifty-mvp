@@ -2,62 +2,83 @@
  * The keyboard shortcuts that actually exist, as data, so the cheat sheet
  * and the README can never list a binding the app does not implement.
  * `keys` is a sequence of chords; a chord is the keys pressed together.
- * `MOD` renders as ⌘ on Apple platforms and Ctrl elsewhere.
+ * `MOD` renders as ⌘ on Apple platforms and Ctrl elsewhere. Group titles
+ * and descriptions live in the `shell.shortcuts` catalog under each `id`.
  */
 
 export const MOD = "MOD" as const;
 
+export type ShortcutId =
+  | "capture"
+  | "submitCapture"
+  | "closeCapture"
+  | "commandPalette"
+  | "moveDown"
+  | "moveUp"
+  | "openTask"
+  | "closeOverlay"
+  | "snoozeTomorrow"
+  | "snoozeNextWeek"
+  | "selectRange"
+  | "duplicate"
+  | "answerQuestion"
+  | "pickAnswer"
+  | "letSiftyDecide"
+  | "toggleSheet";
+
+export type ShortcutGroupId = "capture" | "navigate" | "tasks" | "decisions" | "help";
+
 export interface Shortcut {
+  id: ShortcutId;
   keys: ReadonlyArray<ReadonlyArray<string>>;
-  description: string;
   /** Alternative chords that do the same thing. */
   also?: ReadonlyArray<ReadonlyArray<string>>;
 }
 
 export interface ShortcutGroup {
-  title: string;
+  id: ShortcutGroupId;
   shortcuts: ReadonlyArray<Shortcut>;
 }
 
 export const SHORTCUT_GROUPS: ReadonlyArray<ShortcutGroup> = [
   {
-    title: "Capture",
+    id: "capture",
     shortcuts: [
-      { keys: [["c"]], description: "Capture a task" },
-      { keys: [[MOD, "↵"]], description: "Submit the capture" },
-      { keys: [["Esc"]], description: "Close capture (your draft is kept)" },
+      { id: "capture", keys: [["c"]] },
+      { id: "submitCapture", keys: [[MOD, "↵"]] },
+      { id: "closeCapture", keys: [["Esc"]] },
     ],
   },
   {
-    title: "Navigate",
+    id: "navigate",
     shortcuts: [
-      { keys: [["/"]], also: [[MOD, "K"]], description: "Command palette" },
-      { keys: [["↓"]], also: [["j"]], description: "Move down the list" },
-      { keys: [["↑"]], also: [["k"]], description: "Move up the list" },
-      { keys: [["↵"]], description: "Open the highlighted task" },
-      { keys: [["Esc"]], description: "Close the open overlay or clear a selection" },
+      { id: "commandPalette", keys: [["/"]], also: [[MOD, "K"]] },
+      { id: "moveDown", keys: [["↓"]], also: [["j"]] },
+      { id: "moveUp", keys: [["↑"]], also: [["k"]] },
+      { id: "openTask", keys: [["↵"]] },
+      { id: "closeOverlay", keys: [["Esc"]] },
     ],
   },
   {
-    title: "Tasks",
+    id: "tasks",
     shortcuts: [
-      { keys: [["s"], ["t"]], description: "Snooze until tomorrow" },
-      { keys: [["s"], ["w"]], description: "Snooze until next week" },
-      { keys: [["Shift", "click"]], description: "Select a range of tasks" },
-      { keys: [["Shift", "D"]], description: "Duplicate the open task" },
+      { id: "snoozeTomorrow", keys: [["s"], ["t"]] },
+      { id: "snoozeNextWeek", keys: [["s"], ["w"]] },
+      { id: "selectRange", keys: [["Shift", "click"]] },
+      { id: "duplicate", keys: [["Shift", "D"]] },
     ],
   },
   {
-    title: "Decisions",
+    id: "decisions",
     shortcuts: [
-      { keys: [["↵"]], description: "Type an answer to the highlighted question" },
-      { keys: [["1"]], also: [["2"], ["3"], ["4"]], description: "Pick a suggested answer" },
-      { keys: [["d"]], description: "Let Sifty decide" },
+      { id: "answerQuestion", keys: [["↵"]] },
+      { id: "pickAnswer", keys: [["1"]], also: [["2"], ["3"], ["4"]] },
+      { id: "letSiftyDecide", keys: [["d"]] },
     ],
   },
   {
-    title: "Help",
-    shortcuts: [{ keys: [["?"]], description: "Show or hide this sheet" }],
+    id: "help",
+    shortcuts: [{ id: "toggleSheet", keys: [["?"]] }],
   },
 ];
 

@@ -577,6 +577,14 @@ pnpm build
 pnpm test:e2e
 ```
 
+## Translations
+
+English and Spanish, picked per browser under Settings → Language (stored
+in the `NEXT_LOCALE` cookie; URLs don't change). Catalogs live in
+`messages/<locale>/<namespace>.json`, one namespace per screen group. See
+[`messages/README.md`](./messages/README.md) for adding keys, testing in
+Spanish, and which namespace each screen uses.
+
 ## Keyboard
 
 Press `?` in the app for the same list.

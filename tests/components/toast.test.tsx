@@ -2,6 +2,7 @@
 import { Toaster, dismissToast, toast, useToastStore } from "@/components/ui/toast";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "../helpers/intl";
 
 /** Toast lifetime: auto-dismiss, manual dismiss, the action, and the cap. */
 
@@ -17,7 +18,7 @@ afterEach(() => {
 
 describe("toast", () => {
   it("auto-dismisses after six seconds", () => {
-    render(<Toaster />);
+    renderWithIntl(<Toaster />);
     act(() => {
       toast("Snoozed until Tue, Oct 13");
     });
@@ -34,7 +35,7 @@ describe("toast", () => {
   });
 
   it("runs the action once and closes; the close button dismisses without running it", () => {
-    render(<Toaster />);
+    renderWithIntl(<Toaster />);
     const run = vi.fn();
     act(() => {
       toast("Moved 3 to Someday", { action: { label: "Undo", run } });
@@ -54,7 +55,7 @@ describe("toast", () => {
   });
 
   it("keeps at most three, dropping the oldest", () => {
-    render(<Toaster />);
+    renderWithIntl(<Toaster />);
     let ids: string[] = [];
     act(() => {
       ids = ["one", "two", "three", "four"].map((m) => toast(m));

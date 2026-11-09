@@ -1,0 +1,77 @@
+{
+  "actions": {
+    "back": "Back",
+    "cancel": "Cancel",
+    "close": "Close",
+    "confirm": "Confirm",
+    "continue": "Continue",
+    "delete": "Delete",
+    "dismiss": "Dismiss",
+    "edit": "Edit",
+    "retry": "Try again",
+    "save": "Save",
+    "undo": "Undo"
+  },
+  "states": {
+    "loading": "Loading…",
+    "saving": "Saving…",
+    "saved": "Saved"
+  },
+  "status": {
+    "inbox": {
+      "label": "Inbox",
+      "description": "New — not yet sorted"
+    },
+    "active": {
+      "label": "Focus",
+      "description": "Committed — working on it"
+    },
+    "waiting": {
+      "label": "Waiting on",
+      "description": "Handed off — the ball is with someone else"
+    },
+    "someday": {
+      "label": "Someday",
+      "description": "Not now, maybe later"
+    },
+    "done": {
+      "label": "Done",
+      "description": "Finished"
+    },
+    "dropped": {
+      "label": "Dropped",
+      "description": "Let go — kept for reference"
+    }
+  },
+  "tiers": {
+    "label": {
+      "creator": "Creator",
+      "comped": "Pro",
+      "pro": "Pro",
+      "trialing": "Pro trial",
+      "free": "Free"
+    },
+    "summary": {
+      "creator": "Creator — unlimited",
+      "comped": "Pro via invite code",
+      "compedUntil": "Pro via invite code — until {date}",
+      "pro": "Sifty Pro — subscription active",
+      "trialing": "Pro trial",
+      "trialingUntil": "Pro trial — ends {date}",
+      "free": "Free — {count, plural, one {# sift} other {# sifts}} a day"
+    }
+  },
+  "dates": {
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "yesterday": "Yesterday",
+    "daysAgo": "{count, plural, one {# day ago} other {# days ago}}",
+    "justNow": "just now",
+    "minutesAgo": "{count}m ago",
+    "hoursAgo": "{count}h ago"
+  },
+  "snooze": {
+    "tomorrow": "Tomorrow",
+    "next_week": "Next week"
+  }
+}

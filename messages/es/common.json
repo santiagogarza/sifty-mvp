@@ -1,0 +1,77 @@
+{
+  "actions": {
+    "back": "Atrás",
+    "cancel": "Cancelar",
+    "close": "Cerrar",
+    "confirm": "Confirmar",
+    "continue": "Continuar",
+    "delete": "Eliminar",
+    "dismiss": "Descartar",
+    "edit": "Editar",
+    "retry": "Intentar de nuevo",
+    "save": "Guardar",
+    "undo": "Deshacer"
+  },
+  "states": {
+    "loading": "Cargando…",
+    "saving": "Guardando…",
+    "saved": "Guardado"
+  },
+  "status": {
+    "inbox": {
+      "label": "Bandeja de entrada",
+      "description": "Nueva — aún sin ordenar"
+    },
+    "active": {
+      "label": "Enfoque",
+      "description": "Comprometida — trabajando en ella"
+    },
+    "waiting": {
+      "label": "En espera",
+      "description": "Delegada — la pelota está en otra cancha"
+    },
+    "someday": {
+      "label": "Algún día",
+      "description": "Ahora no, quizá más adelante"
+    },
+    "done": {
+      "label": "Hecho",
+      "description": "Terminada"
+    },
+    "dropped": {
+      "label": "Descartado",
+      "description": "Soltada — se guarda como referencia"
+    }
+  },
+  "tiers": {
+    "label": {
+      "creator": "Creador",
+      "comped": "Pro",
+      "pro": "Pro",
+      "trialing": "Prueba de Pro",
+      "free": "Gratis"
+    },
+    "summary": {
+      "creator": "Creador — ilimitado",
+      "comped": "Pro con código de invitación",
+      "compedUntil": "Pro con código de invitación — hasta el {date}",
+      "pro": "Sifty Pro — suscripción activa",
+      "trialing": "Prueba de Pro",
+      "trialingUntil": "Prueba de Pro — termina el {date}",
+      "free": "Gratis — {count, plural, one {# clasificación} other {# clasificaciones}} al día"
+    }
+  },
+  "dates": {
+    "today": "Hoy",
+    "tomorrow": "Mañana",
+    "yesterday": "Ayer",
+    "daysAgo": "{count, plural, one {hace # día} other {hace # días}}",
+    "justNow": "justo ahora",
+    "minutesAgo": "hace {count} min",
+    "hoursAgo": "hace {count} h"
+  },
+  "snooze": {
+    "tomorrow": "Mañana",
+    "next_week": "La próxima semana"
+  }
+}

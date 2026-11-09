@@ -1,0 +1,81 @@
+{
+  "nav": {
+    "today": "Today",
+    "decisions": "Decisions",
+    "memory": "Memory",
+    "settings": "Settings",
+    "billing": "Billing",
+    "waitingOnYou": "Waiting on you",
+    "more": "More",
+    "tipLabel": "Tip",
+    "tipTooltip": "Pro tip: press / to open the command palette and c to capture.",
+    "tipBody": "Press <key>c</key> anywhere to capture. Press <key>/</key> to search and navigate."
+  },
+  "bottomNav": {
+    "inbox": "Inbox"
+  },
+  "topBar": {
+    "openCommandPalette": "Open command palette",
+    "searchAndJump": "Search & jump",
+    "capture": "Capture",
+    "captureTask": "Capture task",
+    "decisionsWaiting": "{count, plural, =0 {Decisions} other {Decisions, # waiting}}"
+  },
+  "sync": {
+    "offline": "Can't reach Sifty — changes are saved locally and will sync.",
+    "rejected": "{count, plural, one {One change} other {# changes}} couldn't sync to your account — kept on this device."
+  },
+  "palette": {
+    "title": "Command palette",
+    "description": "Search the app, jump to a task, or run a command.",
+    "placeholder": "Search or run a command…",
+    "empty": "Nothing matches “{query}”.",
+    "groups": {
+      "task": "Tasks",
+      "navigate": "Navigate",
+      "system": "System"
+    },
+    "goTo": "Go to {view}",
+    "captureNew": "Capture new task",
+    "switchToList": "Switch to list view",
+    "switchToBoard": "Switch to board view",
+    "toggleTheme": "Toggle theme",
+    "shortcuts": "Keyboard shortcuts"
+  },
+  "shortcuts": {
+    "title": "Shortcuts",
+    "description": "Work the list without touching the mouse.",
+    "then": "then",
+    "or": "or",
+    "groups": {
+      "capture": "Capture",
+      "navigate": "Navigate",
+      "tasks": "Tasks",
+      "decisions": "Decisions",
+      "help": "Help"
+    },
+    "items": {
+      "capture": "Capture a task",
+      "submitCapture": "Submit the capture",
+      "closeCapture": "Close capture (your draft is kept)",
+      "commandPalette": "Command palette",
+      "moveDown": "Move down the list",
+      "moveUp": "Move up the list",
+      "openTask": "Open the highlighted task",
+      "closeOverlay": "Close the open overlay or clear a selection",
+      "snoozeTomorrow": "Snooze until tomorrow",
+      "snoozeNextWeek": "Snooze until next week",
+      "selectRange": "Select a range of tasks",
+      "duplicate": "Duplicate the open task",
+      "answerQuestion": "Type an answer to the highlighted question",
+      "pickAnswer": "Pick a suggested answer",
+      "letSiftyDecide": "Let Sifty decide",
+      "toggleSheet": "Show or hide this sheet"
+    }
+  },
+  "notFound": {
+    "title": "This corner is empty.",
+    "body": "Maybe the link is old, or the task moved on. Either way, your inbox is over here.",
+    "back": "Back to Today"
+  }
+}

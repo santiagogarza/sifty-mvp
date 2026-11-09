@@ -21,6 +21,7 @@ import {
   Sparkles,
   Sun,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
@@ -50,6 +51,8 @@ export function CommandPalette({
   const tasks = useStore((s) => s.tasks);
   const viewMode = useStore((s) => s.viewMode);
   const setViewMode = useStore((s) => s.setViewMode);
+  const t = useTranslations("shell");
+  const tStatus = useTranslations("common.status");
 
   const [query, setQuery] = React.useState("");
   const [activeIndex, setActiveIndex] = React.useState(0);
@@ -66,7 +69,7 @@ export function CommandPalette({
       {
         id: "go-today",
         group: "navigate",
-        label: "Go to Today",
+        label: t("palette.goTo", { view: t("nav.today") }),
         icon: <Sun size={14} />,
         run: () => router.push("/today"),
       },
@@ -77,7 +80,7 @@ export function CommandPalette({
         return {
           id: `go-${view.status}`,
           group: "navigate",
-          label: `Go to ${view.label}`,
+          label: t("palette.goTo", { view: tStatus(`${view.status}.label`) }),
           icon: <Icon size={14} />,
           run: () => router.push(view.href),
         };
@@ -85,28 +88,28 @@ export function CommandPalette({
       {
         id: "go-decisions",
         group: "navigate",
-        label: "Go to Decisions",
+        label: t("palette.goTo", { view: t("nav.decisions") }),
         icon: <MessageCircleQuestion size={14} />,
         run: () => router.push("/decisions"),
       },
       {
         id: "go-memory",
         group: "navigate",
-        label: "Go to Memory",
+        label: t("palette.goTo", { view: t("nav.memory") }),
         icon: <Brain size={14} />,
         run: () => router.push("/memory"),
       },
       {
         id: "go-settings",
         group: "navigate",
-        label: "Settings",
+        label: t("nav.settings"),
         icon: <Settings size={14} />,
         run: () => router.push("/settings"),
       },
       {
         id: "go-billing",
         group: "navigate",
-        label: "Billing",
+        label: t("nav.billing"),
         icon: <CreditCard size={14} />,
         run: () => router.push("/settings/billing"),
       },
@@ -116,7 +119,7 @@ export function CommandPalette({
       {
         id: "new-task",
         group: "task",
-        label: "Capture new task",
+        label: t("palette.captureNew"),
         hint: "C",
         icon: <Sparkles size={14} className="text-[var(--ai)]" />,
         run: onCapture,
@@ -138,21 +141,21 @@ export function CommandPalette({
       {
         id: "toggle-view",
         group: "system",
-        label: viewMode === "board" ? "Switch to list view" : "Switch to board view",
+        label: viewMode === "board" ? t("palette.switchToList") : t("palette.switchToBoard"),
         icon: viewMode === "board" ? <Rows3 size={14} /> : <Columns3 size={14} />,
         run: () => setViewMode(viewMode === "board" ? "list" : "board"),
       },
       {
         id: "toggle-theme",
         group: "system",
-        label: "Toggle theme",
+        label: t("palette.toggleTheme"),
         icon: <Sun size={14} />,
         run: () => toggle(),
       },
       {
         id: "shortcuts",
         group: "system",
-        label: "Keyboard shortcuts",
+        label: t("palette.shortcuts"),
         hint: "?",
         icon: <Keyboard size={14} />,
         run: onShortcuts,
@@ -160,7 +163,18 @@ export function CommandPalette({
     ];
 
     return [...taskItems, ...taskMatches, ...nav, ...sys];
-  }, [tasks, router, openDetail, onCapture, onShortcuts, toggle, viewMode, setViewMode]);
+  }, [
+    tasks,
+    router,
+    openDetail,
+    onCapture,
+    onShortcuts,
+    toggle,
+    viewMode,
+    setViewMode,
+    t,
+    tStatus,
+  ]);
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -195,16 +209,14 @@ export function CommandPalette({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent placement="top" className="overflow-hidden p-0">
-        <DialogTitle className="sr-only">Command palette</DialogTitle>
-        <DialogDescription className="sr-only">
-          Search the app, jump to a task, or run a command.
-        </DialogDescription>
+        <DialogTitle className="sr-only">{t("palette.title")}</DialogTitle>
+        <DialogDescription className="sr-only">{t("palette.description")}</DialogDescription>
 
         <div className="flex items-center gap-2 border-b border-[var(--border)] px-3.5 py-3">
           <Search size={14} className="text-[var(--fg-subtle)]" />
           <input
             value={query}
-            placeholder="Search or run a command…"
+            placeholder={t("palette.placeholder")}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             className="flex-1 bg-transparent text-[14px] text-[var(--fg)] placeholder:text-[var(--fg-subtle)] focus:outline-none"
@@ -217,7 +229,7 @@ export function CommandPalette({
         <div className="max-h-[55vh] overflow-y-auto p-1.5">
           {filtered.length === 0 ? (
             <div className="px-3 py-10 text-center text-[13px] text-[var(--fg-subtle)]">
-              Nothing matches “{query}”.
+              {t("palette.empty", { query })}
             </div>
           ) : (
             <CommandGroups
@@ -247,21 +259,18 @@ function CommandGroups({
   setActive: (i: number) => void;
   onPick: (item: CommandItem) => void;
 }) {
-  const groups: Array<{ key: CommandItem["group"]; label: string }> = [
-    { key: "task", label: "Tasks" },
-    { key: "navigate", label: "Navigate" },
-    { key: "system", label: "System" },
-  ];
+  const t = useTranslations("shell.palette.groups");
+  const groups: Array<CommandItem["group"]> = ["task", "navigate", "system"];
 
   let i = 0;
   return (
     <div className="flex flex-col gap-2 py-1">
       {groups.map((g) => {
-        const groupItems = items.filter((it) => it.group === g.key);
+        const groupItems = items.filter((it) => it.group === g);
         if (groupItems.length === 0) return null;
         return (
-          <div key={g.key}>
-            <div className="text-eyebrow px-3 pt-1 pb-1.5">{g.label}</div>
+          <div key={g}>
+            <div className="text-eyebrow px-3 pt-1 pb-1.5">{t(g)}</div>
             {groupItems.map((it) => {
               const idx = i++;
               const active = idx === activeIndex;
