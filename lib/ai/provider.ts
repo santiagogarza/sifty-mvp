@@ -34,8 +34,13 @@ export interface ResolvedProvider {
   option: ModelOption;
 }
 
+/**
+ * `SIFTY_MODEL_OVERRIDE` pins every call to one model id regardless of the
+ * browser's saved preference, for keys that can only reach some models
+ * (e.g. a free-tier gateway key).
+ */
 export function resolveProvider(modelId: string | null | undefined): ResolvedProvider {
-  const option = getModel(modelId);
+  const option = getModel(process.env.SIFTY_MODEL_OVERRIDE || modelId);
   const gatewayKey = process.env.AI_GATEWAY_API_KEY;
   if (gatewayKey) {
     const gateway = createGateway({ apiKey: gatewayKey });
