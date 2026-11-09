@@ -119,7 +119,7 @@ function PlanCard({
             <span>
               {f.label}
               {f.rollingOut ? (
-                <span className="ml-2 rounded-full bg-[var(--ai-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--ai)] align-middle">
+                <span className="ml-2 whitespace-nowrap rounded-full bg-[var(--ai-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--ai)] align-middle">
                   {rollingOutLabel}
                 </span>
               ) : null}
