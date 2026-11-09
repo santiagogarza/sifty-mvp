@@ -1,6 +1,7 @@
 "use client";
 
 import { focusScore } from "@/lib/domain/priority";
+import { STATUS_VIEWS } from "@/lib/domain/status";
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import { dayDelta, isOverdue } from "@/lib/utils/dates";
 import { useMemo } from "react";
@@ -14,7 +15,7 @@ import { useStore } from "./store";
  * server-side code if persistence moves there.
  *
  * Every sidebar view except Today maps 1:1 to a status (`Lifecycle`), so
- * the nav, the Status picker, and a future Kanban board all agree on where
+ * the nav, the Status picker, and the board all agree on where
  * a task lives. Today is a smart lens over statuses, defined by
  * `isTodayTask` — the single predicate shared by the Today list and the
  * sidebar count so the two can never disagree.
@@ -117,6 +118,38 @@ export function selectDoneTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
 
 export function selectDroppedTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
   return selectByLifecycle(tasks, "dropped", args);
+}
+
+/**
+ * Board columns, left to right: every status that has a view, in pipeline
+ * order. Dropped has no view, so it has no column either.
+ */
+export const BOARD_STATUSES: readonly Lifecycle[] = STATUS_VIEWS.map((view) => view.status);
+
+export interface BoardColumn {
+  status: Lifecycle;
+  tasks: Task[];
+}
+
+/** A status's tasks in exactly the order its own list view shows them. */
+function selectStatusTasks(tasks: Task[], status: Lifecycle, args: ViewArgs): Task[] {
+  switch (status) {
+    case "inbox":
+      return selectInboxTasks(tasks, args);
+    case "active":
+      return selectFocusTasks(tasks, args);
+    case "done":
+      return selectDoneTasks(tasks, args);
+    default:
+      return selectByLifecycle(tasks, status, args);
+  }
+}
+
+export function selectBoardColumns(tasks: Task[], args: ViewArgs = {}): BoardColumn[] {
+  return BOARD_STATUSES.map((status) => ({
+    status,
+    tasks: selectStatusTasks(tasks, status, args),
+  }));
 }
 
 export interface TaskCounts {
