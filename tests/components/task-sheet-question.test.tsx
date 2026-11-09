@@ -3,9 +3,10 @@ import { TaskDetailSheet } from "@/components/tasks/task-detail-sheet";
 import { useDecisionsStore } from "@/lib/decisions/client";
 import type { Decision, Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "../helpers/intl";
 
 /**
  * The clarifying question on the task sheet. The one path that matters is
@@ -104,7 +105,7 @@ afterEach(() => cleanup());
 
 describe("TaskDetailSheet clarifying question", () => {
   it("answers through the open decision, options included, and never re-sifts", async () => {
-    render(<TaskDetailSheet taskId={task.id} onClose={vi.fn()} />);
+    renderWithIntl(<TaskDetailSheet taskId={task.id} onClose={vi.fn()} />);
     const block = screen.getByTestId("clarifying-question");
     expect(block).toHaveTextContent("What outcome would mark this as done?");
     await userEvent.click(screen.getByRole("button", { name: "Something sent" }));
@@ -117,7 +118,7 @@ describe("TaskDetailSheet clarifying question", () => {
   });
 
   it("'Let Sifty decide' dismisses the decision", async () => {
-    render(<TaskDetailSheet taskId={task.id} onClose={vi.fn()} />);
+    renderWithIntl(<TaskDetailSheet taskId={task.id} onClose={vi.fn()} />);
     await userEvent.click(screen.getByRole("button", { name: "Let Sifty decide" }));
     expect(dismiss).toHaveBeenCalledWith("dec_q");
     expect(resiftTask).not.toHaveBeenCalled();
@@ -125,7 +126,7 @@ describe("TaskDetailSheet clarifying question", () => {
 
   it("stays hidden while the sift is still running, so a reply cannot race the run", () => {
     useStore.setState({ tasks: [{ ...task, aiStatus: "running", siftStage: "subtasks" }] });
-    render(<TaskDetailSheet taskId={task.id} onClose={vi.fn()} />);
+    renderWithIntl(<TaskDetailSheet taskId={task.id} onClose={vi.fn()} />);
     expect(screen.queryByTestId("clarifying-question")).toBeNull();
   });
 
@@ -137,7 +138,7 @@ describe("TaskDetailSheet clarifying question", () => {
         release = r;
       }),
     );
-    render(<TaskDetailSheet taskId={task.id} onClose={vi.fn()} />);
+    renderWithIntl(<TaskDetailSheet taskId={task.id} onClose={vi.fn()} />);
     expect(refresh).toHaveBeenCalledTimes(1);
     const input = screen.getByPlaceholderText("Answer briefly…");
     const reply = screen.getByRole("button", { name: "Reply" });
@@ -159,7 +160,7 @@ describe("TaskDetailSheet clarifying question", () => {
   it("a failed fetch never unlocks the legacy path", async () => {
     useDecisionsStore.setState({ decisions: [], count: 0 });
     refresh.mockResolvedValue({ ok: false });
-    render(<TaskDetailSheet taskId={task.id} onClose={vi.fn()} />);
+    renderWithIntl(<TaskDetailSheet taskId={task.id} onClose={vi.fn()} />);
     await waitFor(() => expect(refresh).toHaveBeenCalled());
     await userEvent.type(screen.getByPlaceholderText("Answer briefly…"), "Something");
     expect(screen.getByRole("button", { name: "Reply" })).toBeDisabled();
@@ -181,7 +182,7 @@ describe("TaskDetailSheet clarifying question", () => {
       decisions: [{ ...decision, id: "dec_other", taskId: other.id }],
       count: 1,
     });
-    const { rerender } = render(<TaskDetailSheet taskId={task.id} onClose={vi.fn()} />);
+    const { rerender } = renderWithIntl(<TaskDetailSheet taskId={task.id} onClose={vi.fn()} />);
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Let Sifty decide" })).toBeEnabled(),
     );
@@ -195,7 +196,7 @@ describe("TaskDetailSheet clarifying question", () => {
 
   it("the legacy fallback for 'Let Sifty decide' just clears the question", async () => {
     useDecisionsStore.setState({ decisions: [], count: 0 });
-    render(<TaskDetailSheet taskId={task.id} onClose={vi.fn()} />);
+    renderWithIntl(<TaskDetailSheet taskId={task.id} onClose={vi.fn()} />);
     const button = screen.getByRole("button", { name: "Let Sifty decide" });
     await waitFor(() => expect(button).toBeEnabled());
     await userEvent.click(button);
@@ -208,10 +209,22 @@ describe("TaskDetailSheet clarifying question", () => {
     useStore.setState({
       tasks: [{ ...task, clarifyingQuestion: null, siftedWithAssumptions: true }],
     });
-    render(<TaskDetailSheet taskId={task.id} onClose={vi.fn()} />);
+    renderWithIntl(<TaskDetailSheet taskId={task.id} onClose={vi.fn()} />);
     const note = screen.getByTestId("sifted-with-assumptions");
     expect(note).toHaveTextContent("Sifted on Sifty's own assumptions");
     await userEvent.click(screen.getByRole("button", { name: "Re-sift" }));
+    expect(resiftTask).toHaveBeenCalledWith(task.id);
+  });
+
+  it("asks and notes assumptions in Spanish", async () => {
+    useStore.setState({
+      tasks: [{ ...task, clarifyingQuestion: null, siftedWithAssumptions: true }],
+    });
+    renderWithIntl(<TaskDetailSheet taskId={task.id} onClose={vi.fn()} />, { locale: "es" });
+    expect(screen.getByTestId("sifted-with-assumptions")).toHaveTextContent(
+      "Sifty la clasificó con sus propias suposiciones",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Vuelve a clasificarla" }));
     expect(resiftTask).toHaveBeenCalledWith(task.id);
   });
 });

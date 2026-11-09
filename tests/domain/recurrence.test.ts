@@ -1,11 +1,10 @@
 import {
   buildNextInstance,
   defaultRecurrence,
-  describeRecurrence,
   hasInstanceEdits,
   nextDueDate,
   recurrenceAfterEdit,
-  recurrenceTitle,
+  recurrenceSummary,
 } from "@/lib/domain/recurrence";
 import type { Recurrence, Task } from "@/lib/domain/types";
 import { describe, expect, it } from "vitest";
@@ -161,23 +160,28 @@ describe("rule helpers", () => {
     expect(defaultRecurrence("daily", "2026-10-16")).toEqual({ freq: "daily", mode: "fixed" });
   });
 
-  it("describes rules in plain words", () => {
-    expect(describeRecurrence({ freq: "daily", mode: "fixed" })).toBe("Daily");
-    expect(describeRecurrence({ freq: "weekdays", mode: "after_completion" })).toBe(
-      "Weekdays · after completion",
-    );
-    expect(describeRecurrence({ freq: "weekly", mode: "fixed", weekdays: [4, 1] })).toBe(
-      "Weekly on Mon, Thu",
-    );
-    expect(describeRecurrence({ freq: "monthly", mode: "fixed", dayOfMonth: 22 })).toBe(
-      "Monthly on the 22nd",
-    );
-    expect(describeRecurrence({ freq: "monthly", mode: "fixed", dayOfMonth: 11 })).toBe(
-      "Monthly on the 11th",
-    );
-    expect(recurrenceTitle({ freq: "weekly", mode: "fixed", weekdays: [5] })).toBe(
-      "Repeats weekly on Fri",
-    );
+  it("summarizes rules for the UI to word", () => {
+    expect(recurrenceSummary({ freq: "daily", mode: "fixed" })).toEqual({
+      kind: "freq",
+      freq: "daily",
+      afterCompletion: false,
+    });
+    expect(recurrenceSummary({ freq: "weekly", mode: "after_completion", weekdays: [1] })).toEqual({
+      kind: "freq",
+      freq: "weekly",
+      afterCompletion: true,
+    });
+    expect(recurrenceSummary({ freq: "weekly", mode: "fixed", weekdays: [4, 1, 4] })).toEqual({
+      kind: "weeklyOn",
+      weekdays: [1, 4],
+    });
+    expect(
+      recurrenceSummary({ freq: "weekly", mode: "fixed", weekdays: [0, 1, 2, 3, 4, 5, 6] }),
+    ).toEqual({ kind: "freq", freq: "weekly", afterCompletion: false });
+    expect(recurrenceSummary({ freq: "monthly", mode: "fixed", dayOfMonth: 22 })).toEqual({
+      kind: "monthlyOn",
+      dayOfMonth: 22,
+    });
   });
 });
 

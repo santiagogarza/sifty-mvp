@@ -21,15 +21,6 @@ import {
  * in the browser and on a UTC server, and DST never shifts a day.
  */
 
-const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-export const RECURRENCE_FREQ_LABELS: Record<RecurrenceFreq, string> = {
-  daily: "Daily",
-  weekdays: "Weekdays",
-  weekly: "Weekly",
-  monthly: "Monthly",
-};
-
 /** A sensible rule for `freq`, anchored on the task's due day (or today). */
 export function defaultRecurrence(freq: RecurrenceFreq, anchorIso: string): Recurrence {
   const anchor = parseIsoDay(anchorIso);
@@ -43,25 +34,27 @@ export function defaultRecurrence(freq: RecurrenceFreq, anchorIso: string): Recu
   }
 }
 
-/** "Weekly on Mon, Thu", "Monthly on the 15th", "Daily · after completion". */
-export function describeRecurrence(rule: Recurrence): string {
-  let base: string = RECURRENCE_FREQ_LABELS[rule.freq];
+/**
+ * What a rule's description says, as data for the UI to word ("Weekly on
+ * Mon, Thu", "Monthly on the 15th", "Daily · after completion").
+ */
+export type RecurrenceSummary =
+  | { kind: "freq"; freq: RecurrenceFreq; afterCompletion: boolean }
+  | { kind: "weeklyOn"; weekdays: number[] }
+  | { kind: "monthlyOn"; dayOfMonth: number };
+
+export function recurrenceSummary(rule: Recurrence): RecurrenceSummary {
   // Chosen days only steer a fixed schedule; after completion the period counts.
-  if (rule.mode === "after_completion") return `${base} · after completion`;
+  if (rule.mode === "after_completion") {
+    return { kind: "freq", freq: rule.freq, afterCompletion: true };
+  }
   if (rule.freq === "weekly") {
     const days = sortedWeekdays(rule.weekdays);
-    if (days.length > 0 && days.length < 7) {
-      base = `Weekly on ${days.map((d) => WEEKDAY_SHORT[d]).join(", ")}`;
-    }
+    if (days.length > 0 && days.length < 7) return { kind: "weeklyOn", weekdays: days };
   } else if (rule.freq === "monthly" && rule.dayOfMonth) {
-    base = `Monthly on the ${ordinal(rule.dayOfMonth)}`;
+    return { kind: "monthlyOn", dayOfMonth: rule.dayOfMonth };
   }
-  return base;
-}
-
-/** Short form for list rows: "Repeats weekly on Mon, Thu". */
-export function recurrenceTitle(rule: Recurrence): string {
-  return `Repeats ${describeRecurrence(rule).replace(/^./, (c) => c.toLowerCase())}`;
+  return { kind: "freq", freq: rule.freq, afterCompletion: false };
 }
 
 /**
@@ -276,19 +269,4 @@ function sortedWeekdays(days: number[] | undefined): number[] {
   return Array.from(new Set(days ?? []))
     .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6)
     .sort((a, b) => a - b);
-}
-
-function ordinal(n: number): string {
-  const mod100 = n % 100;
-  if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
-  switch (n % 10) {
-    case 1:
-      return `${n}st`;
-    case 2:
-      return `${n}nd`;
-    case 3:
-      return `${n}rd`;
-    default:
-      return `${n}th`;
-  }
 }

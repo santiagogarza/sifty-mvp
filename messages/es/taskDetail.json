@@ -1,1 +1,171 @@
-{}
+{
+  "capture": {
+    "title": "Captura",
+    "description": "Escribe la tarea como la dirías. Sifty la organiza.",
+    "placeholder": "¿Qué necesitas hacer?",
+    "dueChip": "Vence el {day}",
+    "removeDue": "Quitar fecha límite",
+    "removeDueHint": "Dejar la fecha en el texto",
+    "dueSource": "según “{phrase}”",
+    "context": "Contexto",
+    "contextPlaceholder": "Lo que Sifty deba saber — enlaces, fechas límite, quién participa.",
+    "addContext": "Agregar contexto",
+    "hideContext": "Ocultar contexto",
+    "discard": "Descartar",
+    "submitHint": "para capturar",
+    "submit": "Capturar"
+  },
+  "sheet": {
+    "fallbackTitle": "Detalles de la tarea",
+    "reorganize": "Reorganizar con Sifty",
+    "markDone": "Marcar como terminada",
+    "markNotDone": "Marcar como no terminada",
+    "titlePlaceholder": "Título de la tarea",
+    "nextAction": "Siguiente paso",
+    "nextActionPlaceholder": "¿Cuál es el siguiente paso concreto?",
+    "unset": "Sin definir",
+    "fields": {
+      "due": "Vence",
+      "effort": "Esfuerzo",
+      "delegate": "Delegar",
+      "status": "Estado",
+      "priority": "Prioridad",
+      "labels": "Etiquetas",
+      "subtasks": "Subtareas",
+      "urgency": "Urgencia",
+      "importance": "Importancia"
+    },
+    "rationale": "Razonamiento de la IA",
+    "noRationale": "Todavía no hay razonamiento registrado.",
+    "confidence": "Confianza",
+    "originalCapture": "Captura original",
+    "contextDivider": "— Contexto —",
+    "updated": "Actualizada el {time}",
+    "duplicate": "Duplicar",
+    "duplicateTask": "Duplicar tarea",
+    "duplicateHint": "Duplicar tarea (Shift+D)",
+    "deleteTask": "Eliminar tarea",
+    "deleteConfirm": "¿Eliminar esta tarea?"
+  },
+  "organizeFailed": {
+    "message": "Sifty no pudo organizar esta tarea.",
+    "seePlans": "Ver planes",
+    "retry": "Reintentar"
+  },
+  "filing": {
+    "moveTo": "Mover a",
+    "movedTo": "Movida a <hl>{status}</hl>"
+  },
+  "agentBrief": {
+    "title": "Instrucciones para agente",
+    "preparing": "Preparando…",
+    "regenerate": "Regenerar",
+    "prepare": "Preparar para un agente",
+    "failed": "No se pudieron generar las instrucciones.",
+    "ready": "Instrucciones de traspaso — listas para copiar",
+    "copy": "Copiar instrucciones",
+    "copied": "Copiadas"
+  },
+  "question": {
+    "eyebrow": "Sifty pregunta",
+    "placeholderWithOptions": "O responde con tus propias palabras…",
+    "placeholder": "Responde brevemente…",
+    "reply": "Responder",
+    "letSiftyDecide": "Dejar que Sifty decida",
+    "assumptions": "Sifty la clasificó con sus propias suposiciones — omitiste su pregunta. <resift>Vuelve a clasificarla</resift> si se equivocó en algo."
+  },
+  "due": {
+    "inThreeDays": "En 3 días",
+    "clear": "Quitar fecha"
+  },
+  "effort": {
+    "label": {
+      "quick": "Rápido",
+      "small": "Corto",
+      "medium": "Medio",
+      "deep": "Profundo"
+    },
+    "hint": {
+      "quick": "<10 min",
+      "small": "<30 min",
+      "medium": "1–3 h",
+      "deep": "Varias sesiones"
+    }
+  },
+  "delegation": {
+    "label": {
+      "self": "Yo",
+      "ai": "Agente de IA",
+      "person": "Persona",
+      "unsure": "Sin decidir"
+    },
+    "namePlaceholder": "Escribe un nombre",
+    "nameLabel": "Nombre de la persona",
+    "clearName": "Quitar nombre"
+  },
+  "labels": {
+    "remove": "Quitar {name}",
+    "namePlaceholder": "Nombre de la etiqueta",
+    "add": "Agregar etiqueta",
+    "new": "Nueva etiqueta"
+  },
+  "subtasks": {
+    "markComplete": "Marcar como terminada",
+    "markIncomplete": "Marcar como pendiente",
+    "remove": "Quitar subtarea",
+    "addPlaceholder": "Agregar una subtarea"
+  },
+  "priority": {
+    "aria": "Prioridad: {label}",
+    "scores": "Urgencia {urgency} · Importancia {importance}",
+    "label": {
+      "do_now": "Urgente + importante",
+      "schedule": "Importante",
+      "delegate": "Urgente",
+      "drop": "Prioridad baja",
+      "unset": "Sin prioridad"
+    },
+    "hint": {
+      "do_now": "Urgente e importante — te toca a ti, hoy.",
+      "schedule": "Importante pero no urgente — conviene agendarla antes de que se vuelva urgente.",
+      "delegate": "Urgente pero no importante — hazla rápido, delégala o cuestiónala.",
+      "drop": "Ni urgente ni importante por ahora.",
+      "unset": "Sifty todavía no le asigna prioridad."
+    }
+  },
+  "recurrence": {
+    "freq": {
+      "daily": "Diario",
+      "weekdays": "Entre semana",
+      "weekly": "Semanal",
+      "monthly": "Mensual"
+    },
+    "describe": {
+      "daily": "{form, select, title {Se repite cada día} other {Diario}}",
+      "weekdays": "{form, select, title {Se repite entre semana} other {Entre semana}}",
+      "weekly": "{form, select, title {Se repite cada semana} other {Semanal}}",
+      "monthly": "{form, select, title {Se repite cada mes} other {Mensual}}",
+      "weeklyOn": "{form, select, title {Se repite cada semana: {days}} other {Semanal: {days}}}",
+      "monthlyOn": "{form, select, title {Se repite cada mes, el día {day}} other {Mensual, el día {day}}}",
+      "afterCompletion": "{base} · al completarse"
+    },
+    "none": "No se repite",
+    "editingInstance": "Editando solo esta repetición",
+    "hasInstanceEdits": "Con cambios solo en esta repetición",
+    "on": "Los días",
+    "daysOfWeek": "Días de la semana",
+    "onDay": "El día",
+    "dayOfMonth": "Día del mes",
+    "shorterMonths": "En los meses más cortos se usa su último día.",
+    "schedule": "Programación",
+    "fixed": "Calendario fijo",
+    "fixedHint": "La siguiente respeta el calendario, sin importar si terminas esta antes o después.",
+    "afterCompletion": "Al completarse",
+    "afterCompletionHint": "La siguiente vence un periodo después del día en que terminas esta.",
+    "editsApplyTo": "Los cambios aplican a",
+    "allFuture": "Todas las futuras",
+    "thisInstance": "Solo esta",
+    "instanceScopeHint": "Los cambios al título, siguiente paso, prioridad, etiquetas y subtareas se quedan en esta; la siguiente repetición conserva los valores de la serie.",
+    "seriesScopeHint": "Los cambios a esta tarea se aplican a todas las repeticiones futuras."
+  }
+}

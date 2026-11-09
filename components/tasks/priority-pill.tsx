@@ -6,16 +6,19 @@ import {
   TooltipRoot,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { bucketTone, priorityPillHint, priorityPillLabel } from "@/lib/domain/priority";
+import { bucketTone } from "@/lib/domain/priority";
 import type { PriorityBucket } from "@/lib/domain/types";
 import { cn } from "@/lib/utils/cn";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 
 /**
  * Priority as a labeled pill (decision D11, replacing the 2×2 dot glyph
  * that SIF-14 found unreadable). Color and text carry the same meaning,
  * so neither has to be learned; the tooltip spells out the two axes and
- * the scores behind them.
+ * the scores behind them. The two axes are named plainly: the Eisenhower
+ * verbs ("Do now", "Delegate") read as actions and collided with the
+ * statuses, and a bare "Both"/"Neither" needs the matrix to decode.
  *
  * `compact` is the list/board form: a colored dot everywhere, the label
  * from the `sm` breakpoint up so phone rows keep their title width. An
@@ -34,13 +37,17 @@ export function PriorityPill({
   compact?: boolean;
   className?: string;
 }) {
+  const t = useTranslations("taskDetail.priority");
   if (compact && bucket === "unset") return null;
 
   const tone = bucketTone(bucket);
-  const label = priorityPillLabel(bucket);
+  const label = t(`label.${bucket}`);
   const scores =
     urgency !== undefined && importance !== undefined
-      ? `Urgency ${Math.round(urgency * 100)} · Importance ${Math.round(importance * 100)}`
+      ? t("scores", {
+          urgency: Math.round(urgency * 100),
+          importance: Math.round(importance * 100),
+        })
       : null;
 
   return (
@@ -50,7 +57,7 @@ export function PriorityPill({
           <span
             data-testid="priority-pill"
             data-bucket={bucket}
-            aria-label={`Priority: ${label}`}
+            aria-label={t("aria", { label })}
             className={cn(
               "inline-flex shrink-0 items-center gap-1.5 rounded-full border text-[11px] font-medium leading-[18px]",
               compact ? "px-1.5 sm:pl-1.5 sm:pr-2" : "pl-1.5 pr-2",
@@ -79,7 +86,7 @@ export function PriorityPill({
         <TooltipContent side="bottom" align="start" className="max-w-[40ch] px-2.5 py-2">
           <div className="font-medium">{label}</div>
           <p className="mt-0.5 font-normal leading-[1.45] opacity-85 whitespace-normal">
-            {priorityPillHint(bucket)}
+            {t(`hint.${bucket}`)}
           </p>
           {scores ? <p className="mt-1 text-num opacity-70">{scores}</p> : null}
         </TooltipContent>

@@ -1,4 +1,4 @@
-import { describeDay, parseNaturalDate, stripMatch } from "@/lib/domain/nl-date";
+import { parseNaturalDate, stripMatch } from "@/lib/domain/nl-date";
 import { afterEach, describe, expect, it } from "vitest";
 
 /**
@@ -294,11 +294,6 @@ describe("parseNaturalDate: match selection and stripping", () => {
     expect(strip("Tomorrow 3pm - call Ana")).toBe("call Ana");
     // Nothing but the date: keep the text rather than produce an empty title.
     expect(strip("tomorrow")).toBe("tomorrow");
-  });
-
-  it("describes the day like the snooze toast", () => {
-    expect(describeDay("2026-10-16")).toMatch(/Fri/);
-    expect(describeDay("2026-10-16")).toMatch(/16/);
   });
 });
 

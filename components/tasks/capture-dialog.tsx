@@ -7,10 +7,12 @@ import { Textarea } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import { watchSift } from "@/lib/ai/run-triage";
 import { TASK_LIMITS } from "@/lib/domain/limits";
-import { describeDay, parseNaturalDate, stripMatch } from "@/lib/domain/nl-date";
+import { parseNaturalDate, stripMatch } from "@/lib/domain/nl-date";
 import { useStore } from "@/lib/store/store";
 import { ArrowUpRight, CalendarDays, Sparkles, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import * as React from "react";
+import { useShortDay } from "./task-copy";
 
 /**
  * Capture dialog.
@@ -42,6 +44,8 @@ export function CaptureDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  const t = useTranslations("taskDetail.capture");
+  const shortDay = useShortDay();
   const { openDetail } = useFrame();
   const createTask = useStore((s) => s.createTask);
   const [text, setText] = React.useState("");
@@ -126,17 +130,17 @@ export function CaptureDialog({
         <div className="flex items-center justify-between px-5 pt-4 pb-2">
           <div className="flex items-center gap-2">
             <Sparkles size={14} className="text-[var(--ai)]" />
-            <DialogTitle>Capture</DialogTitle>
+            <DialogTitle>{t("title")}</DialogTitle>
           </div>
           <DialogDescription className="hidden sm:block text-[12px]">
-            Type the task as you'd say it. Sifty organizes it.
+            {t("description")}
           </DialogDescription>
         </div>
 
         <div className="px-5 pb-2">
           <Textarea
             ref={textRef}
-            placeholder="What do you need to do?"
+            placeholder={t("placeholder")}
             value={text}
             maxLength={TASK_LIMITS.sourceText}
             onChange={(e) => onTextChange(e.target.value)}
@@ -157,7 +161,7 @@ export function CaptureDialog({
               >
                 <CalendarDays size={12} className="text-[var(--fg-muted)]" />
                 <span>
-                  Due {describeDay(dueChip.due)}
+                  {t("dueChip", { day: shortDay(dueChip.due) })}
                   {dueChip.time ? (
                     <span className="text-[var(--fg-muted)]"> · {dueChip.time}</span>
                   ) : null}
@@ -168,21 +172,23 @@ export function CaptureDialog({
                     setDismissed({ phrase: dueChip.text.toLowerCase(), due: dueChip.due });
                     textRef.current?.focus();
                   }}
-                  aria-label="Remove due date"
-                  title="Keep the date in the text instead"
+                  aria-label={t("removeDue")}
+                  title={t("removeDueHint")}
                   className="flex size-5 items-center justify-center rounded-full text-[var(--fg-subtle)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]"
                 >
                   <X size={11} />
                 </button>
               </span>
-              <span className="text-[11.5px] text-[var(--fg-subtle)]">from “{dueChip.text}”</span>
+              <span className="text-[11.5px] text-[var(--fg-subtle)]">
+                {t("dueSource", { phrase: dueChip.text })}
+              </span>
             </div>
           ) : null}
           {showContext ? (
             <div className="mt-2">
-              <div className="text-eyebrow mb-1.5">Context</div>
+              <div className="text-eyebrow mb-1.5">{t("context")}</div>
               <Textarea
-                placeholder="Anything Sifty should know — links, deadlines, who's involved."
+                placeholder={t("contextPlaceholder")}
                 value={context}
                 maxLength={TASK_LIMITS.sourceContext}
                 onChange={(e) => setContext(e.target.value)}
@@ -200,7 +206,7 @@ export function CaptureDialog({
             className="text-[12.5px] text-[var(--fg-muted)] hover:text-[var(--fg)] transition-colors flex items-center gap-1.5"
           >
             <ArrowUpRight size={12} />
-            {showContext ? "Hide context" : "Add context"}
+            {showContext ? t("hideContext") : t("addContext")}
           </button>
           <div className="flex items-center gap-3">
             {hasDraft ? (
@@ -212,16 +218,16 @@ export function CaptureDialog({
                 }}
                 className="text-[12.5px] text-[var(--fg-subtle)] hover:text-[var(--fg)] transition-colors"
               >
-                Discard
+                {t("discard")}
               </button>
             ) : null}
             <span className="hidden sm:flex items-center gap-1.5 text-[11.5px] text-[var(--fg-subtle)]">
               <Kbd>⌘</Kbd>
               <Kbd>↵</Kbd>
-              <span className="ml-1">to capture</span>
+              <span className="ml-1">{t("submitHint")}</span>
             </span>
             <Button variant="primary" onClick={submit} disabled={!text.trim()}>
-              Capture
+              {t("submit")}
             </Button>
           </div>
         </div>

@@ -1,8 +1,8 @@
-import { recurrenceTitle } from "@/lib/domain/recurrence";
 import type { Recurrence } from "@/lib/domain/types";
 import { cn } from "@/lib/utils/cn";
 import { Repeat } from "lucide-react";
 import * as React from "react";
+import { useRecurrenceCopy } from "./task-copy";
 
 /** Quiet "this one comes back" mark for list rows and board cards. */
 export function RepeatGlyph({
@@ -14,7 +14,7 @@ export function RepeatGlyph({
   className?: string;
   size?: number;
 }) {
-  const title = recurrenceTitle(rule);
+  const title = useRecurrenceCopy().title(rule);
   return (
     <span
       data-testid="repeat-glyph"
