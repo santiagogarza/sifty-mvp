@@ -1,4 +1,5 @@
 import { generateObject } from "ai";
+import { DEMO_TRIAGE_MIN_MS, demoLiveAi } from "./demo-live";
 import { DEFAULT_MODEL_ID, type ModelOption, estimateCostCents, getModel } from "./models";
 import { TRIAGE_SYSTEM_PROMPT, buildTriageUserPrompt } from "./prompts";
 import { MissingAiKeyError, resolveProvider } from "./provider";
@@ -51,6 +52,17 @@ export interface TriageResult {
 
 const HEURISTIC_MODEL = "sifty.local.heuristic";
 
+/**
+ * Optional floor on live triage latency, from `SIFTY_TRIAGE_MIN_MS` (capped
+ * at 30s). Demo environments set it so a person can edit a task while it is
+ * still organizing; unset means no floor.
+ */
+function minTriageMs(): number {
+  const ms = Number(process.env.SIFTY_TRIAGE_MIN_MS);
+  if (Number.isFinite(ms) && ms > 0) return Math.min(ms, 30_000);
+  return demoLiveAi() ? DEMO_TRIAGE_MIN_MS : 0;
+}
+
 export async function triageTask(input: TriageInput): Promise<TriageResult> {
   const start = Date.now();
 
@@ -100,6 +112,9 @@ async function runOnline(
     prompt: userPrompt,
     temperature: 0.2,
   });
+
+  const remainingMs = minTriageMs() - (Date.now() - start);
+  if (remainingMs > 0) await new Promise((r) => setTimeout(r, remainingMs));
 
   const inputTokens = result.usage?.inputTokens ?? null;
   const outputTokens = result.usage?.outputTokens ?? null;

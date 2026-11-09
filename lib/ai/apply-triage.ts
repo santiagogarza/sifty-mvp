@@ -7,10 +7,11 @@ import type { TriageOutput } from "./triage-schema";
 /**
  * Durable, server-side application of a triage result.
  *
- * The triage route calls this after the model responds so the result
- * survives even if the client disconnects mid-run. Labels suggested by the
- * model are ensured server-side (idempotent by name) and the merge honors
- * the task's stored `editedFields` via the shared merge helper.
+ * The triage route loads the task before calling the model (ownership /
+ * presence check) and passes that snapshot here so we don't re-query after
+ * the model returns. Labels suggested by the model are ensured server-side
+ * (idempotent by name) and the merge honors the task's stored `editedFields`
+ * via the shared merge helper.
  *
  * Returns null when the task isn't on the server (e.g. its create push
  * hasn't landed) — the client falls back to a local apply and the sync
@@ -28,12 +29,9 @@ export interface AppliedTriage {
 export async function applyTriageToTask(
   repos: Repos,
   userId: string,
-  taskId: string,
+  task: Task,
   output: TriageOutput,
 ): Promise<AppliedTriage | null> {
-  const task = await repos.tasks.get(userId, taskId);
-  if (!task) return null;
-
   const existingLabels = await repos.labels.list(userId);
   const ensured: Label[] = [];
   let labelCount = existingLabels.length;
@@ -75,7 +73,7 @@ export async function applyTriageToTask(
     clarifyingQuestion: output.clarifyingQuestion,
   });
 
-  const updated = await repos.tasks.update(userId, taskId, {
+  const updated = await repos.tasks.update(userId, task.id, {
     title: merged.title,
     description: merged.description,
     nextAction: merged.nextAction,
