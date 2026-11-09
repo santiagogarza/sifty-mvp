@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { PaymentFailedBanner } from "@/components/billing/payment-failed-banner";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { createElement } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "../helpers/intl";
 
 describe("PaymentFailedBanner", () => {
   it("names the grace deadline and links to billing", () => {
-    render(
+    renderWithIntl(
       createElement(PaymentFailedBanner, {
         problem: { kind: "grace", graceEndsAt: "2026-10-19T12:00:00.000Z" },
       }),
@@ -25,7 +26,7 @@ describe("PaymentFailedBanner", () => {
     // 19th. Node re-reads TZ at runtime, so this holds even on a UTC runner.
     vi.stubEnv("TZ", "America/Los_Angeles");
     expect(new Date("2026-10-19T03:00:00.000Z").getDate()).toBe(18);
-    render(
+    renderWithIntl(
       createElement(PaymentFailedBanner, {
         problem: { kind: "grace", graceEndsAt: "2026-10-19T03:00:00.000Z" },
       }),
@@ -34,7 +35,20 @@ describe("PaymentFailedBanner", () => {
   });
 
   it("says Pro is paused once the grace period lapsed", () => {
-    render(createElement(PaymentFailedBanner, { problem: { kind: "lapsed" } }));
+    renderWithIntl(createElement(PaymentFailedBanner, { problem: { kind: "lapsed" } }));
     expect(screen.getByRole("alert")).toHaveTextContent(/Pro is paused/);
+  });
+
+  it("speaks Spanish, with the deadline in Spanish", () => {
+    renderWithIntl(
+      createElement(PaymentFailedBanner, {
+        problem: { kind: "grace", graceEndsAt: "2026-10-19T12:00:00.000Z" },
+      }),
+      { locale: "es" },
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /antes del 19 de octubre para conservar Pro/,
+    );
+    expect(screen.getByRole("link", { name: "Actualizar método de pago" })).toBeInTheDocument();
   });
 });

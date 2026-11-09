@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Check } from "lucide-react";
+import { useFormatter, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
@@ -10,7 +11,23 @@ interface RedeemResponse {
   ok?: true;
   tier?: string;
   compedUntil?: string | null;
-  error?: string;
+  code?: string;
+}
+
+const ERROR_CODES = [
+  "malformed",
+  "unknown",
+  "revoked",
+  "expired",
+  "exhausted",
+  "already_redeemed",
+  "rate_limited",
+  "bot_detected",
+] as const;
+type ErrorCode = (typeof ERROR_CODES)[number];
+
+function isErrorCode(code: string | undefined): code is ErrorCode {
+  return ERROR_CODES.includes(code as ErrorCode);
 }
 
 /**
@@ -28,6 +45,8 @@ export function RedeemInviteForm({
   autoSubmit?: boolean;
   onRedeemed?: (result: { tier: string; compedUntil: string | null }) => void;
 }) {
+  const t = useTranslations("account.redeem");
+  const format = useFormatter();
   const router = useRouter();
   const [code, setCode] = React.useState(initialCode);
   const [pending, setPending] = React.useState(false);
@@ -39,7 +58,7 @@ export function RedeemInviteForm({
     async (value: string) => {
       const trimmed = value.trim();
       if (!trimmed) {
-        setError("Enter an invite code.");
+        setError(t("errors.empty"));
         return;
       }
       setPending(true);
@@ -52,20 +71,30 @@ export function RedeemInviteForm({
         });
         const data = (await res.json().catch(() => ({}))) as RedeemResponse;
         if (!res.ok || !data.ok) {
-          setError(data.error ?? "Could not redeem that code.");
+          setError(
+            isErrorCode(data.code)
+              ? t(`errors.${data.code}`)
+              : res.status === 401
+                ? t("errors.notSignedIn")
+                : res.status === 400
+                  ? t("errors.empty")
+                  : res.status === 503
+                    ? t("errors.unavailable")
+                    : t("errors.generic"),
+          );
           return;
         }
         const result = { tier: data.tier ?? "comped", compedUntil: data.compedUntil ?? null };
         setDone(result);
         onRedeemed?.(result);
         router.refresh();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Network error");
+      } catch {
+        setError(t("errors.network"));
       } finally {
         setPending(false);
       }
     },
-    [onRedeemed, router],
+    [onRedeemed, router, t],
   );
 
   React.useEffect(() => {
@@ -84,10 +113,17 @@ export function RedeemInviteForm({
         <Check size={14} className="mt-0.5 shrink-0 text-[var(--accent)]" />
         <span>
           {done.tier === "creator"
-            ? "Code accepted. The creator account is already unlimited."
+            ? t("form.creator")
             : done.compedUntil
-              ? `You're on Pro until ${new Date(done.compedUntil).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}. Unlimited sifting, no card needed.`
-              : "You're on Pro. Unlimited sifting, no card needed."}
+              ? t("form.proUntil", {
+                  date: format.dateTime(new Date(done.compedUntil), {
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                    timeZone: "UTC",
+                  }),
+                })
+              : t("form.pro")}
         </span>
       </div>
     );
@@ -103,7 +139,7 @@ export function RedeemInviteForm({
       }}
     >
       <label htmlFor="invite-code" className="text-[13px] text-[var(--fg-muted)]">
-        Invite code
+        {t("form.label")}
       </label>
       <div className="flex gap-2">
         <Input
@@ -118,7 +154,7 @@ export function RedeemInviteForm({
           disabled={pending}
         />
         <Button type="submit" variant="primary" disabled={pending}>
-          {pending ? "Redeeming…" : "Redeem"}
+          {pending ? t("form.submitting") : t("form.submit")}
         </Button>
       </div>
       {error ? (

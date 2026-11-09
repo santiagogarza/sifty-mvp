@@ -1,1 +1,199 @@
-{}
+{
+  "notifications": {
+    "title": "Notificaciones",
+    "description": "Un plan matutino, un aviso de lo que vence y una revisión semanal — por correo, como notificación o ambos. Nada más.",
+    "loading": "Cargando la configuración de notificaciones…",
+    "loadFailed": "No se pudo cargar la configuración de notificaciones.",
+    "notices": {
+      "unsubscribed": "Los correos de resumen están desactivados. Los correos de cuenta y seguridad siguen llegando.",
+      "unsubscribeInvalid": "Ese enlace para darte de baja no es válido. Usa el interruptor de abajo.",
+      "confirmZone": "Los recordatorios están desactivados hasta que confirmes tu zona horaria ({zone}). Revisa la configuración de abajo y luego actívalos.",
+      "turnOn": "Activar recordatorios"
+    },
+    "channels": {
+      "title": "Canales",
+      "description": "Adónde llegan los resúmenes. Desactiva ambos para pausar todo.",
+      "email": "Correo",
+      "emailSwitch": "Resúmenes por correo",
+      "push": "Notificaciones en este dispositivo",
+      "pushUnavailable": "Notificaciones",
+      "pushUnavailableDetail": "Aún no están configuradas en este servidor (faltan las claves VAPID). El correo sigue funcionando.",
+      "sendTest": "Enviar una prueba",
+      "turnOff": "Desactivar",
+      "turnOn": "Activar",
+      "asking": "Solicitando…",
+      "iosHint": "En iPhone y iPad, las notificaciones solo llegan a apps instaladas: toca <hl>Compartir</hl> → <hl>Agregar a inicio</hl>, abre Sifty desde ahí y activa las notificaciones en esta pantalla (iOS 16.4 o posterior)."
+    },
+    "pushDetail": {
+      "iosNotInstalled": "Primero agrega Sifty a tu pantalla de inicio — consulta abajo.",
+      "insecure": "Requiere https.",
+      "unsupported": "Este navegador no puede recibir notificaciones push.",
+      "onThisAndOthers": "Activadas en este dispositivo y {count, plural, one {# más} other {# más}}.",
+      "onThis": "Activadas en este dispositivo.",
+      "offHereOnOthers": "Desactivadas aquí; activadas en {count, plural, one {# dispositivo más} other {# dispositivos más}}.",
+      "pitch": "Recordatorios como notificaciones del sistema, incluso con Sifty cerrado."
+    },
+    "pushMessages": {
+      "sent": "Enviada a {count, plural, one {# dispositivo} other {# dispositivos}}.",
+      "noneAccepted": "Ningún dispositivo aceptó la prueba — vuelve a activar las notificaciones en este dispositivo.",
+      "testFailed": "No se pudo enviar la prueba.",
+      "noSubscriptions": "Esta cuenta no tiene dispositivos con notificaciones push.",
+      "notConfigured": "Las notificaciones push no están configuradas en este servidor.",
+      "tooManyDevices": "Demasiados dispositivos. Desactiva las notificaciones en uno que ya no uses.",
+      "registerFailed": "No se pudo registrar este dispositivo.",
+      "enableFailed": "No se pudieron activar las notificaciones.",
+      "permissionDenied": "Las notificaciones están bloqueadas para este sitio. Permítelas en la configuración del navegador."
+    },
+    "schedule": {
+      "title": "Horario",
+      "description": "Las horas están en tu zona horaria. Los resúmenes solo se envían cuando hay algo que decir.",
+      "timeZone": "Zona horaria",
+      "useZone": "Usar {zone}",
+      "morningPlan": "Plan matutino",
+      "morningPlanHint": "Hoy, Enfoque y todo lo que vence o está vencido.",
+      "morningPlanTime": "Hora del plan matutino",
+      "dueReminder": "Recordatorio de vencimiento",
+      "dueReminderHint": "Un aviso por la tarde de lo que aún vence hoy o está vencido.",
+      "dueRemindersSwitch": "Recordatorios de vencimiento",
+      "dueReminderTime": "Hora del recordatorio de vencimiento",
+      "weeklyReview": "Revisión semanal",
+      "weeklyReviewHint": "Lo que se hizo, lo que se atrasó y lo que trae la semana. Se envía a la hora del plan matutino.",
+      "weeklyReviewDay": "Día de la revisión semanal",
+      "quietHours": "Horas de silencio",
+      "quietHoursHint": "Todo lo programado dentro de este horario espera a que termine.",
+      "quietHoursStart": "Inicio de las horas de silencio",
+      "quietHoursEnd": "Fin de las horas de silencio",
+      "quietHoursRange": "De <start></start> a <end></end>",
+      "saveFailed": "No se pudo guardar.",
+      "autosave": "Los cambios se guardan automáticamente.",
+      "reset": "Restablecer valores predeterminados"
+    },
+    "recent": {
+      "title": "Recientes",
+      "description": "Los últimos resúmenes que te envió Sifty.",
+      "kind": {
+        "morning_plan": "Plan matutino",
+        "due_reminder": "Recordatorio de vencimiento",
+        "weekly_review": "Revisión semanal"
+      },
+      "channel": {
+        "email": "correo",
+        "push": "push"
+      },
+      "status": {
+        "pending": "pendiente",
+        "sent": "enviado",
+        "skipped": "omitido",
+        "failed": "no enviado"
+      }
+    }
+  },
+  "billing": {
+    "title": "Facturación",
+    "description": "Gratis incluye captura, organización y sincronización. Pro es clasificación ilimitada.",
+    "trialEndsToday": "Tu prueba de Pro termina hoy.",
+    "trialDaysLeft": "{count, plural, one {Queda # día} other {Quedan # días}} de tu prueba de Pro.",
+    "creatorNote": "Acceso ilimitado permanente — Stripe nunca cobra a esta cuenta.",
+    "subscription": "Suscripción",
+    "upgradeMonthly": "Pasar a Pro — Mensual",
+    "upgradeYearly": "Pasar a Pro — Anual",
+    "manage": "Administrar suscripción",
+    "inviteTitle": "Código de invitación",
+    "inviteComped": "¿Tienes otro código? Canjearlo extiende tu acceso a Pro.",
+    "inviteDefault": "¿Te invitó Santi? Canjea tu código aquí para tener Pro sin tarjeta.",
+    "usage": {
+      "unlimited": "{count, plural, one {# clasificación} other {# clasificaciones}} hoy.",
+      "freeExhausted": "Ya usaste las {cap} clasificaciones gratis de hoy. Capturar sigue funcionando; la clasificación se reanuda mañana.",
+      "freeLeft": "Te quedan {left} de {cap} clasificaciones gratis hoy.",
+      "fairUse": "{count, plural, one {# clasificación} other {# clasificaciones}} hoy. Clasificación ilimitada, con un límite de uso razonable de {cap} al día."
+    },
+    "upgrade": {
+      "pro": "Clasificación ilimitada, presupuesto de ejecución autónoma y conectores. Pausa o cancela cuando quieras desde el portal.",
+      "compedUntil": "Tu invitación cubre Pro por ahora. Agrega una suscripción para conservar Pro cuando termine, o espera hasta entonces.",
+      "compedForever": "Tu invitación cubre Pro de forma permanente. No necesitas tarjeta.",
+      "trialing": "Estás en la prueba de Pro: clasificación ilimitada. Suscríbete para conservarla después de la prueba, o pasa a Gratis y sigue capturando con unas pocas clasificaciones al día. Los códigos promocionales funcionan al pagar.",
+      "free": "Gratis incluye captura, organización, sincronización, recordatorios y {count} clasificaciones al día. Pro quita el límite de clasificaciones y agrega ejecución autónoma y conectores. Los códigos promocionales funcionan al pagar."
+    },
+    "errors": {
+      "checkoutFailed": "No se pudo iniciar el pago.",
+      "checkoutUnavailable": "El pago no está disponible en este momento.",
+      "alreadySubscribed": "Ya tienes una suscripción activa. Adminístrala desde el portal de facturación.",
+      "portalFailed": "No se pudo abrir el portal de facturación.",
+      "noCustomer": "Esta cuenta no tiene cliente en Stripe. Primero inicia un pago.",
+      "rateLimited": "Demasiados intentos. Intenta de nuevo en un minuto."
+    }
+  },
+  "paymentBanner": {
+    "grace": "El último pago de Sifty Pro no se pudo procesar. Actualiza tu método de pago antes del {date} para conservar Pro.",
+    "lapsed": "El pago de Sifty Pro sigue sin procesarse, así que Pro está en pausa. Actualiza tu método de pago para reactivarlo.",
+    "update": "Actualizar método de pago"
+  },
+  "redeem": {
+    "shellTitle": "Canjear",
+    "title": "Canjear una invitación",
+    "description": "Los códigos de invitación desbloquean Sifty Pro — clasificación ilimitada — sin tarjeta.",
+    "later": "También puedes canjearlo después desde <link>Configuración → Facturación</link>.",
+    "form": {
+      "label": "Código de invitación",
+      "submit": "Canjear",
+      "submitting": "Canjeando…",
+      "creator": "Código aceptado. La cuenta de creador ya es ilimitada.",
+      "proUntil": "Tienes Pro hasta el {date}. Clasificación ilimitada, sin tarjeta.",
+      "pro": "Tienes Pro. Clasificación ilimitada, sin tarjeta."
+    },
+    "errors": {
+      "empty": "Escribe un código de invitación.",
+      "malformed": "Eso no parece un código de invitación de Sifty. Los códigos empiezan con sifty- y tienen 20 caracteres.",
+      "unknown": "No reconocemos ese código de invitación. Revisa que esté bien escrito.",
+      "revoked": "Ese código de invitación fue revocado.",
+      "expired": "Ese código de invitación ya venció.",
+      "exhausted": "Ese código de invitación ya se usó el máximo de veces.",
+      "already_redeemed": "Ya canjeaste este código.",
+      "rate_limited": "Demasiados intentos. Intenta de nuevo en un minuto.",
+      "bot_detected": "Aquí no se permiten solicitudes automatizadas.",
+      "notSignedIn": "Tu sesión terminó. Inicia sesión de nuevo para canjear.",
+      "unavailable": "Los códigos de invitación no están disponibles en este momento.",
+      "generic": "No se pudo canjear ese código.",
+      "network": "No se pudo conectar con Sifty. Revisa tu conexión e intenta de nuevo."
+    }
+  },
+  "admin": {
+    "eyebrow": "Administración",
+    "title": "Costos de IA",
+    "description": "Cada ejecución de IA de todas las cuentas en los últimos {days} días, con precios del registro de modelos. Solo para el creador.",
+    "sections": {
+      "byDay": "Por día",
+      "byStage": "Por etapa",
+      "byModel": "Por modelo",
+      "byAccount": "Por cuenta",
+      "workflow": "Entorno de workflows"
+    },
+    "columns": {
+      "day": "Día",
+      "stage": "Etapa",
+      "model": "Modelo",
+      "account": "Cuenta",
+      "runs": "Ejecuciones",
+      "failed": "Fallidas",
+      "in": "Entrada",
+      "out": "Salida",
+      "cost": "Costo"
+    },
+    "totals": {
+      "spend": "Gasto",
+      "runs": "Ejecuciones",
+      "failed": "Fallidas",
+      "tokensIn": "Tokens de entrada",
+      "tokensOut": "Tokens de salida"
+    },
+    "empty": "No hay ejecuciones en este periodo.",
+    "ping": {
+      "intro": "Inicia un workflow de un paso y espera hasta 20 segundos a que termine. Si la ejecución se completa, Vercel Workflow está habilitado en este despliegue.",
+      "run": "Probar workflow",
+      "running": "Ejecutando…",
+      "notStarted": "no iniciado",
+      "unknown": "desconocido",
+      "requestFailed": "la solicitud no se completó"
+    }
+  }
+}
