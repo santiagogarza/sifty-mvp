@@ -345,7 +345,7 @@ function DetailBody({
           </MetaCell>
           <MetaCell
             label={t("sheet.fields.status")}
-            value={tStatus(`${task.lifecycle}.label`)}
+            value={tStatus(`${task.lifecycle}.short`)}
             icon={<StatusIcon status={task.lifecycle} size={12} />}
           >
             <StatusPicker task={task} />
