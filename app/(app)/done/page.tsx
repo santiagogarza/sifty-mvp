@@ -7,6 +7,7 @@ import { TaskView } from "@/components/tasks/task-view";
 import { statusLabel } from "@/lib/domain/status";
 import { selectDoneTasks, selectDroppedTasks } from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
+import { useViewMode } from "@/lib/store/view-mode";
 import { cn } from "@/lib/utils/cn";
 import { ChevronRight } from "lucide-react";
 import * as React from "react";
@@ -29,16 +30,17 @@ export default function DonePage() {
 /**
  * Dropped tasks live behind a disclosure at the end of Done — kept for
  * reference, never given a nav item of their own. Renders nothing when
- * there is nothing dropped.
+ * there is nothing dropped, or on the board, which has no Dropped column.
  */
 function DroppedSection() {
   const { openDetail } = useFrame();
   const tasks = useStore((s) => s.tasks);
   const hydrated = useStore((s) => s.hydrated);
+  const [viewMode] = useViewMode();
   const [expanded, setExpanded] = React.useState(false);
 
   const dropped = React.useMemo(() => selectDroppedTasks(tasks), [tasks]);
-  if (!hydrated || dropped.length === 0) return null;
+  if (!hydrated || viewMode === "board" || dropped.length === 0) return null;
 
   return (
     <section className="mt-8 mb-10 pt-4 border-t border-[var(--border)]">
