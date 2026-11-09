@@ -2,6 +2,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGateway } from "@ai-sdk/gateway";
 import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
+import { DEMO_MODEL_ID, demoLiveAi } from "./demo-live";
 import { type ModelOption, getModel } from "./models";
 
 /**
@@ -40,7 +41,9 @@ export interface ResolvedProvider {
  * (e.g. a free-tier gateway key).
  */
 export function resolveProvider(modelId: string | null | undefined): ResolvedProvider {
-  const option = getModel(process.env.SIFTY_MODEL_OVERRIDE || modelId);
+  const option = getModel(
+    process.env.SIFTY_MODEL_OVERRIDE || (demoLiveAi() ? DEMO_MODEL_ID : modelId),
+  );
   const gatewayKey = process.env.AI_GATEWAY_API_KEY;
   if (gatewayKey) {
     const gateway = createGateway({ apiKey: gatewayKey });

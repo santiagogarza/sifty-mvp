@@ -1,4 +1,5 @@
 import { generateObject } from "ai";
+import { DEMO_TRIAGE_MIN_MS, demoLiveAi } from "./demo-live";
 import { DEFAULT_MODEL_ID, type ModelOption, estimateCostCents, getModel } from "./models";
 import { TRIAGE_SYSTEM_PROMPT, buildTriageUserPrompt } from "./prompts";
 import { MissingAiKeyError, resolveProvider } from "./provider";
@@ -58,7 +59,8 @@ const HEURISTIC_MODEL = "sifty.local.heuristic";
  */
 function minTriageMs(): number {
   const ms = Number(process.env.SIFTY_TRIAGE_MIN_MS);
-  return Number.isFinite(ms) && ms > 0 ? Math.min(ms, 30_000) : 0;
+  if (Number.isFinite(ms) && ms > 0) return Math.min(ms, 30_000);
+  return demoLiveAi() ? DEMO_TRIAGE_MIN_MS : 0;
 }
 
 export async function triageTask(input: TriageInput): Promise<TriageResult> {

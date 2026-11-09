@@ -4,6 +4,7 @@ import { buildRateLimitKey, consumeToken, rateLimitResponseInit } from "@/lib/ra
 import { TRIAGE_POLICY, clientIdFromRequest } from "@/lib/ratelimit/policies";
 import { NextResponse } from "next/server";
 import { countAiRunsSince, countAiRunsToday } from "./ai-runs";
+import { demoLiveAi } from "./demo-live";
 
 /**
  * Shared admission control for AI routes (triage, agent brief).
@@ -86,5 +87,7 @@ export async function gateAiRequest(args: {
 /** AI routes honor the explicit query flag or the keyless-dev environment flag. */
 export function resolveOfflineMode(req: Request): boolean {
   const url = new URL(req.url);
-  return url.searchParams.get("offline") === "1" || process.env.SIFTY_AI_OFFLINE === "1";
+  if (url.searchParams.get("offline") === "1") return true;
+  if (demoLiveAi()) return false;
+  return process.env.SIFTY_AI_OFFLINE === "1";
 }
