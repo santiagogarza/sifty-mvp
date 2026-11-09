@@ -4,44 +4,47 @@ import { PageShell } from "@/components/app-shell/page-shell";
 import { DailyPlanCard } from "@/components/tasks/daily-plan-card";
 import { TaskView } from "@/components/tasks/task-view";
 import { selectTodayTasks } from "@/lib/store/selectors";
+import { useFormatter, useTranslations } from "next-intl";
 import * as React from "react";
 
-function getTimeGreeting(now: Date): string {
-  const hour = now.getHours();
-  if (hour < 5) return "Late one";
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  if (hour < 21) return "Good evening";
-  return "Late one";
-}
+type Greeting = "late" | "morning" | "afternoon" | "evening";
 
-function getDateLine(now: Date): string {
-  return now.toLocaleDateString(undefined, {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
+function getTimeGreeting(now: Date): Greeting {
+  const hour = now.getHours();
+  if (hour < 5) return "late";
+  if (hour < 12) return "morning";
+  if (hour < 17) return "afternoon";
+  if (hour < 21) return "evening";
+  return "late";
 }
 
 export default function TodayPage() {
-  const [greeting, setGreeting] = React.useState<string | null>(null);
-  const [dateLine, setDateLine] = React.useState<string | null>(null);
+  const t = useTranslations("tasks");
+  const format = useFormatter();
+  const [now, setNow] = React.useState<Date | null>(null);
 
   React.useEffect(() => {
-    const now = new Date();
-    setGreeting(getTimeGreeting(now));
-    setDateLine(getDateLine(now));
+    setNow(new Date());
   }, []);
 
+  const dateLine = now
+    ? format.dateTime(now, {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      })
+    : undefined;
+
   return (
-    <PageShell title="Today" subtitle={dateLine ?? undefined}>
+    <PageShell title={t("views.today.pageTitle")} subtitle={dateLine}>
       <TaskView
-        eyebrow={greeting ?? undefined}
-        title="What matters today"
-        description="Overdue, due today, and anything Sifty believes belongs in your top of mind."
+        eyebrow={now ? t(`greeting.${getTimeGreeting(now)}`) : undefined}
+        title={t("views.today.title")}
+        description={t("views.today.description")}
         selector={selectTodayTasks}
-        emptyTitle="Nothing pressing today."
-        emptyDescription="When something needs your attention, it'll show up here. Until then, enjoy the quiet."
+        emptyTitle={t("views.today.emptyTitle")}
+        emptyDescription={t("views.today.emptyDescription")}
         aboveList={<DailyPlanCard />}
       />
     </PageShell>

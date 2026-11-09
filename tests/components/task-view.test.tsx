@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { TaskView } from "@/components/tasks/task-view";
 import { useStore } from "@/lib/store/store";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "../helpers/intl";
 
 /**
  * A new account must never flash "Inbox zero" before its starter tasks
@@ -35,7 +36,9 @@ afterEach(() => {
 });
 
 function renderInbox() {
-  return render(<TaskView title="Inbox" selector={(tasks) => tasks} emptyTitle="Inbox zero." />);
+  return renderWithIntl(
+    <TaskView title="Inbox" selector={(tasks) => tasks} emptyTitle="Inbox zero." />,
+  );
 }
 
 describe("TaskView first load", () => {
@@ -90,5 +93,18 @@ describe("TaskView first load", () => {
     });
     renderInbox();
     expect(screen.getByText("Cached task")).toBeInTheDocument();
+  });
+});
+
+describe("TaskView board mode", () => {
+  it("swaps the header to the Spanish board title and empty state", () => {
+    serverReady = true;
+    useStore.setState({ viewMode: "board" });
+    renderWithIntl(<TaskView title="Bandeja" selector={(tasks) => tasks} emptyTitle="—" />, {
+      locale: "es",
+    });
+    expect(screen.getByRole("heading", { name: "Tablero" })).toBeInTheDocument();
+    expect(screen.getByText("Aún no hay nada en el tablero.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Capturar una tarea" })).toBeInTheDocument();
   });
 });

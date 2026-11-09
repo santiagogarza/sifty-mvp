@@ -2,9 +2,10 @@
 import { TaskRow } from "@/components/tasks/task-row";
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "../helpers/intl";
 
 /**
  * Guards the list-row complete circle (SIF-18). `master` deliberately ships
@@ -59,9 +60,21 @@ function renderRow(task: Task, uncompleteTo?: Lifecycle) {
   const updateTask = vi.fn();
   useStore.setState({ updateTask: updateTask as typeof originalUpdateTask });
   const onOpen = vi.fn();
-  render(<TaskRow task={task} onOpen={onOpen} labels={[]} uncompleteTo={uncompleteTo} />);
+  renderWithIntl(<TaskRow task={task} onOpen={onOpen} labels={[]} uncompleteTo={uncompleteTo} />);
   return { updateTask, onOpen };
 }
+
+describe("TaskRow in Spanish", () => {
+  it("labels the complete circle and the due date in Spanish", () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const due = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
+    const task = makeTask({ id: "task_es", lifecycle: "active", due });
+    renderWithIntl(<TaskRow task={task} onOpen={vi.fn()} labels={[]} />, { locale: "es" });
+    expect(screen.getByRole("button", { name: "Marcar como terminada" })).toBeInTheDocument();
+    expect(screen.getByText("Mañana")).toBeInTheDocument();
+  });
+});
 
 describe("TaskRow complete circle", () => {
   it("marks an active task done without opening the sheet", async () => {
@@ -95,12 +108,12 @@ describe("TaskRow complete circle", () => {
 
   it("shows the compact Unsure pill only for low-confidence sifted tasks (SIF-11)", () => {
     const low = makeTask({ id: "task_low", lifecycle: "inbox", confidence: 0.38 });
-    const { unmount } = render(<TaskRow task={low} onOpen={vi.fn()} labels={[]} />);
+    const { unmount } = renderWithIntl(<TaskRow task={low} onOpen={vi.fn()} labels={[]} />);
     expect(screen.getByTestId("confidence-pill")).toHaveTextContent("Unsure");
     unmount();
 
     const high = makeTask({ id: "task_high", lifecycle: "inbox", confidence: 0.9 });
-    render(<TaskRow task={high} onOpen={vi.fn()} labels={[]} />);
+    renderWithIntl(<TaskRow task={high} onOpen={vi.fn()} labels={[]} />);
     expect(screen.queryByTestId("confidence-pill")).toBeNull();
   });
 
@@ -112,14 +125,14 @@ describe("TaskRow complete circle", () => {
       recurrence: { freq: "weekly", mode: "fixed", weekdays: [1, 4] },
       seriesId: "task_rep",
     });
-    render(<TaskRow task={task} onOpen={vi.fn()} labels={[]} />);
+    renderWithIntl(<TaskRow task={task} onOpen={vi.fn()} labels={[]} />);
     expect(screen.getByTestId("priority-pill")).toHaveTextContent("Important");
     expect(screen.getByRole("img", { name: "Repeats weekly on Mon, Thu" })).toBeInTheDocument();
   });
 
   it("renders no pill or repeat mark for an unranked one-off", () => {
     const task = makeTask({ id: "task_plain", lifecycle: "inbox" });
-    render(<TaskRow task={task} onOpen={vi.fn()} labels={[]} />);
+    renderWithIntl(<TaskRow task={task} onOpen={vi.fn()} labels={[]} />);
     expect(screen.queryByTestId("priority-pill")).toBeNull();
     expect(screen.queryByTestId("repeat-glyph")).toBeNull();
   });

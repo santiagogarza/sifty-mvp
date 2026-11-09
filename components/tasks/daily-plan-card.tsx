@@ -3,11 +3,12 @@
 import { useFrame } from "@/components/app-shell/app-frame";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
-import { type PublicDailyPlan, describeMove } from "@/lib/ai/plan/public";
+import type { PublicDailyPlan } from "@/lib/ai/plan/public";
+import { useDateCopy } from "@/lib/i18n/use-date-copy";
 import { useStore } from "@/lib/store/store";
 import { syncFromServer } from "@/lib/store/sync";
-import { formatExactTime } from "@/lib/utils/dates";
 import { CalendarCheck, Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 
 /**
@@ -37,6 +38,8 @@ async function fetchPlan(): Promise<PlanState | null> {
 }
 
 export function DailyPlanCard() {
+  const t = useTranslations("tasks.plan");
+  const { exactTime } = useDateCopy();
   const { openDetail } = useFrame();
   const tasks = useStore((s) => s.tasks);
   const modelPreference = useStore((s) => s.modelPreference);
@@ -97,6 +100,7 @@ export function DailyPlanCard() {
       const body = (await res.json().catch(() => ({}))) as {
         plan?: PublicDailyPlan;
         error?: string;
+        code?: string;
       };
       if (res.status === 202 || res.status === 409) {
         setState((s) => ({
@@ -105,10 +109,16 @@ export function DailyPlanCard() {
           canReplan: s?.canReplan ?? true,
         }));
       } else {
-        toast(body.error ?? "Planning could not start — try again.");
+        toast(
+          body.code === "pro_feature"
+            ? t("errors.proFeature")
+            : body.code === "fair_use_cap"
+              ? t("errors.fairUseCap")
+              : (body.error ?? t("errors.couldNotStart")),
+        );
       }
     } catch {
-      toast("Can't reach Sifty — try again in a moment.");
+      toast(t("errors.offline"));
     } finally {
       setRequesting(false);
     }
@@ -132,19 +142,19 @@ export function DailyPlanCard() {
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-[var(--ai)]">
             <CalendarCheck size={13} />
-            <span className="text-eyebrow !text-[var(--ai)]">Daily plan</span>
+            <span className="text-eyebrow !text-[var(--ai)]">{t("eyebrow")}</span>
           </div>
           <h2
             id="daily-plan-title"
             className="mt-1.5 text-[15px] font-medium leading-[1.45] tracking-[-0.01em] text-[var(--fg)]"
           >
             {running
-              ? "Sifty is planning your day…"
+              ? t("running")
               : plan?.status === "running"
-                ? "The last plan did not finish. Re-plan to try again."
+                ? t("stale")
                 : plan?.status === "failed"
-                  ? (plan.error ?? "Planning failed — try again.")
-                  : (plan?.summary ?? "Sifty can re-rank Today against everything on your list.")}
+                  ? (plan.error ?? t("failed"))
+                  : (plan?.summary ?? t("idle"))}
           </h2>
         </div>
         {canReplan ? (
@@ -157,7 +167,7 @@ export function DailyPlanCard() {
             className="shrink-0"
           >
             {running || requesting ? <Loader2 size={13} className="animate-spin" /> : null}
-            {running ? "Planning…" : "Re-plan today"}
+            {running ? t("planning") : t("replan")}
           </Button>
         ) : null}
       </div>
@@ -165,7 +175,9 @@ export function DailyPlanCard() {
       {!running && visibleMoves.length > 0 ? (
         <ul className="mt-3 space-y-1.5" data-testid="daily-plan-moves">
           {visibleMoves.map((m) => {
-            const message = describeMove(m.kind, m.reason);
+            const message = m.reason
+              ? t("move.withReason", { move: t(`move.${m.kind}`), reason: m.reason })
+              : t(`move.${m.kind}`);
             const inWorkspace = taskIds.has(m.taskId);
             return (
               <li key={m.taskId} className="text-[13px] leading-[1.5]">
@@ -188,7 +200,7 @@ export function DailyPlanCard() {
                 onClick={() => setShowAll(true)}
                 className="text-[12.5px] text-[var(--fg-muted)] hover:text-[var(--fg)]"
               >
-                and {moves.length - MOVES_SHOWN} more
+                {t("more", { count: moves.length - MOVES_SHOWN })}
               </button>
             </li>
           ) : null}
@@ -198,14 +210,12 @@ export function DailyPlanCard() {
       {plan && !running && plan.status !== "running" ? (
         <p className="mt-3 text-[12px] text-[var(--fg-subtle)]">
           {plan.status === "completed"
-            ? `Planned ${formatExactTime(plan.finishedAt ?? plan.createdAt)} · ${
-                moves.length === 0
-                  ? "nothing moved"
-                  : moves.length === 1
-                    ? "1 move"
-                    : `${moves.length} moves`
-              } · ${plan.considered} open ${plan.considered === 1 ? "task" : "tasks"} considered`
-            : `Attempted ${formatExactTime(plan.finishedAt ?? plan.createdAt)}`}
+            ? t("planned", {
+                time: exactTime(plan.finishedAt ?? plan.createdAt),
+                moves: moves.length,
+                considered: plan.considered,
+              })
+            : t("attempted", { time: exactTime(plan.finishedAt ?? plan.createdAt) })}
         </p>
       ) : null}
     </section>

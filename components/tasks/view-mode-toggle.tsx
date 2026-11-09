@@ -3,6 +3,7 @@
 import { type TaskViewMode, useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import { Columns3, Rows3 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 
 /**
@@ -10,26 +11,27 @@ import * as React from "react";
  * Icon-only on purpose — it's a preference, not a call to action.
  */
 export function ViewModeToggle() {
+  const t = useTranslations("tasks.viewMode");
   const viewMode = useStore((s) => s.viewMode);
   const setViewMode = useStore((s) => s.setViewMode);
 
   return (
     <div
       role="group"
-      aria-label="View mode"
+      aria-label={t("group")}
       className="inline-flex items-center gap-0.5 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-0.5"
     >
       <ModeButton
         mode="list"
         current={viewMode}
-        label="List view"
+        label={t("list")}
         onSelect={setViewMode}
         icon={<Rows3 size={13} />}
       />
       <ModeButton
         mode="board"
         current={viewMode}
-        label="Board view"
+        label={t("board")}
         onSelect={setViewMode}
         icon={<Columns3 size={13} />}
       />

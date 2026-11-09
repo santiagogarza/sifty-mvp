@@ -1,12 +1,12 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { statusLabel } from "@/lib/domain/status";
 import type { Label, Task } from "@/lib/domain/types";
+import { useDateCopy } from "@/lib/i18n/use-date-copy";
 import { type BoardColumn, type BoardLifecycle, selectBoardColumns } from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
-import { formatRelativeDay, isOverdue, isToday } from "@/lib/utils/dates";
+import { isOverdue, isToday } from "@/lib/utils/dates";
 import {
   type CollisionDetection,
   DndContext,
@@ -22,6 +22,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 import { AiStatusInline } from "./ai-status";
 import { ConfidencePill, confidenceBand } from "./confidence-pill";
@@ -152,7 +153,10 @@ function BoardColumnView({
   onOpen: (id: string) => void;
   dragging: boolean;
 }) {
+  const t = useTranslations("tasks.board");
+  const status = useTranslations("common.status");
   const { setNodeRef, isOver } = useDroppable({ id: column.lifecycle });
+  const name = status(`${column.lifecycle}.short`);
   const isDone = column.lifecycle === "done";
   const visible = isDone ? column.tasks.slice(0, DONE_VISIBLE_LIMIT) : column.tasks;
   const hidden = column.tasks.length - visible.length;
@@ -160,7 +164,7 @@ function BoardColumnView({
   return (
     <section
       ref={setNodeRef}
-      aria-label={`${statusLabel(column.lifecycle)} column`}
+      aria-label={t("column", { status: name })}
       className={cn(
         "flex w-[248px] min-w-[248px] flex-1 snap-start flex-col self-start",
         "rounded-[var(--radius-lg)] border p-1.5",
@@ -172,9 +176,7 @@ function BoardColumnView({
     >
       <header className="flex items-center gap-2 px-2 pt-1.5 pb-2">
         <span className={cn("size-[6px] rounded-full", COLUMN_DOTS[column.lifecycle])} />
-        <span className="text-[12.5px] font-medium text-[var(--fg-muted)]">
-          {statusLabel(column.lifecycle)}
-        </span>
+        <span className="text-[12.5px] font-medium text-[var(--fg-muted)]">{name}</span>
         <span className="text-num text-[11.5px] tabular-nums text-[var(--fg-subtle)]">
           {column.tasks.length}
         </span>
@@ -195,12 +197,12 @@ function BoardColumnView({
                 : "border-transparent text-transparent opacity-0",
             )}
           >
-            Drop here
+            {t("dropHere")}
           </div>
         ) : null}
         {hidden > 0 ? (
           <div className="px-2 py-1.5 text-[11.5px] text-[var(--fg-subtle)]">
-            +{hidden} more completed
+            {t("moreCompleted", { count: hidden })}
           </div>
         ) : null}
       </div>
@@ -247,10 +249,11 @@ function BoardCardContent({
   labelMap: Map<string, Label>;
   overlay?: boolean;
 }) {
+  const { relativeDay } = useDateCopy();
   const taskLabels = task.labelIds.map((id) => labelMap.get(id)).filter(Boolean) as Label[];
 
   const overdue = isOverdue(task.due);
-  const dueLabel = formatRelativeDay(task.due);
+  const dueLabel = relativeDay(task.due);
   const dueTone: "rose" | "ember" | "neutral" = overdue
     ? "rose"
     : isToday(task.due)

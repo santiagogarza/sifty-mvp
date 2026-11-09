@@ -3,10 +3,12 @@
 import { Badge } from "@/components/ui/badge";
 import { assigneeDisplayValue } from "@/lib/domain/assignee";
 import type { Label, Lifecycle, Task } from "@/lib/domain/types";
+import { useDateCopy } from "@/lib/i18n/use-date-copy";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
-import { formatRelativeDay, isOverdue, isToday } from "@/lib/utils/dates";
+import { isOverdue, isToday } from "@/lib/utils/dates";
 import { Check } from "lucide-react";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 import { AiStatusInline } from "./ai-status";
 import { ConfidencePill } from "./confidence-pill";
@@ -56,6 +58,8 @@ export const TaskRow = React.forwardRef<
   },
   ref,
 ) {
+  const t = useTranslations("tasks.row");
+  const { relativeDay } = useDateCopy();
   const updateTask = useStore((s) => s.updateTask);
 
   const labelMap = React.useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels]);
@@ -63,7 +67,7 @@ export const TaskRow = React.forwardRef<
 
   const due = task.due;
   const overdue = isOverdue(due);
-  const dueLabel = formatRelativeDay(due);
+  const dueLabel = relativeDay(due);
   const assignee = task.delegationCandidate === "person" ? assigneeDisplayValue(task) : null;
   const dueTone: "rose" | "ember" | "neutral" = overdue
     ? "rose"
@@ -117,7 +121,7 @@ export const TaskRow = React.forwardRef<
       <button
         type="button"
         onClick={onComplete}
-        aria-label={isDone ? "Mark as not done" : "Mark as done"}
+        aria-label={isDone ? t("markNotDone") : t("markDone")}
         className={cn(
           // The visible circle is 20px; the ::after pseudo pads the hit
           // target to ~32px (Fitts) without changing the layout.
