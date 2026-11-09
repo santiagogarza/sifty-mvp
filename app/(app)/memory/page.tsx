@@ -10,6 +10,7 @@ import type { Memory } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import { Brain, Pin, Plus, Trash2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 
 /**
@@ -22,20 +23,18 @@ import * as React from "react";
 export default function MemoryPage() {
   const memories = useStore((s) => s.memories);
   const hydrated = useStore((s) => s.hydrated);
+  const t = useTranslations("memory");
 
   return (
-    <PageShell title="Memory">
-      <PageHeader
-        eyebrow="Sifty's memory of you"
-        title="What Sifty assumes"
-        description="Pinned notes are included in AI context when triaging. Anything here is editable. Sifty never saves a memory on its own — you write it, or confirm what it noticed in Decisions."
-      />
+    <PageShell title={t("title")}>
+      <PageHeader eyebrow={t("eyebrow")} title={t("heading")} description={t("description")} />
       {hydrated ? <MemoryList memories={memories} /> : null}
     </PageShell>
   );
 }
 
 function MemoryList({ memories }: { memories: Memory[] }) {
+  const t = useTranslations("memory");
   const [draft, setDraft] = React.useState("");
   const addMemory = useStore((s) => s.addMemory);
   const update = useStore((s) => s.updateMemory);
@@ -55,22 +54,20 @@ function MemoryList({ memories }: { memories: Memory[] }) {
           value={draft}
           maxLength={MEMORY_LIMITS.text}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="A preference, a fact, or a piece of context Sifty should remember…"
+          placeholder={t("placeholder")}
           className="bg-transparent border-transparent text-[14px]"
           rows={2}
         />
         <div className="flex items-center justify-end mt-2">
           <Button variant="primary" size="sm" onClick={add} disabled={!draft.trim()}>
-            <Plus size={13} /> Add memory
+            <Plus size={13} /> {t("add")}
           </Button>
         </div>
       </div>
 
       <div className="flex flex-col gap-2">
         {memories.length === 0 ? (
-          <div className="text-[13px] text-[var(--fg-subtle)] py-6 text-center">
-            No memories yet.
-          </div>
+          <div className="text-[13px] text-[var(--fg-subtle)] py-6 text-center">{t("empty")}</div>
         ) : null}
         {memories.map((m) => (
           <div
@@ -98,7 +95,7 @@ function MemoryList({ memories }: { memories: Memory[] }) {
               <Badge
                 tone={m.kind === "preference" ? "ember" : m.kind === "fact" ? "mist" : "neutral"}
               >
-                {m.kind}
+                {t(`kind.${m.kind}`)}
               </Badge>
               <button
                 type="button"
@@ -108,7 +105,7 @@ function MemoryList({ memories }: { memories: Memory[] }) {
                   "text-[var(--fg-subtle)] hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]",
                   m.pinned && "text-[var(--accent)]",
                 )}
-                aria-label={m.pinned ? "Unpin" : "Pin"}
+                aria-label={m.pinned ? t("unpin") : t("pin")}
               >
                 <Pin size={12} />
               </button>
@@ -116,7 +113,7 @@ function MemoryList({ memories }: { memories: Memory[] }) {
                 type="button"
                 onClick={() => remove(m.id)}
                 className="size-7 inline-flex items-center justify-center rounded-[var(--radius-sm)] text-[var(--fg-subtle)] hover:bg-[var(--surface-hover)] hover:text-[var(--warn)]"
-                aria-label="Delete memory"
+                aria-label={t("delete")}
               >
                 <Trash2 size={12} />
               </button>

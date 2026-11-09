@@ -328,15 +328,34 @@ describe("memory proposals in the Decisions inbox", () => {
   });
 });
 
-describe("describeWaiting", () => {
-  it("names questions and proposals separately", async () => {
-    const { describeWaiting } = await import("@/lib/decisions/copy");
-    expect(describeWaiting(1, 0)).toBe(
+describe("decisions header copy", () => {
+  it("names questions and proposals separately, with plurals in both languages", async () => {
+    const { createTranslator } = await import("next-intl");
+    const { getMessages } = await import("@/lib/i18n/messages");
+    const en = createTranslator({
+      locale: "en",
+      messages: getMessages("en"),
+      namespace: "decisions",
+    });
+    expect(en("waiting.questions", { questions: 1 })).toBe(
       "One question Sifty could not answer on its own. One tap each, or let it decide.",
     );
-    expect(describeWaiting(0, 1)).toBe("One thing Sifty noticed about you. Remember it, or not.");
-    expect(describeWaiting(2, 3)).toBe(
+    expect(en("waiting.proposals", { proposals: 1 })).toBe(
+      "One thing Sifty noticed about you. Remember it, or not.",
+    );
+    expect(en("waiting.both", { questions: 2, proposals: 3 })).toBe(
       "2 questions Sifty could not answer on its own, and 3 things Sifty noticed about you. One tap each.",
+    );
+    const es = createTranslator({
+      locale: "es",
+      messages: getMessages("es"),
+      namespace: "decisions",
+    });
+    expect(es("waiting.both", { questions: 1, proposals: 2 })).toBe(
+      "Una pregunta que Sifty no pudo responder por su cuenta, y 2 cosas que Sifty notó sobre ti. Un toque para cada una.",
+    );
+    expect(es("waiting.proposals", { proposals: 2 })).toBe(
+      "2 cosas que Sifty notó sobre ti. Recuérdalas, o no.",
     );
   });
 });

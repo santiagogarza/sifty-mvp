@@ -2,8 +2,9 @@
 import { DecisionsSync } from "@/components/decisions/decisions-sync";
 import { useDecisionsStore } from "@/lib/decisions/client";
 import { SIFT_SETTLED_EVENT, announceSiftSettled } from "@/lib/decisions/events";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "../helpers/intl";
 
 /**
  * The badge stays honest without a socket: the cache refreshes when the
@@ -34,7 +35,7 @@ afterEach(() => cleanup());
 
 describe("DecisionsSync", () => {
   it("refreshes once the server pull has settled, then on focus, visibility, and sift-settled", () => {
-    render(<DecisionsSync />);
+    renderWithIntl(<DecisionsSync />);
     expect(refresh).toHaveBeenCalledTimes(1);
 
     window.dispatchEvent(new Event("focus"));
@@ -54,14 +55,14 @@ describe("DecisionsSync", () => {
 
   it("waits for the server pull and detaches its listeners on unmount", () => {
     serverReady = false;
-    const { unmount } = render(<DecisionsSync />);
+    const { unmount } = renderWithIntl(<DecisionsSync />);
     expect(refresh).not.toHaveBeenCalled();
     window.dispatchEvent(new CustomEvent(SIFT_SETTLED_EVENT));
     expect(refresh).not.toHaveBeenCalled();
     unmount();
 
     serverReady = true;
-    const mounted = render(<DecisionsSync />);
+    const mounted = renderWithIntl(<DecisionsSync />);
     expect(refresh).toHaveBeenCalledTimes(1);
     mounted.unmount();
     window.dispatchEvent(new Event("focus"));

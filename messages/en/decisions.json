@@ -1,1 +1,56 @@
-{}
+{
+  "title": "Decisions",
+  "eyebrow": "Waiting on you",
+  "description": "Questions Sifty could not answer on its own, and things it noticed, in one place.",
+  "waiting": {
+    "both": "{questions, plural, one {One question} other {# questions}} Sifty could not answer on its own, and {proposals, plural, one {one thing Sifty noticed about you} other {# things Sifty noticed about you}}. One tap each.",
+    "questions": "{questions, plural, one {One question} other {# questions}} Sifty could not answer on its own. One tap each, or let it decide.",
+    "proposals": "{proposals, plural, one {One thing Sifty noticed about you} other {# things Sifty noticed about you}}. Remember it, or not."
+  },
+  "loadError": "Could not load decisions — {error}",
+  "link": {
+    "answered": "Answered — Sifty is re-sifting with your reply.",
+    "dismissed": "Dismissed — Sifty kept its own read.",
+    "used": "That question was already answered.",
+    "gone": "That question is no longer open.",
+    "busy": "Too many taps in a minute — the question is still open below.",
+    "expired": "That link expired. Anything still open is listed here.",
+    "invalid": "That link is not valid. Anything still open is listed here."
+  },
+  "inbox": {
+    "listLabel": "Decisions",
+    "noticedTitle": "Something Sifty noticed",
+    "untitledTask": "A task",
+    "rememberThis": "Remember this?",
+    "rationale": "From: “{rationale}”",
+    "remember": "Remember",
+    "notThis": "Not this",
+    "fallbackQuestion": "Sifty needs your input.",
+    "suggestedAnswers": "Suggested answers",
+    "placeholderOr": "Or type an answer…",
+    "placeholder": "Type an answer…",
+    "answerLabel": "Your answer",
+    "answer": "Answer",
+    "letSiftyDecide": "Let Sifty decide",
+    "toast": {
+      "remembered": "Remembered — Sifty will use it from the next sift on.",
+      "resifting": "Answered — Sifty is re-sifting “{title}”",
+      "answered": "Answered",
+      "noted": "Noted — Sifty won't suggest that again.",
+      "keptRead": "Sifty kept its own read of “{title}”. Re-sift the task anytime."
+    },
+    "keys": {
+      "move": "move",
+      "answer": "type an answer",
+      "pick": "pick an option",
+      "decide": "let Sifty decide"
+    }
+  },
+  "empty": {
+    "title": "Nothing waiting on you.",
+    "subtitle": "Sifty only interrupts when a guess would be worse than a question.",
+    "questions": "<hl>Clarifying questions</hl> — when a sift is unsure what you meant, one short question shows up here instead of a wrong guess.",
+    "memory": "<hl>Memory suggestions</hl> — preferences Sifty notices in your edits, for you to keep or drop.",
+    "approvals": "<hl>Approvals</hl> — drafts and actions an agent prepared, waiting for your go-ahead."
+  }
+}

@@ -9,9 +9,10 @@ import { type DecisionTaskSummary, useDecisionsStore } from "@/lib/decisions/cli
 import { REMEMBER_OPTION } from "@/lib/decisions/copy";
 import { DECISION_LIMITS } from "@/lib/domain/limits";
 import type { Decision } from "@/lib/domain/types";
+import { useDateCopy } from "@/lib/i18n/use-date-copy";
 import { cn } from "@/lib/utils/cn";
-import { formatTimeAgo } from "@/lib/utils/dates";
 import { ArrowUpRight, Check, Sparkles } from "lucide-react";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 
 /**
@@ -40,6 +41,7 @@ export function DecisionsInbox({
     const i = focusId ? decisions.findIndex((d) => d.id === focusId) : -1;
     return i >= 0 ? i : decisions.length ? 0 : -1;
   });
+  const t = useTranslations("decisions.inbox");
   const listRef = React.useRef<HTMLDivElement>(null);
   const cardRefs = React.useRef<Map<string, DecisionCardHandle>>(new Map());
   const didInitialFocus = React.useRef(false);
@@ -125,7 +127,7 @@ export function DecisionsInbox({
       ref={listRef}
       role="listbox"
       tabIndex={0}
-      aria-label="Decisions"
+      aria-label={t("listLabel")}
       onKeyDown={onKeyDown}
       onPointerDown={(e) => {
         if (e.target === e.currentTarget) listRef.current?.focus();
@@ -168,6 +170,8 @@ const DecisionCard = React.forwardRef<
     onActivate: () => void;
   }
 >(function DecisionCard({ decision, task, active, onActivate }, ref) {
+  const t = useTranslations("decisions.inbox");
+  const { timeAgo } = useDateCopy();
   const { openDetail } = useFrame();
   const answer = useDecisionsStore((s) => s.answer);
   const dismiss = useDecisionsStore((s) => s.dismiss);
@@ -182,7 +186,7 @@ const DecisionCard = React.forwardRef<
   // A memory proposal has one affirmative option, so `1` confirms it.
   const options =
     payload.kind === "clarifying_question" ? payload.options : proposal ? [REMEMBER_OPTION] : [];
-  const title = task?.title ?? (proposal ? "Something Sifty noticed" : "A task");
+  const title = task?.title ?? (proposal ? t("noticedTitle") : t("untitledTask"));
 
   const submit = React.useCallback(
     async (input: { text?: string; option?: string }) => {
@@ -199,13 +203,13 @@ const DecisionCard = React.forwardRef<
       }
       toast(
         result.mode === "remembered"
-          ? "Remembered — Sifty will use it from the next sift on."
+          ? t("toast.remembered")
           : result.mode === "resumed" || result.mode === "resifted"
-            ? `Answered — Sifty is re-sifting “${title}”`
-            : "Answered",
+            ? t("toast.resifting", { title })
+            : t("toast.answered"),
       );
     },
-    [answer, busy, decision.id, title],
+    [answer, busy, decision.id, title, t],
   );
 
   const runDismiss = React.useCallback(async () => {
@@ -217,12 +221,8 @@ const DecisionCard = React.forwardRef<
       toast(result.error);
       return;
     }
-    toast(
-      proposal
-        ? "Noted — Sifty won't suggest that again."
-        : `Sifty kept its own read of “${title}”. Re-sift the task anytime.`,
-    );
-  }, [busy, decision.id, dismiss, proposal, title]);
+    toast(proposal ? t("toast.noted") : t("toast.keptRead", { title }));
+  }, [busy, decision.id, dismiss, proposal, title, t]);
 
   React.useImperativeHandle(
     ref,
@@ -277,7 +277,7 @@ const DecisionCard = React.forwardRef<
           />
         </button>
         <span className="shrink-0 text-[11.5px] text-[var(--fg-subtle)] tabular-nums">
-          {formatTimeAgo(decision.createdAt)}
+          {timeAgo(decision.createdAt)}
         </span>
       </div>
 
@@ -286,7 +286,7 @@ const DecisionCard = React.forwardRef<
           <div className="mt-2 flex items-start gap-2">
             <Sparkles size={14} className="mt-[3px] shrink-0 text-[var(--accent)]" />
             <div className="min-w-0">
-              <p className="text-eyebrow !text-[var(--ai)]">Remember this?</p>
+              <p className="text-eyebrow !text-[var(--ai)]">{t("rememberThis")}</p>
               <p
                 className="mt-1 text-[15px] leading-[1.45] text-[var(--fg)] tracking-[-0.005em]"
                 data-testid="memory-proposal-text"
@@ -295,7 +295,7 @@ const DecisionCard = React.forwardRef<
               </p>
               {proposal.rationale ? (
                 <p className="mt-1 text-[12.5px] leading-[1.5] text-[var(--fg-muted)]">
-                  From: “{proposal.rationale}”
+                  {t("rationale", { rationale: proposal.rationale })}
                 </p>
               ) : null}
             </div>
@@ -310,7 +310,7 @@ const DecisionCard = React.forwardRef<
               data-testid="memory-proposal-remember"
             >
               <Check size={13} />
-              Remember
+              {t("remember")}
               {active ? (
                 <Kbd className="hidden sm:inline-flex !h-4 min-w-[16px] text-[9.5px]">1</Kbd>
               ) : null}
@@ -324,7 +324,7 @@ const DecisionCard = React.forwardRef<
               className="text-[var(--fg-muted)]"
               data-testid="memory-proposal-dismiss"
             >
-              Not this
+              {t("notThis")}
             </Button>
           </div>
         </>
@@ -334,13 +334,13 @@ const DecisionCard = React.forwardRef<
         <div className="mt-2 flex items-start gap-2">
           <Sparkles size={14} className="mt-[3px] shrink-0 text-[var(--accent)]" />
           <p className="text-[15px] leading-[1.45] text-[var(--fg)] tracking-[-0.005em]">
-            {question ?? "Sifty needs your input."}
+            {question ?? t("fallbackQuestion")}
           </p>
         </div>
       ) : null}
 
       {!proposal && options.length > 0 ? (
-        <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Suggested answers">
+        <div className="mt-3 flex flex-wrap gap-1.5" aria-label={t("suggestedAnswers")}>
           {options.map((option, i) => (
             <button
               key={option}
@@ -378,14 +378,14 @@ const DecisionCard = React.forwardRef<
             value={text}
             maxLength={DECISION_LIMITS.answerText}
             onChange={(e) => setText(e.target.value)}
-            placeholder={options.length ? "Or type an answer…" : "Type an answer…"}
-            aria-label="Your answer"
+            placeholder={options.length ? t("placeholderOr") : t("placeholder")}
+            aria-label={t("answerLabel")}
             className="h-9 flex-1 text-[13.5px]"
           />
           <div className="flex items-center gap-1.5 justify-end">
             <Button type="submit" size="sm" variant="primary" disabled={!text.trim() || !!busy}>
               <Check size={13} />
-              Answer
+              {t("answer")}
             </Button>
             <Button
               type="button"
@@ -395,7 +395,7 @@ const DecisionCard = React.forwardRef<
               disabled={!!busy}
               className="text-[var(--fg-muted)]"
             >
-              Let Sifty decide
+              {t("letSiftyDecide")}
             </Button>
           </div>
         </form>
@@ -405,20 +405,21 @@ const DecisionCard = React.forwardRef<
 });
 
 function KeyboardHint() {
+  const t = useTranslations("decisions.inbox.keys");
   return (
     <div className="hidden sm:flex items-center gap-3 px-1 pt-1 text-[11.5px] text-[var(--fg-subtle)]">
       <span className="inline-flex items-center gap-1">
         <Kbd>j</Kbd>
-        <Kbd>k</Kbd> move
+        <Kbd>k</Kbd> {t("move")}
       </span>
       <span className="inline-flex items-center gap-1">
-        <Kbd>↵</Kbd> type an answer
+        <Kbd>↵</Kbd> {t("answer")}
       </span>
       <span className="inline-flex items-center gap-1">
-        <Kbd>1</Kbd>–<Kbd>4</Kbd> pick an option
+        <Kbd>1</Kbd>–<Kbd>4</Kbd> {t("pick")}
       </span>
       <span className="inline-flex items-center gap-1">
-        <Kbd>d</Kbd> let Sifty decide
+        <Kbd>d</Kbd> {t("decide")}
       </span>
     </div>
   );
