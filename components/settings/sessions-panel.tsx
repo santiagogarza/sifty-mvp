@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth/client";
 import { Monitor, Smartphone } from "lucide-react";
+import { useFormatter, useTranslations } from "next-intl";
 import * as React from "react";
 
 interface SessionRow {
@@ -20,6 +21,8 @@ interface SessionRow {
  * `revoke-other-sessions`.
  */
 export function SessionsPanel() {
+  const t = useTranslations("settings.sessions");
+  const format = useFormatter();
   const { data: current, isPending: currentPending } = authClient.useSession();
   const [sessions, setSessions] = React.useState<SessionRow[] | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -56,7 +59,7 @@ export function SessionsPanel() {
   // Until the current session is known, every row would look revocable,
   // including this device's.
   if (sessions === null || currentPending || !current) {
-    return <div className="text-[13px] text-[var(--fg-muted)]">Loading sessions…</div>;
+    return <div className="text-[13px] text-[var(--fg-muted)]">{t("loading")}</div>;
   }
 
   const currentToken = current.session.token;
@@ -67,7 +70,7 @@ export function SessionsPanel() {
       <ul className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] divide-y divide-[var(--border)]">
         {sessions.map((s) => {
           const isCurrent = s.token === currentToken;
-          const device = describeDevice(s.userAgent);
+          const device = describeDevice(s.userAgent, t);
           const Icon = device.mobile ? Smartphone : Monitor;
           return (
             <li key={s.id} className="flex items-center justify-between gap-3 px-4 py-3">
@@ -78,12 +81,12 @@ export function SessionsPanel() {
                     {device.label}
                     {isCurrent ? (
                       <span className="ml-2 text-[11px] uppercase tracking-wide text-[var(--accent)]">
-                        This device
+                        {t("thisDevice")}
                       </span>
                     ) : null}
                   </div>
                   <div className="text-[12px] text-[var(--fg-muted)] mt-0.5">
-                    Last active {formatWhen(s.updatedAt)}
+                    {t("lastActive", { when: formatWhen(s.updatedAt, t, format) })}
                     {s.ipAddress ? ` · ${s.ipAddress}` : ""}
                   </div>
                 </div>
@@ -95,7 +98,7 @@ export function SessionsPanel() {
                   disabled={busy !== null}
                   onClick={() => revoke(s.token)}
                 >
-                  {busy === s.token ? "Signing out…" : "Sign out"}
+                  {busy === s.token ? t("signingOut") : t("signOut")}
                 </Button>
               )}
             </li>
@@ -110,17 +113,20 @@ export function SessionsPanel() {
           disabled={busy !== null}
           onClick={revokeOthers}
         >
-          {busy === "others"
-            ? "Signing out…"
-            : `Sign out ${others.length} other device${others.length === 1 ? "" : "s"}`}
+          {busy === "others" ? t("signingOut") : t("signOutOthers", { count: others.length })}
         </Button>
       ) : null}
     </div>
   );
 }
 
-function describeDevice(ua?: string | null): { label: string; mobile: boolean } {
-  if (!ua) return { label: "Unknown device", mobile: false };
+type SessionsT = ReturnType<typeof useTranslations<"settings.sessions">>;
+
+function describeDevice(
+  ua: string | null | undefined,
+  t: SessionsT,
+): { label: string; mobile: boolean } {
+  if (!ua) return { label: t("unknownDevice"), mobile: false };
   const mobile = /iPhone|Android|Mobile/i.test(ua);
   const browser = /Edg\//.test(ua)
     ? "Edge"
@@ -130,7 +136,7 @@ function describeDevice(ua?: string | null): { label: string; mobile: boolean } 
         ? "Safari"
         : /Firefox\//.test(ua)
           ? "Firefox"
-          : "Browser";
+          : t("browser");
   const os = /iPhone|iPad/.test(ua)
     ? "iOS"
     : /Android/.test(ua)
@@ -142,15 +148,20 @@ function describeDevice(ua?: string | null): { label: string; mobile: boolean } 
           : /Linux/.test(ua)
             ? "Linux"
             : "";
-  return { label: os ? `${browser} on ${os}` : browser, mobile };
+  return { label: os ? t("browserOnOs", { browser, os }) : browser, mobile };
 }
 
-function formatWhen(value: string | Date): string {
+function formatWhen(
+  value: string | Date,
+  t: SessionsT,
+  format: ReturnType<typeof useFormatter>,
+): string {
   const d = new Date(value);
   const diffMin = Math.round((Date.now() - d.getTime()) / 60_000);
-  if (diffMin < 2) return "just now";
-  if (diffMin < 60) return `${diffMin} min ago`;
+  if (diffMin < 2) return t("justNow");
+  if (diffMin < 60) return t("minutesAgo", { count: diffMin });
   const diffH = Math.round(diffMin / 60);
-  if (diffH < 24) return `${diffH} h ago`;
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  if (diffH < 24) return t("hoursAgo", { count: diffH });
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return format.dateTime(d, { month: "short", day: "numeric", timeZone });
 }

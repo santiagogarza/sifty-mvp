@@ -5,6 +5,7 @@ import { CaptureDialog } from "@/components/tasks/capture-dialog";
 import { TaskDetailSheet } from "@/components/tasks/task-detail-sheet";
 import { Toaster } from "@/components/ui/toast";
 import { useServerSync } from "@/lib/store/sync";
+import { useTranslations } from "next-intl";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 import { BottomNav } from "./bottom-nav";
@@ -149,11 +150,8 @@ function AppFrameInner({
  * (terminal, kept on this device, retried on the next edit).
  */
 function SyncNotice({ error, rejected }: { error: string | null; rejected: number }) {
-  const message = error
-    ? "Can't reach Sifty — changes are saved locally and will sync."
-    : rejected > 0
-      ? `${rejected === 1 ? "One change" : `${rejected} changes`} couldn't sync to your account — kept on this device.`
-      : null;
+  const t = useTranslations("shell.sync");
+  const message = error ? t("offline") : rejected > 0 ? t("rejected", { count: rejected }) : null;
   if (!message) return null;
   return (
     <div

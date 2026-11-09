@@ -1,0 +1,96 @@
+{
+  "title": "Settings",
+  "description": "A small set of controls. The rest of Sifty stays out of your way.",
+  "account": {
+    "title": "Account",
+    "descriptionBypass": "Running with SIFTY_DISABLE_AUTH=1 — sign-in is bypassed for local development.",
+    "description": "Capture, organize, and sync are free for everyone. Sifting with AI is where plans differ.",
+    "siftsUnlimited": "{count, plural, one {# sift} other {# sifts}} today — unlimited",
+    "siftsFree": "{used} of {cap} free sifts used today",
+    "siftsFairUse": "{count, plural, one {# sift} other {# sifts}} today — unlimited, fair-use cap {cap}/day",
+    "billing": "Billing",
+    "notifications": "Notifications",
+    "aiCosts": "AI costs",
+    "signOut": "Sign out",
+    "signingOut": "Signing out…"
+  },
+  "sessions": {
+    "title": "Sessions",
+    "description": "Every device signed in to this account. Signing out elsewhere takes effect immediately.",
+    "loading": "Loading sessions…",
+    "thisDevice": "This device",
+    "lastActive": "Last active {when}",
+    "signOut": "Sign out",
+    "signingOut": "Signing out…",
+    "signOutOthers": "{count, plural, one {Sign out # other device} other {Sign out # other devices}}",
+    "unknownDevice": "Unknown device",
+    "browser": "Browser",
+    "browserOnOs": "{browser} on {os}",
+    "justNow": "just now",
+    "minutesAgo": "{count} min ago",
+    "hoursAgo": "{count} h ago"
+  },
+  "language": {
+    "title": "Language",
+    "description": "The language Sifty uses on this browser."
+  },
+  "appearance": {
+    "title": "Appearance",
+    "description": "Sifty looks best in the dark, but it's your call.",
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "model": {
+    "title": "AI model",
+    "description": "Pick the trade-off between speed and depth. Each choice sets a primary model and a fallback from another provider, so an outage never stalls your list. Edits you make are protected from being overwritten.",
+    "routes": "Sift: {fast} · Plan: {deep}",
+    "options": {
+      "recommended": {
+        "label": "Recommended",
+        "description": "Claude Haiku for everyday sifting, Claude Sonnet when a task needs a plan."
+      },
+      "quality": {
+        "label": "Best quality",
+        "description": "Claude Sonnet for everything. Slower and pricier; worth it for high-stakes lists."
+      },
+      "fast": {
+        "label": "Fastest",
+        "description": "Claude Haiku for everything, including planning. Best for capture-heavy days."
+      },
+      "openai": {
+        "label": "Prefer OpenAI",
+        "description": "GPT-5 mini and GPT-5 first, with Claude as the fallback."
+      }
+    }
+  },
+  "behavior": {
+    "title": "AI behavior",
+    "description": "Provider keys and the transport (AI Gateway or direct) are set in the server environment. Sifty never asks for a key in the browser.",
+    "promptVersion": "Prompt version",
+    "triageModel": "Triage model",
+    "minDelay": "Min visible delay",
+    "editedProtected": "Edited fields protected",
+    "yes": "Yes"
+  },
+  "data": {
+    "title": "Data",
+    "description": "Tasks, labels, and memories sync to your account. This browser also keeps a local cache for instant loads — resetting it does not delete synced data.",
+    "export": "Export your data",
+    "resetCache": "Reset local cache",
+    "resetConfirm": "Reset this browser's local Sifty cache? Synced data is unaffected.",
+    "exportNote": "The export is a JSON file with your tasks, labels, memories, and AI runs."
+  },
+  "deleteAccount": {
+    "title": "Delete account",
+    "description": "Permanently deletes your account, every task, label, memory, and AI run, and cancels any subscription. There is no undo — export first if you want a copy.",
+    "open": "Delete account…",
+    "dialogTitle": "Delete your account?",
+    "dialogBody": "This removes everything in Sifty for <hl>{email}</hl> and cancels any subscription. It cannot be undone.",
+    "confirmLabel": "Type your email to confirm",
+    "keep": "Keep account",
+    "deleting": "Deleting…",
+    "confirm": "Delete everything",
+    "error": "Couldn't delete the account."
+  }
+}

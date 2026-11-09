@@ -7,6 +7,7 @@ import { useStore } from "@/lib/store/store";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "../helpers/intl";
 
 /**
  * SIF-5: when the focused row leaves the list, focus lands on a neighbor so
@@ -327,7 +328,7 @@ describe("TaskList snooze keys", () => {
     const user = userEvent.setup();
     const tasks = [makeTask("a", "Alpha"), makeTask("b", "Beta")];
     useStore.setState({ tasks, labels: [] });
-    render(
+    renderWithIntl(
       <>
         <TaskList tasks={tasks} onOpen={vi.fn()} />
         <Toaster />
