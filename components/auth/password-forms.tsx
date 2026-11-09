@@ -2,11 +2,15 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { authClient, authErrorMessage } from "@/lib/auth/client";
+import { authClient } from "@/lib/auth/client";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import * as React from "react";
+import { useAuthErrorMessage } from "./use-auth-error";
 
 export function ForgotPasswordForm() {
+  const t = useTranslations("auth");
+  const authErrorMessage = useAuthErrorMessage();
   const [email, setEmail] = React.useState("");
   const [pending, setPending] = React.useState(false);
   const [done, setDone] = React.useState(false);
@@ -31,7 +35,7 @@ export function ForgotPasswordForm() {
   if (done) {
     return (
       <p data-testid="reset-sent" className="text-[13.5px] text-[var(--fg)] leading-[1.5]">
-        If an account exists for {email}, a reset link is on its way. It expires in one hour.
+        {t("forgotPassword.sent", { email })}
       </p>
     );
   }
@@ -40,7 +44,7 @@ export function ForgotPasswordForm() {
     <form onSubmit={onSubmit} className="flex flex-col gap-3" noValidate>
       <div>
         <label htmlFor="forgot-email" className="text-[13px] text-[var(--fg-muted)]">
-          Email
+          {t("form.email")}
         </label>
         <Input
           id="forgot-email"
@@ -50,7 +54,7 @@ export function ForgotPasswordForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className="mt-1.5"
-          placeholder="you@example.com"
+          placeholder={t("form.emailPlaceholder")}
         />
       </div>
       {error ? (
@@ -59,7 +63,7 @@ export function ForgotPasswordForm() {
         </div>
       ) : null}
       <Button type="submit" variant="primary" disabled={pending} className="mt-2">
-        {pending ? "Sending…" : "Send reset link"}
+        {pending ? t("forgotPassword.submitting") : t("forgotPassword.submit")}
       </Button>
     </form>
   );
@@ -67,6 +71,8 @@ export function ForgotPasswordForm() {
 
 export function ResetPasswordForm({ token }: { token: string }) {
   const router = useRouter();
+  const t = useTranslations("auth");
+  const authErrorMessage = useAuthErrorMessage();
   const [password, setPassword] = React.useState("");
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -88,7 +94,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
     <form onSubmit={onSubmit} className="flex flex-col gap-3" noValidate>
       <div>
         <label htmlFor="reset-password" className="text-[13px] text-[var(--fg-muted)]">
-          New password
+          {t("resetPassword.newPassword")}
         </label>
         <Input
           id="reset-password"
@@ -99,7 +105,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           className="mt-1.5"
-          placeholder="At least 8 characters"
+          placeholder={t("form.passwordPlaceholder")}
         />
       </div>
       {error ? (
@@ -108,7 +114,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
         </div>
       ) : null}
       <Button type="submit" variant="primary" disabled={pending} className="mt-2">
-        {pending ? "Saving…" : "Save new password"}
+        {pending ? t("resetPassword.submitting") : t("resetPassword.submit")}
       </Button>
     </form>
   );
