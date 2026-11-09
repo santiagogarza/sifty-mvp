@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { CaptureDialog } from "@/components/tasks/capture-dialog";
 import { useStore } from "@/lib/store/store";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "../helpers/intl";
 
 /**
  * SIF-21: a capture draft survives Escape (and any dismiss that isn't a
@@ -26,9 +27,9 @@ function Harness({ handle }: { handle: { setOpen: (v: boolean) => void } }) {
   return <CaptureDialog open={open} onOpenChange={setOpen} />;
 }
 
-function renderCapture() {
+function renderCapture(locale: "en" | "es" = "en") {
   const handle = { setOpen: (_v: boolean) => {} };
-  render(<Harness handle={handle} />);
+  renderWithIntl(<Harness handle={handle} />, { locale });
   const reopen = () => act(() => handle.setOpen(true));
   return { reopen };
 }
@@ -273,5 +274,19 @@ describe("CaptureDialog natural-language due date", () => {
     renderCapture();
     await user.type(screen.getByPlaceholderText(PLACEHOLDER), "Buy flowers for mom");
     expect(screen.queryByTestId("capture-due-chip")).toBeNull();
+  });
+});
+
+describe("CaptureDialog in Spanish", () => {
+  it("renders from the es catalog, with the chip day in Spanish", async () => {
+    const user = userEvent.setup();
+    renderCapture("es");
+    expect(screen.getByRole("dialog", { name: "Captura" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Capturar" })).toBeDisabled();
+    // The parser itself stays English-only; only the chip's wording is localized.
+    await user.type(screen.getByPlaceholderText("¿Qué necesitas hacer?"), "Pay rent on 2026-10-16");
+    expect(screen.getByTestId("capture-due-chip")).toHaveTextContent("Vence el vie, 16 oct");
+    expect(screen.getByRole("button", { name: "Quitar fecha límite" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Agregar contexto" })).toBeInTheDocument();
   });
 });

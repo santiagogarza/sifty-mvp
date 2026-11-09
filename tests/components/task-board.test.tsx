@@ -2,8 +2,9 @@
 import { TaskBoard } from "@/components/tasks/task-board";
 import type { Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "../helpers/intl";
 
 /** Board cards mirror the list: a low-confidence task is flagged even with no other meta. */
 
@@ -55,7 +56,7 @@ afterEach(() => {
 
 describe("TaskBoard confidence", () => {
   it("renders the compact pill on the low-confidence card only", () => {
-    render(<TaskBoard onOpen={vi.fn()} />);
+    renderWithIntl(<TaskBoard onOpen={vi.fn()} />);
     expect(screen.getByText("Card low")).toBeInTheDocument();
     expect(screen.getByText("Card high")).toBeInTheDocument();
     const pills = screen.getAllByTestId("confidence-pill");
@@ -76,7 +77,7 @@ describe("TaskBoard priority and repeat", () => {
         { ...makeTask("plain", 0.9), priorityBucket: "unset" },
       ],
     });
-    render(<TaskBoard onOpen={vi.fn()} />);
+    renderWithIntl(<TaskBoard onOpen={vi.fn()} />);
     const repCard = screen.getByText("Card rep").closest("[class*='surface-card']")!;
     expect(repCard.querySelector("[data-testid='priority-pill']")).toHaveTextContent("Important");
     expect(repCard.querySelector("[data-testid='repeat-glyph']")).toHaveAttribute(

@@ -1,1 +1,171 @@
-{}
+{
+  "capture": {
+    "title": "Capture",
+    "description": "Type the task as you'd say it. Sifty organizes it.",
+    "placeholder": "What do you need to do?",
+    "dueChip": "Due {day}",
+    "removeDue": "Remove due date",
+    "removeDueHint": "Keep the date in the text instead",
+    "dueSource": "from “{phrase}”",
+    "context": "Context",
+    "contextPlaceholder": "Anything Sifty should know — links, deadlines, who's involved.",
+    "addContext": "Add context",
+    "hideContext": "Hide context",
+    "discard": "Discard",
+    "submitHint": "to capture",
+    "submit": "Capture"
+  },
+  "sheet": {
+    "fallbackTitle": "Task details",
+    "reorganize": "Reorganize with Sifty",
+    "markDone": "Mark as done",
+    "markNotDone": "Mark as not done",
+    "titlePlaceholder": "Task title",
+    "nextAction": "Next action",
+    "nextActionPlaceholder": "What's the very next concrete step?",
+    "unset": "Unset",
+    "fields": {
+      "due": "Due",
+      "effort": "Effort",
+      "delegate": "Delegate",
+      "status": "Status",
+      "priority": "Priority",
+      "labels": "Labels",
+      "subtasks": "Subtasks",
+      "urgency": "Urgency",
+      "importance": "Importance"
+    },
+    "rationale": "AI rationale",
+    "noRationale": "No rationale recorded yet.",
+    "confidence": "Confidence",
+    "originalCapture": "Original capture",
+    "contextDivider": "— Context —",
+    "updated": "Updated {time}",
+    "duplicate": "Duplicate",
+    "duplicateTask": "Duplicate task",
+    "duplicateHint": "Duplicate task (Shift+D)",
+    "deleteTask": "Delete task",
+    "deleteConfirm": "Delete this task?"
+  },
+  "organizeFailed": {
+    "message": "Sifty couldn't organize this.",
+    "seePlans": "See plans",
+    "retry": "Retry"
+  },
+  "filing": {
+    "moveTo": "Move to",
+    "movedTo": "Moved to <hl>{status}</hl>"
+  },
+  "agentBrief": {
+    "title": "Agent brief",
+    "preparing": "Preparing…",
+    "regenerate": "Regenerate",
+    "prepare": "Prepare for agent",
+    "failed": "Brief generation failed",
+    "ready": "Handoff brief — ready to copy",
+    "copy": "Copy brief",
+    "copied": "Copied"
+  },
+  "question": {
+    "eyebrow": "Sifty asks",
+    "placeholderWithOptions": "Or answer in your own words…",
+    "placeholder": "Answer briefly…",
+    "reply": "Reply",
+    "letSiftyDecide": "Let Sifty decide",
+    "assumptions": "Sifted on Sifty's own assumptions — you skipped its question. <resift>Re-sift</resift> if it got something wrong."
+  },
+  "due": {
+    "inThreeDays": "In 3 days",
+    "clear": "Clear date"
+  },
+  "effort": {
+    "label": {
+      "quick": "Quick",
+      "small": "Small",
+      "medium": "Medium",
+      "deep": "Deep"
+    },
+    "hint": {
+      "quick": "<10 min",
+      "small": "<30 min",
+      "medium": "1–3 hr",
+      "deep": "Multi-session"
+    }
+  },
+  "delegation": {
+    "label": {
+      "self": "Me",
+      "ai": "AI agent",
+      "person": "Person",
+      "unsure": "Unsure"
+    },
+    "namePlaceholder": "Type a name",
+    "nameLabel": "Person name",
+    "clearName": "Clear name"
+  },
+  "labels": {
+    "remove": "Remove {name}",
+    "namePlaceholder": "Label name",
+    "add": "Add label",
+    "new": "New label"
+  },
+  "subtasks": {
+    "markComplete": "Mark complete",
+    "markIncomplete": "Mark incomplete",
+    "remove": "Remove subtask",
+    "addPlaceholder": "Add a subtask"
+  },
+  "priority": {
+    "aria": "Priority: {label}",
+    "scores": "Urgency {urgency} · Importance {importance}",
+    "label": {
+      "do_now": "Urgent + important",
+      "schedule": "Important",
+      "delegate": "Urgent",
+      "drop": "Low priority",
+      "unset": "Not ranked"
+    },
+    "hint": {
+      "do_now": "Urgent and important — your ball, today.",
+      "schedule": "Important but not urgent — worth scheduling before it becomes urgent.",
+      "delegate": "Urgent but not important — do quickly, hand off, or question it.",
+      "drop": "Neither urgent nor important right now.",
+      "unset": "Sifty has not ranked this yet."
+    }
+  },
+  "recurrence": {
+    "freq": {
+      "daily": "Daily",
+      "weekdays": "Weekdays",
+      "weekly": "Weekly",
+      "monthly": "Monthly"
+    },
+    "describe": {
+      "daily": "{form, select, title {Repeats daily} other {Daily}}",
+      "weekdays": "{form, select, title {Repeats weekdays} other {Weekdays}}",
+      "weekly": "{form, select, title {Repeats weekly} other {Weekly}}",
+      "monthly": "{form, select, title {Repeats monthly} other {Monthly}}",
+      "weeklyOn": "{form, select, title {Repeats weekly on {days}} other {Weekly on {days}}}",
+      "monthlyOn": "{form, select, title {Repeats monthly on the {day, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}} other {Monthly on the {day, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}}}",
+      "afterCompletion": "{base} · after completion"
+    },
+    "none": "Doesn't repeat",
+    "editingInstance": "Editing this instance",
+    "hasInstanceEdits": "Has instance edits",
+    "on": "On",
+    "daysOfWeek": "Days of the week",
+    "onDay": "On day",
+    "dayOfMonth": "Day of month",
+    "shorterMonths": "Shorter months use their last day.",
+    "schedule": "Schedule",
+    "fixed": "Fixed schedule",
+    "fixedHint": "The next one keeps the calendar, however early or late this one is done.",
+    "afterCompletion": "After completion",
+    "afterCompletionHint": "The next one is due one period after the day you finish this one.",
+    "editsApplyTo": "Edits apply to",
+    "allFuture": "All future",
+    "thisInstance": "This instance",
+    "instanceScopeHint": "Changes to the title, next action, priority, labels, and subtasks stay on this one; the next instance keeps the series' values.",
+    "seriesScopeHint": "Changes to this task carry over to every future instance."
+  }
+}

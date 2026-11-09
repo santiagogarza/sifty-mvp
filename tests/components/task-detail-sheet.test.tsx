@@ -2,9 +2,10 @@
 import { TaskDetailSheet } from "@/components/tasks/task-detail-sheet";
 import type { Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "../helpers/intl";
 
 /** SIF-15: Duplicate from the sheet, by button and by Shift+D. */
 
@@ -64,7 +65,7 @@ afterEach(() => {
 
 describe("TaskDetailSheet header", () => {
   it("shows the confidence pill once sifted, and the thinking line while organizing", () => {
-    const { rerender } = render(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
+    const { rerender } = renderWithIntl(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
     const pill = screen.getByTestId("confidence-pill");
     expect(pill).toHaveTextContent("Sifted · 90%");
     expect(pill).toHaveAttribute("data-band", "ok");
@@ -77,7 +78,7 @@ describe("TaskDetailSheet header", () => {
 
   it("names the running stage in the five-step strip", () => {
     useStore.setState({ tasks: [{ ...task, aiStatus: "running", siftStage: "prioritize" }] });
-    render(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
+    renderWithIntl(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
     const strip = screen.getByTestId("sift-progress");
     expect(strip).toHaveTextContent("Prioritizing…");
     expect(strip).toHaveAttribute("aria-label", "Prioritizing (step 2 of 5)");
@@ -86,7 +87,7 @@ describe("TaskDetailSheet header", () => {
   it("Reorganize asks the server to re-sift", async () => {
     const user = userEvent.setup();
     const { resiftTask } = await import("@/lib/ai/run-triage");
-    render(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
+    renderWithIntl(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
     await user.click(screen.getByRole("button", { name: "Reorganize with Sifty" }));
     expect(resiftTask).toHaveBeenCalledWith("task_src");
   });
@@ -95,7 +96,7 @@ describe("TaskDetailSheet header", () => {
 describe("TaskDetailSheet focus", () => {
   it("returns focus to whoever opened it when it closes", async () => {
     const onClose = vi.fn();
-    const view = render(
+    const view = renderWithIntl(
       <>
         <button type="button">Row stand-in</button>
         <TaskDetailSheet taskId={null} onClose={onClose} />
@@ -125,7 +126,7 @@ describe("TaskDetailSheet focus", () => {
 describe("TaskDetailSheet duplicate", () => {
   it("the Duplicate button creates the copy and opens it", async () => {
     const user = userEvent.setup();
-    render(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
+    renderWithIntl(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
 
     await user.click(screen.getByRole("button", { name: "Duplicate task" }));
 
@@ -140,7 +141,7 @@ describe("TaskDetailSheet duplicate", () => {
 
   it("Shift+D duplicates from the panel, but not while typing in a field", async () => {
     const user = userEvent.setup();
-    render(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
+    renderWithIntl(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
 
     // The panel itself holds focus on open.
     await waitFor(() => expect(screen.getByRole("dialog")).toHaveFocus());
@@ -158,13 +159,13 @@ describe("TaskDetailSheet duplicate", () => {
 
 describe("TaskDetailSheet repeat", () => {
   it("header shows the labeled priority pill", () => {
-    render(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
+    renderWithIntl(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
     expect(screen.getByTestId("priority-pill")).toHaveTextContent("Urgent + important");
   });
 
   it("sets a weekly rule anchored on the due, then edits days, mode, and scope", async () => {
     const user = userEvent.setup();
-    render(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
+    renderWithIntl(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
 
     const row = screen.getByTestId("recurrence-row");
     expect(row).toHaveTextContent("Doesn't repeat");
@@ -208,7 +209,7 @@ describe("TaskDetailSheet repeat", () => {
 
   it("monthly exposes a day-of-month input defaulting to the due's day", async () => {
     const user = userEvent.setup();
-    render(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
+    renderWithIntl(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />);
     await user.click(screen.getByTestId("recurrence-row"));
     await user.click(screen.getByRole("menuitemradio", { name: "Monthly" }));
     const day = screen.getByRole("spinbutton", { name: "Day of month" });
@@ -218,5 +219,24 @@ describe("TaskDetailSheet repeat", () => {
     const current = useStore.getState().tasks.find((t) => t.id === "task_src")!;
     expect(current.recurrence).toEqual({ freq: "monthly", mode: "fixed", dayOfMonth: 28 });
     expect(screen.getByTestId("recurrence-row")).toHaveTextContent("Monthly on the 28th");
+  });
+
+  it("renders the sheet and the repeat editor in Spanish", async () => {
+    const user = userEvent.setup();
+    renderWithIntl(<TaskDetailSheet taskId="task_src" onClose={vi.fn()} />, { locale: "es" });
+    expect(screen.getByTestId("priority-pill")).toHaveTextContent("Urgente + importante");
+    expect(screen.getByText("Siguiente paso")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Título de la tarea")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Duplicar tarea" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Eliminar tarea" })).toBeInTheDocument();
+
+    const row = screen.getByTestId("recurrence-row");
+    expect(row).toHaveTextContent("No se repite");
+    await user.click(row);
+    await user.click(screen.getByRole("menuitemradio", { name: "Semanal" }));
+    expect(row).toHaveTextContent("Semanal: vie");
+    expect(screen.getByRole("button", { name: "lunes" })).toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: "Solo esta" }));
+    expect(row).toHaveTextContent("Editando solo esta repetición");
   });
 });

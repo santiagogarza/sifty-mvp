@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { TaskView } from "@/components/tasks/task-view";
 import { useStore } from "@/lib/store/store";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "../helpers/intl";
 
 /**
  * A new account must never flash "Inbox zero" before its starter tasks
@@ -35,7 +36,9 @@ afterEach(() => {
 });
 
 function renderInbox() {
-  return render(<TaskView title="Inbox" selector={(tasks) => tasks} emptyTitle="Inbox zero." />);
+  return renderWithIntl(
+    <TaskView title="Inbox" selector={(tasks) => tasks} emptyTitle="Inbox zero." />,
+  );
 }
 
 describe("TaskView first load", () => {

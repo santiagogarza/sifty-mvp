@@ -327,16 +327,6 @@ export function stripMatch(text: string, match: Pick<NlDateMatch, "start" | "end
   return cleaned.length ? cleaned : text.trim();
 }
 
-/** "Fri, Oct 16" — the chip's wording, same shape as the snooze toast. */
-export function describeDay(iso: string): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y!, m! - 1, d!).toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-}
-
 // ---------------------------------------------------------------------------
 
 function attachTime(text: string, from: number, to: number, date: Date): NlDateMatch {

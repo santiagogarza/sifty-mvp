@@ -12,14 +12,12 @@ import { isTriageInFlight, resiftTask } from "@/lib/ai/run-triage";
 import { selectOpenForTask, useDecisionsStore } from "@/lib/decisions/client";
 import {
   assigneeDisplayValue,
-  delegationLabel,
-  delegationMetaLabel,
   delegationValueMuted,
   normalizeAssigneeName,
 } from "@/lib/domain/assignee";
 import { LABEL_LIMITS, TASK_LIMITS } from "@/lib/domain/limits";
-import { SNOOZE_LABELS, resolveSnooze, toLocalIsoDate } from "@/lib/domain/snooze";
-import { STATUSES_IN_ORDER, STATUS_META, statusLabel } from "@/lib/domain/status";
+import { resolveSnooze, toLocalIsoDate } from "@/lib/domain/snooze";
+import { STATUSES_IN_ORDER } from "@/lib/domain/status";
 import {
   type DelegationCandidate,
   type Effort,
@@ -30,9 +28,10 @@ import {
   type TaskEditableField,
 } from "@/lib/domain/types";
 import { isSiftCapMessage } from "@/lib/entitlements/entitlements";
+import { useDateCopy } from "@/lib/i18n/use-date-copy";
 import { getSyncHooks, useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
-import { formatExactTime, formatRelativeDay, isOverdue } from "@/lib/utils/dates";
+import { isOverdue } from "@/lib/utils/dates";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import {
   ArrowRight,
@@ -48,6 +47,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import * as React from "react";
 import { AiThinking } from "./ai-status";
@@ -55,6 +55,7 @@ import { ConfidencePill } from "./confidence-pill";
 import { PriorityPill } from "./priority-pill";
 import { RecurrenceRow } from "./recurrence-editor";
 import { StatusIcon } from "./status-icon";
+import { useShortDay } from "./task-copy";
 
 /**
  * The detail sheet is where the AI's work becomes user-visible and editable.
@@ -83,6 +84,7 @@ export function TaskDetailSheet({
   const task = useStore((s) => s.tasks.find((t) => t.id === taskId));
   const duplicateTask = useStore((s) => s.duplicateTask);
   const { openDetail } = useFrame();
+  const t = useTranslations("taskDetail.sheet");
   const open = !!taskId && !!task;
 
   const duplicate = () => {
@@ -131,7 +133,7 @@ export function TaskDetailSheet({
         {task ? (
           <>
             <VisuallyHidden>
-              <SheetTitle>{task.title || "Task details"}</SheetTitle>
+              <SheetTitle>{task.title || t("fallbackTitle")}</SheetTitle>
             </VisuallyHidden>
             {/* Keyed so switching tasks resets local UI state (disclosures,
                 fill animation tracking) instead of leaking across tasks. */}
@@ -159,6 +161,10 @@ function DetailBody({
   const addSubtask = useStore((s) => s.addSubtask);
   const toggleSubtask = useStore((s) => s.toggleSubtask);
   const removeSubtask = useStore((s) => s.removeSubtask);
+  const t = useTranslations("taskDetail");
+  const tStatus = useTranslations("common.status");
+  const tActions = useTranslations("common.actions");
+  const { relativeDay, exactTime } = useDateCopy();
 
   const isDone = task.lifecycle === "done";
   const overdue = isOverdue(task.due);
@@ -215,13 +221,13 @@ function DetailBody({
             variant="ghost"
             size="iconSm"
             onClick={() => resiftTask(task.id)}
-            aria-label="Reorganize with Sifty"
-            title="Reorganize with Sifty"
+            aria-label={t("sheet.reorganize")}
+            title={t("sheet.reorganize")}
           >
             <RotateCw size={13} />
           </Button>
           <SheetClose asChild>
-            <Button variant="ghost" size="iconSm" aria-label="Close">
+            <Button variant="ghost" size="iconSm" aria-label={tActions("close")}>
               <X size={14} />
             </Button>
           </SheetClose>
@@ -240,7 +246,7 @@ function DetailBody({
                 lifecycle: isDone ? "active" : "done",
               })
             }
-            aria-label={isDone ? "Mark as not done" : "Mark as done"}
+            aria-label={isDone ? t("sheet.markNotDone") : t("sheet.markDone")}
             className={cn(
               "relative mt-1 size-5 rounded-full border flex items-center justify-center shrink-0",
               "after:absolute after:-inset-1.5 after:content-['']",
@@ -264,7 +270,7 @@ function DetailBody({
               "border-0 focus:outline-none placeholder:text-[var(--fg-subtle)]",
               isDone && "line-through text-[var(--fg-subtle)]",
             )}
-            placeholder="Task title"
+            placeholder={t("sheet.titlePlaceholder")}
           />
         </div>
 
@@ -280,12 +286,12 @@ function DetailBody({
         ) : null}
 
         <section {...fillProps(0, "mt-5")}>
-          <div className="text-eyebrow mb-1.5">Next action</div>
+          <div className="text-eyebrow mb-1.5">{t("sheet.nextAction")}</div>
           <div className="group relative">
             <Textarea
               value={task.nextAction ?? ""}
               maxLength={TASK_LIMITS.nextAction}
-              placeholder={nextActionPending ? "" : "What's the very next concrete step?"}
+              placeholder={nextActionPending ? "" : t("sheet.nextActionPlaceholder")}
               onChange={(e) =>
                 updateTask(
                   task.id,
@@ -310,8 +316,8 @@ function DetailBody({
 
         <section {...fillProps(1, "mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4")}>
           <MetaCell
-            label="Due"
-            value={formatRelativeDay(task.due) ?? "Unset"}
+            label={t("sheet.fields.due")}
+            value={relativeDay(task.due) ?? t("sheet.unset")}
             pending={firstFill && !task.due && !edited("due")}
             tone={overdue ? "warn" : "neutral"}
             icon={<CalendarDays size={12} />}
@@ -319,24 +325,27 @@ function DetailBody({
             <DueEditor task={task} />
           </MetaCell>
           <MetaCell
-            label="Effort"
-            value={effortLabel(task.effort)}
+            label={t("sheet.fields.effort")}
+            value={t(`effort.label.${task.effort}`)}
             pending={firstFill && !edited("effort")}
             icon={<Clock size={12} />}
           >
             <EffortPicker task={task} />
           </MetaCell>
           <MetaCell
-            label="Delegate"
-            value={delegationMetaLabel(task)}
+            label={t("sheet.fields.delegate")}
+            value={
+              (task.delegationCandidate === "person" && assigneeDisplayValue(task)) ||
+              t(`delegation.label.${task.delegationCandidate}`)
+            }
             valueMuted={delegationValueMuted(task)}
             pending={firstFill && !edited("delegationCandidate")}
           >
             <DelegationPicker task={task} />
           </MetaCell>
           <MetaCell
-            label="Status"
-            value={statusLabel(task.lifecycle)}
+            label={t("sheet.fields.status")}
+            value={tStatus(`${task.lifecycle}.label`)}
             icon={<StatusIcon status={task.lifecycle} size={12} />}
           >
             <StatusPicker task={task} />
@@ -348,13 +357,13 @@ function DetailBody({
         </section>
 
         <section {...fillProps(2, "mt-5")}>
-          <div className="text-eyebrow mb-2">Priority</div>
+          <div className="text-eyebrow mb-2">{t("sheet.fields.priority")}</div>
           <PriorityEditors task={task} />
         </section>
 
         <section {...fillProps(3, "mt-5")}>
           <div className="flex items-center justify-between mb-2">
-            <div className="text-eyebrow">Labels</div>
+            <div className="text-eyebrow">{t("sheet.fields.labels")}</div>
           </div>
           <LabelEditor
             task={task}
@@ -366,7 +375,7 @@ function DetailBody({
 
         <section {...fillProps(4, "mt-5")}>
           <div className="flex items-center justify-between mb-2">
-            <div className="text-eyebrow">Subtasks</div>
+            <div className="text-eyebrow">{t("sheet.fields.subtasks")}</div>
             <span className="text-[11px] text-[var(--fg-subtle)] text-num">
               {task.subtasks.filter((st) => st.done).length}/{task.subtasks.length}
             </span>
@@ -390,7 +399,7 @@ function DetailBody({
           >
             <span className="flex items-center gap-1.5">
               <Sparkles size={12} className="text-[var(--ai)]" />
-              AI rationale
+              {t("sheet.rationale")}
             </span>
             <ChevronRight
               size={13}
@@ -403,11 +412,11 @@ function DetailBody({
           {showRationale ? (
             <div className="mt-2 rounded-[var(--radius-md)] bg-[var(--ai-soft)] px-3 py-2.5">
               <p className="text-[12.5px] leading-[1.55] text-[var(--fg-muted)] whitespace-pre-wrap">
-                {task.rationale ?? "No rationale recorded yet."}
+                {task.rationale ?? t("sheet.noRationale")}
               </p>
               {task.confidence ? (
                 <div className="mt-2 flex items-center gap-2 text-[11.5px] text-[var(--fg-subtle)]">
-                  <span className="text-eyebrow">Confidence</span>
+                  <span className="text-eyebrow">{t("sheet.confidence")}</span>
                   <ConfidenceMeter value={task.confidence} />
                   <span className="text-num">{Math.round(task.confidence * 100)}%</span>
                 </div>
@@ -420,7 +429,7 @@ function DetailBody({
             onClick={() => setShowSource((v) => !v)}
             className="mt-3 flex w-full items-center justify-between text-[12.5px] text-[var(--fg-muted)] hover:text-[var(--fg)]"
           >
-            <span>Original capture</span>
+            <span>{t("sheet.originalCapture")}</span>
             <ChevronRight
               size={13}
               className={cn(
@@ -432,7 +441,7 @@ function DetailBody({
           {showSource ? (
             <pre className="mt-2 whitespace-pre-wrap rounded-[var(--radius-md)] bg-[var(--surface-muted)] px-3 py-2.5 font-sans text-[12.5px] text-[var(--fg-muted)] leading-[1.55]">
               {task.sourceText}
-              {task.sourceContext ? `\n\n— Context —\n${task.sourceContext}` : ""}
+              {task.sourceContext ? `\n\n${t("sheet.contextDivider")}\n${task.sourceContext}` : ""}
             </pre>
           ) : null}
         </section>
@@ -442,32 +451,32 @@ function DetailBody({
 
       <div className="flex items-center justify-between gap-2 border-t border-[var(--border)] px-4 sm:px-5 py-3 bg-[var(--surface-muted)]">
         <span className="text-[11.5px] text-[var(--fg-subtle)]">
-          Updated {formatExactTime(task.updatedAt)}
+          {t("sheet.updated", { time: exactTime(task.updatedAt) })}
         </span>
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="sm"
             onClick={onDuplicate}
-            aria-label="Duplicate task"
-            title="Duplicate task (Shift+D)"
+            aria-label={t("sheet.duplicateTask")}
+            title={t("sheet.duplicateHint")}
           >
             <Copy size={13} />
-            <span className="hidden sm:inline">Duplicate</span>
+            <span className="hidden sm:inline">{t("sheet.duplicate")}</span>
           </Button>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => {
-              if (confirm("Delete this task?")) {
+              if (confirm(t("sheet.deleteConfirm"))) {
                 deleteTask(task.id);
                 onClose();
               }
             }}
-            aria-label="Delete task"
+            aria-label={t("sheet.deleteTask")}
           >
             <Trash2 size={13} />
-            <span className="hidden sm:inline">Delete</span>
+            <span className="hidden sm:inline">{tActions("delete")}</span>
           </Button>
         </div>
       </div>
@@ -504,24 +513,25 @@ function AiFillSlot({ className }: { className?: string }) {
 }
 
 function OrganizeFailed({ task }: { task: Task }) {
+  const t = useTranslations("taskDetail.organizeFailed");
   const capped = isSiftCapMessage(task.aiError);
   return (
     <div className="mt-4 flex items-center justify-between gap-3 rounded-[var(--radius-md)] bg-[var(--surface-muted)] px-3.5 py-2">
       <span className="text-[12.5px] text-[var(--fg-muted)]">
-        {capped ? task.aiError : "Sifty couldn't organize this."}
+        {capped ? task.aiError : t("message")}
       </span>
       {capped && /upgrade/i.test(task.aiError ?? "") ? (
         <Link
           href="/settings/billing"
           className="shrink-0 inline-flex items-center gap-1 text-[12.5px] text-[var(--accent)] hover:underline"
         >
-          See plans
+          {t("seePlans")}
           <ArrowRight size={12} />
         </Link>
       ) : (
         <Button variant="ghost" size="sm" onClick={() => resiftTask(task.id)}>
           <RotateCw size={12} />
-          Retry
+          {t("retry")}
         </Button>
       )}
     </div>
@@ -541,6 +551,8 @@ const FILE_TARGETS: readonly Lifecycle[] = ["active", "waiting", "someday"];
  */
 function FilingStrip({ task }: { task: Task }) {
   const updateTask = useStore((s) => s.updateTask);
+  const t = useTranslations("taskDetail.filing");
+  const tStatus = useTranslations("common.status");
   const [filed, setFiled] = React.useState(false);
   const confirmationRef = React.useRef<HTMLDivElement>(null);
   // Focus moves to the confirmation only when the strip's own button caused
@@ -582,12 +594,15 @@ function FilingStrip({ task }: { task: Task }) {
         >
           <Check size={13} className="text-[var(--done)]" strokeWidth={2.5} />
           <span>
-            Moved to <span className="text-[var(--fg)]">{statusLabel(task.lifecycle)}</span>
+            {t.rich("movedTo", {
+              status: tStatus(`${task.lifecycle}.label`),
+              hl: (chunks) => <span className="text-[var(--fg)]">{chunks}</span>,
+            })}
           </span>
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-eyebrow mr-1">Move to</span>
+          <span className="text-eyebrow mr-1">{t("moveTo")}</span>
           {FILE_TARGETS.map((to) => (
             <button
               key={to}
@@ -601,7 +616,7 @@ function FilingStrip({ task }: { task: Task }) {
               )}
             >
               <StatusIcon status={to} size={12} className="opacity-80" />
-              {statusLabel(to)}
+              {tStatus(`${to}.label`)}
             </button>
           ))}
         </div>
@@ -616,6 +631,7 @@ function FilingStrip({ task }: { task: Task }) {
  * wherever the work will happen (an AI agent, a teammate, a doc).
  */
 function AgentBriefSection({ task }: { task: Task }) {
+  const t = useTranslations("taskDetail.agentBrief");
   const [generating, setGenerating] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [expanded, setExpanded] = React.useState(false);
@@ -640,7 +656,7 @@ function AgentBriefSection({ task }: { task: Task }) {
         error?: string;
         task?: Task | null;
       };
-      if (!res.ok) throw new Error(data.error || `Brief failed (${res.status})`);
+      if (!res.ok) throw new Error(data.error || t("failed"));
       if (data.task) {
         const store = useStore.getState();
         if (getSyncHooks()?.isTaskDirty(task.id)) {
@@ -654,7 +670,7 @@ function AgentBriefSection({ task }: { task: Task }) {
       }
       setExpanded(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Brief generation failed");
+      setError(err instanceof Error ? err.message : t("failed"));
     } finally {
       setGenerating(false);
     }
@@ -672,21 +688,21 @@ function AgentBriefSection({ task }: { task: Task }) {
       <div className="flex items-center justify-between mb-2">
         <div className="text-eyebrow flex items-center gap-1.5">
           <Bot size={12} className="text-[var(--ai)]" />
-          Agent brief
+          {t("title")}
         </div>
         <Button variant="ghost" size="sm" onClick={generate} disabled={generating}>
           {generating ? (
             <>
               <span className="size-[6px] rounded-full bg-[var(--ai)] animate-pulse-soft" />
-              Preparing…
+              {t("preparing")}
             </>
           ) : task.agentBrief ? (
             <>
-              <RotateCw size={12} /> Regenerate
+              <RotateCw size={12} /> {t("regenerate")}
             </>
           ) : (
             <>
-              <Sparkles size={12} /> Prepare for agent
+              <Sparkles size={12} /> {t("prepare")}
             </>
           )}
         </Button>
@@ -701,7 +717,7 @@ function AgentBriefSection({ task }: { task: Task }) {
             onClick={() => setExpanded((v) => !v)}
             className="flex w-full items-center justify-between px-3 py-2 text-[12.5px] text-[var(--fg-muted)] hover:text-[var(--fg)]"
           >
-            <span>Handoff brief — ready to copy</span>
+            <span>{t("ready")}</span>
             <ChevronRight
               size={13}
               className={cn(
@@ -718,7 +734,7 @@ function AgentBriefSection({ task }: { task: Task }) {
               <div className="mt-2 flex justify-end">
                 <Button variant="ghost" size="sm" onClick={copy}>
                   <Copy size={12} />
-                  {copied ? "Copied" : "Copy brief"}
+                  {copied ? t("copied") : t("copy")}
                 </Button>
               </div>
             </div>
@@ -741,6 +757,7 @@ function siftInProgress(task: Task): boolean {
  * appending the answer to the capture and re-sifting, which costs a sift.
  */
 function ClarifyingQuestion({ task }: { task: Task }) {
+  const t = useTranslations("taskDetail.question");
   const updateTask = useStore((s) => s.updateTask);
   // Only the question's own row: a memory proposal attached to the same
   // task is answered from the inbox, not from here.
@@ -820,7 +837,7 @@ function ClarifyingQuestion({ task }: { task: Task }) {
       <div className="flex items-start gap-2">
         <Sparkles size={13} className="text-[var(--accent)] mt-0.5" />
         <div className="flex-1 min-w-0">
-          <div className="text-eyebrow mb-1 !text-[var(--accent)]">Sifty asks</div>
+          <div className="text-eyebrow mb-1 !text-[var(--accent)]">{t("eyebrow")}</div>
           <p className="text-[13.5px] leading-[1.5] text-[var(--fg)]">{task.clarifyingQuestion}</p>
           {options.length ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -846,7 +863,7 @@ function ClarifyingQuestion({ task }: { task: Task }) {
           >
             <Input
               value={answer}
-              placeholder={options.length ? "Or answer in your own words…" : "Answer briefly…"}
+              placeholder={options.length ? t("placeholderWithOptions") : t("placeholder")}
               onChange={(e) => setAnswer(e.target.value)}
               className="h-8 text-[13px] bg-[var(--bg)]"
             />
@@ -856,7 +873,7 @@ function ClarifyingQuestion({ task }: { task: Task }) {
               type="submit"
               disabled={busy || !checked || !answer.trim()}
             >
-              Reply
+              {t("reply")}
             </Button>
           </form>
           <button
@@ -865,7 +882,7 @@ function ClarifyingQuestion({ task }: { task: Task }) {
             disabled={busy || !checked}
             className="mt-2 text-[12px] text-[var(--fg-muted)] hover:text-[var(--fg)] underline-offset-2 hover:underline"
           >
-            Let Sifty decide
+            {t("letSiftyDecide")}
           </button>
         </div>
       </div>
@@ -875,6 +892,7 @@ function ClarifyingQuestion({ task }: { task: Task }) {
 
 /** After a dismissed question: the sift stands, flagged honestly as a guess. */
 function SiftedWithAssumptions({ task }: { task: Task }) {
+  const t = useTranslations("taskDetail.question");
   return (
     <div
       data-testid="sifted-with-assumptions"
@@ -882,15 +900,17 @@ function SiftedWithAssumptions({ task }: { task: Task }) {
     >
       <Sparkles size={12} className="mt-[3px] shrink-0 text-[var(--fg-subtle)]" />
       <span>
-        Sifted on Sifty's own assumptions — you skipped its question.{" "}
-        <button
-          type="button"
-          onClick={() => resiftTask(task.id)}
-          className="text-[var(--fg)] underline-offset-2 hover:underline"
-        >
-          Re-sift
-        </button>{" "}
-        if it got something wrong.
+        {t.rich("assumptions", {
+          resift: (chunks) => (
+            <button
+              type="button"
+              onClick={() => resiftTask(task.id)}
+              className="text-[var(--fg)] underline-offset-2 hover:underline"
+            >
+              {chunks}
+            </button>
+          ),
+        })}
       </span>
     </div>
   );
@@ -952,6 +972,10 @@ function MetaCell({
 
 function DueEditor({ task }: { task: Task }) {
   const updateTask = useStore((s) => s.updateTask);
+  const t = useTranslations("taskDetail.due");
+  const tDates = useTranslations("common.dates");
+  const { snooze } = useDateCopy();
+  const showDay = useShortDay();
   const today = new Date();
   const inDays = (offset: number) => {
     const d = new Date(today);
@@ -961,19 +985,11 @@ function DueEditor({ task }: { task: Task }) {
   // Same resolution as the list's snooze keys, so "Next week" means the
   // coming Monday everywhere, and all days are local calendar days.
   const presets: Array<{ label: string; due: string }> = [
-    { label: "Today", due: inDays(0) },
-    { label: SNOOZE_LABELS.tomorrow, due: resolveSnooze("tomorrow", today) },
-    { label: "In 3 days", due: inDays(3) },
-    { label: SNOOZE_LABELS.next_week, due: resolveSnooze("next_week", today) },
+    { label: tDates("today"), due: inDays(0) },
+    { label: snooze("tomorrow"), due: resolveSnooze("tomorrow", today) },
+    { label: t("inThreeDays"), due: inDays(3) },
+    { label: snooze("next_week"), due: resolveSnooze("next_week", today) },
   ];
-  const showDay = (iso: string) => {
-    const [y, m, d] = iso.split("-").map(Number);
-    return new Date(y!, m! - 1, d!).toLocaleDateString(undefined, {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    });
-  };
   return (
     <div className="flex flex-col gap-1 min-w-[220px]">
       {presets.map((p) => (
@@ -1002,7 +1018,7 @@ function DueEditor({ task }: { task: Task }) {
           onClick={() => updateTask(task.id, { due: null }, { editedFields: ["due"] })}
           className="rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[12.5px] text-[var(--fg-muted)] hover:bg-[var(--surface-hover)]"
         >
-          Clear date
+          {t("clear")}
         </button>
       ) : null}
     </div>
@@ -1011,6 +1027,7 @@ function DueEditor({ task }: { task: Task }) {
 
 function EffortPicker({ task }: { task: Task }) {
   const updateTask = useStore((s) => s.updateTask);
+  const t = useTranslations("taskDetail.effort");
   const options: Effort[] = ["quick", "small", "medium", "deep"];
   return (
     <div className="flex flex-col min-w-[180px]">
@@ -1024,8 +1041,8 @@ function EffortPicker({ task }: { task: Task }) {
             task.effort === opt && "bg-[var(--surface-hover)]",
           )}
         >
-          <span>{effortLabel(opt)}</span>
-          <span className="text-[11px] text-[var(--fg-subtle)]">{effortHint(opt)}</span>
+          <span>{t(`label.${opt}`)}</span>
+          <span className="text-[11px] text-[var(--fg-subtle)]">{t(`hint.${opt}`)}</span>
         </button>
       ))}
     </div>
@@ -1034,6 +1051,7 @@ function EffortPicker({ task }: { task: Task }) {
 
 function DelegationPicker({ task }: { task: Task }) {
   const updateTask = useStore((s) => s.updateTask);
+  const t = useTranslations("taskDetail.delegation");
   const options: DelegationCandidate[] = ["self", "ai", "person", "unsure"];
   const [draft, setDraft] = React.useState(task.assigneeName ?? "");
 
@@ -1075,7 +1093,7 @@ function DelegationPicker({ task }: { task: Task }) {
             task.delegationCandidate === opt && "bg-[var(--surface-hover)]",
           )}
         >
-          <span>{delegationLabel(opt)}</span>
+          <span>{t(`label.${opt}`)}</span>
           {task.delegationCandidate === opt ? (
             <Check size={13} className="text-[var(--fg-muted)]" />
           ) : null}
@@ -1100,8 +1118,8 @@ function DelegationPicker({ task }: { task: Task }) {
               }
             }}
             onBlur={commitName}
-            placeholder="Type a name"
-            aria-label="Person name"
+            placeholder={t("namePlaceholder")}
+            aria-label={t("nameLabel")}
             className="h-9 text-[13px]"
           />
           {assigneeDisplayValue(task) ? (
@@ -1110,7 +1128,7 @@ function DelegationPicker({ task }: { task: Task }) {
               onClick={clearName}
               className="min-h-9 rounded-[var(--radius-sm)] px-2.5 py-2 text-left text-[12.5px] text-[var(--fg-muted)] hover:bg-[var(--surface-hover)]"
             >
-              Clear name
+              {t("clearName")}
             </button>
           ) : null}
         </>
@@ -1125,6 +1143,7 @@ function DelegationPicker({ task }: { task: Task }) {
  */
 function StatusPicker({ task }: { task: Task }) {
   const updateTask = useStore((s) => s.updateTask);
+  const t = useTranslations("common.status");
   return (
     <div className="flex flex-col min-w-[240px]">
       {STATUSES_IN_ORDER.map((opt) => (
@@ -1139,9 +1158,9 @@ function StatusPicker({ task }: { task: Task }) {
         >
           <StatusIcon status={opt} size={13} className="mt-[3px] text-[var(--fg-muted)]" />
           <span className="flex-1 min-w-0">
-            <span className="block text-[13px] text-[var(--fg)]">{STATUS_META[opt].label}</span>
+            <span className="block text-[13px] text-[var(--fg)]">{t(`${opt}.label`)}</span>
             <span className="block text-[11.5px] text-[var(--fg-subtle)] leading-[1.4]">
-              {STATUS_META[opt].description}
+              {t(`${opt}.description`)}
             </span>
           </span>
           {task.lifecycle === opt ? (
@@ -1155,15 +1174,16 @@ function StatusPicker({ task }: { task: Task }) {
 
 function PriorityEditors({ task }: { task: Task }) {
   const updateTask = useStore((s) => s.updateTask);
+  const t = useTranslations("taskDetail.sheet.fields");
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <Slider
-        label="Urgency"
+        label={t("urgency")}
         value={task.urgency}
         onChange={(v) => updateTask(task.id, { urgency: v }, { editedFields: ["urgency"] })}
       />
       <Slider
-        label="Importance"
+        label={t("importance")}
         value={task.importance}
         onChange={(v) => updateTask(task.id, { importance: v }, { editedFields: ["importance"] })}
       />
@@ -1214,6 +1234,7 @@ function LabelEditor({
   pending?: boolean;
 }) {
   const updateTask = useStore((s) => s.updateTask);
+  const t = useTranslations("taskDetail.labels");
   const [adding, setAdding] = React.useState(false);
   const [input, setInput] = React.useState("");
 
@@ -1258,7 +1279,7 @@ function LabelEditor({
             )
           }
           className="group inline-flex items-center"
-          aria-label={`Remove ${l.name}`}
+          aria-label={t("remove", { name: l.name })}
         >
           <Badge tone={l.tone} className={labelChipClass}>
             {l.name}
@@ -1285,7 +1306,7 @@ function LabelEditor({
             if (input.trim()) add(input);
             else setAdding(false);
           }}
-          placeholder="Label name"
+          placeholder={t("namePlaceholder")}
           className="h-6 w-[140px] text-[12px]"
         />
       ) : atCap ? null : (
@@ -1298,7 +1319,7 @@ function LabelEditor({
                 "gap-1 rounded-full border border-dashed border-[var(--border-strong)] px-2 text-[var(--fg-muted)] hover:bg-[var(--surface-hover)]",
               )}
             >
-              <Plus size={10} /> Add label
+              <Plus size={10} /> {t("add")}
             </button>
           </PopoverTrigger>
           <PopoverContent align="start">
@@ -1319,7 +1340,7 @@ function LabelEditor({
                 onClick={() => setAdding(true)}
                 className="flex items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-left text-[12.5px] text-[var(--fg-muted)] hover:bg-[var(--surface-hover)]"
               >
-                <Plus size={11} /> New label
+                <Plus size={11} /> {t("new")}
               </button>
             </div>
           </PopoverContent>
@@ -1342,6 +1363,7 @@ function SubtaskList({
   onRemove: (id: string) => void;
   onAdd: (title: string) => void;
 }) {
+  const t = useTranslations("taskDetail.subtasks");
   const [draft, setDraft] = React.useState("");
   return (
     <div className="flex flex-col gap-1">
@@ -1369,7 +1391,7 @@ function SubtaskList({
               "size-[14px] rounded-full border flex items-center justify-center shrink-0",
               st.done ? "bg-[var(--done)] border-[var(--done)]" : "border-[var(--border-strong)]",
             )}
-            aria-label={st.done ? "Mark incomplete" : "Mark complete"}
+            aria-label={st.done ? t("markIncomplete") : t("markComplete")}
           >
             {st.done ? <Check size={9} className="text-white" strokeWidth={3} /> : null}
           </button>
@@ -1385,7 +1407,7 @@ function SubtaskList({
             type="button"
             onClick={() => onRemove(st.id)}
             className="opacity-0 group-hover:opacity-100 transition-opacity text-[var(--fg-subtle)] hover:text-[var(--warn)]"
-            aria-label="Remove subtask"
+            aria-label={t("remove")}
           >
             <Trash2 size={12} />
           </button>
@@ -1405,7 +1427,7 @@ function SubtaskList({
                 setDraft("");
               }
             }}
-            placeholder="Add a subtask"
+            placeholder={t("addPlaceholder")}
             className="flex-1 bg-transparent text-[13px] text-[var(--fg)] placeholder:text-[var(--fg-subtle)] focus:outline-none"
           />
         </div>
@@ -1421,11 +1443,4 @@ function ConfidenceMeter({ value }: { value: number }) {
       <span className="absolute inset-y-0 left-0 bg-[var(--ai)]" style={{ width: `${pct}%` }} />
     </span>
   );
-}
-
-function effortLabel(e: Effort): string {
-  return { quick: "Quick", small: "Small", medium: "Medium", deep: "Deep" }[e];
-}
-function effortHint(e: Effort): string {
-  return { quick: "<10 min", small: "<30 min", medium: "1–3 hr", deep: "Multi-session" }[e];
 }
