@@ -1,1 +1,131 @@
-{}
+{
+  "greeting": {
+    "late": "Ya es tarde",
+    "morning": "Buenos días",
+    "afternoon": "Buenas tardes",
+    "evening": "Buenas noches"
+  },
+  "views": {
+    "today": {
+      "pageTitle": "Hoy",
+      "title": "Lo importante hoy",
+      "description": "Lo vencido, lo que vence hoy y todo lo que Sifty cree que debe estar en primer plano para ti.",
+      "emptyTitle": "Nada urgente hoy.",
+      "emptyDescription": "Cuando algo necesite tu atención, aparecerá aquí. Mientras tanto, disfruta la calma."
+    },
+    "focus": {
+      "description": "El trabajo con el que te comprometiste, ordenado según lo que Sifty cree que conviene hacer después. Mover la prioridad cambia el orden; dejar que la IA vuelva a clasificar lo reequilibra.",
+      "emptyTitle": "Nada en Enfoque.",
+      "emptyDescription": "Mueve tareas aquí desde la Bandeja de entrada cuando quieras comprometerte con ellas."
+    },
+    "inbox": {
+      "description": "Tareas recién capturadas. Revísalas y muévelas a Enfoque, En espera o Algún día — o simplemente déjalas; Hoy traerá lo importante.",
+      "emptyTitle": "Bandeja vacía.",
+      "emptyDescription": "Captura lo que tengas en mente. Sifty lo organizará antes de que vuelvas a mirar."
+    },
+    "waiting": {
+      "description": "Lo que delegaste — a una persona, un agente o un proceso. Devuélvelo a Enfoque cuando vuelva a tus manos; Hoy te avisará cuando llegue una fecha límite.",
+      "emptyTitle": "Nada pendiente de otros."
+    },
+    "someday": {
+      "description": "Un estante tranquilo para ideas que no son urgentes. Vuelve a ellas cuando sea el momento.",
+      "emptyTitle": "Estante vacío."
+    },
+    "done": {
+      "description": "Trabajo terminado, lo más reciente primero. Desmarca cualquier tarea para devolverla a Enfoque.",
+      "emptyTitle": "Aún no hay nada terminado.",
+      "emptyDescription": "Las tareas completadas llegan aquí, así que nunca pierdes una al marcarla."
+    }
+  },
+  "board": {
+    "title": "Tablero",
+    "description": "Todo en el tablero, por estado. Arrastra una tarjeta para moverla.",
+    "emptyTitle": "Aún no hay nada en el tablero.",
+    "emptyDescription": "Captura una tarea y aparecerá en la columna Bandeja.",
+    "column": "Columna {status}",
+    "dropHere": "Suelta aquí",
+    "moreCompleted": "{count, plural, one {+# terminada más} other {+# terminadas más}}"
+  },
+  "viewMode": {
+    "group": "Modo de vista",
+    "list": "Vista de lista",
+    "board": "Vista de tablero"
+  },
+  "empty": {
+    "capture": "Capturar una tarea",
+    "orPress": "o presiona <key>C</key>"
+  },
+  "welcome": {
+    "dismiss": "Cerrar bienvenida",
+    "eyebrow": "Bienvenida",
+    "title": "Tres tareas de ejemplo, ya clasificadas.",
+    "body": "Captura lo que sea con tus propias palabras — presiona <key>C</key>. Sifty lo clasifica en un título claro, el siguiente paso, la prioridad, el esfuerzo, las etiquetas y las subtareas. Todos los campos se pueden editar, y el detalle de la tarea muestra por qué decidió lo que decidió.",
+    "limits": "Capturar es ilimitado. Las cuentas gratis tienen {sifts, plural, one {# clasificación} other {# clasificaciones}} al día; tus primeros {days} días incluyen clasificación ilimitada.",
+    "captureFirst": "Capturar tu primera tarea",
+    "removeExamples": "Eliminar los ejemplos"
+  },
+  "list": {
+    "label": "Tareas",
+    "bulk": {
+      "label": "Acciones en lote",
+      "selected": "<n>{count}</n> {count, plural, one {seleccionada} other {seleccionadas}}",
+      "moveTo": "Mover a {status}",
+      "moved": "{count, plural, one {Se movió # tarea} other {Se movieron # tareas}} a {status}",
+      "clear": "Limpiar"
+    },
+    "snooze": {
+      "hint": "Posponer hasta",
+      "cancel": "· Esc para cancelar",
+      "done": "Pospuesta hasta el {date}"
+    }
+  },
+  "row": {
+    "markDone": "Marcar como terminada",
+    "markNotDone": "Marcar como no terminada"
+  },
+  "plan": {
+    "eyebrow": "Plan del día",
+    "running": "Sifty está planeando tu día…",
+    "stale": "El último plan no terminó. Vuelve a planear para intentarlo de nuevo.",
+    "failed": "No se pudo planear — intenta de nuevo.",
+    "idle": "Sifty puede reordenar Hoy según todo lo que hay en tu lista.",
+    "replan": "Volver a planear hoy",
+    "planning": "Planeando…",
+    "more": "y {count} más",
+    "move": {
+      "moved_in": "Pasó a Hoy",
+      "moved_out": "Salió de Hoy",
+      "rescored": "Reordenada",
+      "withReason": "{move}: {reason}"
+    },
+    "planned": "Planeado el {time} · {moves, plural, =0 {sin cambios} one {# movimiento} other {# movimientos}} · {considered, plural, one {# tarea abierta considerada} other {# tareas abiertas consideradas}}",
+    "attempted": "Intentado el {time}",
+    "errors": {
+      "couldNotStart": "No se pudo empezar a planear — intenta de nuevo.",
+      "offline": "No se puede conectar con Sifty — intenta de nuevo en un momento.",
+      "proFeature": "El plan del día es parte de Sifty Pro. Pásate a Pro para que Sifty planee tu día.",
+      "fairUseCap": "Llegaste al límite de uso razonable de clasificaciones de hoy. Se reinicia mañana."
+    }
+  },
+  "ai": {
+    "organizing": "Organizando",
+    "failed": "No se pudo organizar",
+    "thinking": "Sifty está organizando esto…",
+    "stageRunning": "{stage}…",
+    "stageStep": "{stage} (paso {step} de {total})",
+    "stages": {
+      "enrich": "Enriqueciendo",
+      "prioritize": "Priorizando",
+      "triage": "Clasificando",
+      "subtasks": "Desglosando",
+      "plan": "Planeando"
+    }
+  },
+  "confidence": {
+    "unsure": "Dudosa",
+    "sifted": "Clasificada · {pct}%",
+    "aria": "Confianza de Sifty: {pct}%",
+    "ariaLow": "Confianza de Sifty: {pct}%, baja",
+    "tooltip": "Confianza: {pct}%"
+  }
+}

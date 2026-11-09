@@ -2,9 +2,10 @@
 import { WelcomeCard, shouldShowWelcome } from "@/components/tasks/welcome-card";
 import type { Label, Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "../helpers/intl";
 
 /** First-run welcome card: shows only over an examples-only workspace. */
 
@@ -96,7 +97,7 @@ describe("shouldShowWelcome", () => {
 describe("WelcomeCard", () => {
   it("states what sifting does and the free cap, and opens capture", async () => {
     const user = userEvent.setup();
-    render(<WelcomeCard />);
+    renderWithIntl(<WelcomeCard />);
     const card = screen.getByTestId("welcome-card");
     expect(card).toHaveTextContent(/Sifty sifts it into a clear title/);
     expect(card).toHaveTextContent(/Free accounts get 5 sifts a day/);
@@ -106,9 +107,18 @@ describe("WelcomeCard", () => {
     expect(openCapture).toHaveBeenCalledTimes(1);
   });
 
+  it("speaks Spanish, with the free cap pluralized", () => {
+    renderWithIntl(<WelcomeCard />, { locale: "es" });
+    const card = screen.getByTestId("welcome-card");
+    expect(card).toHaveTextContent("Tres tareas de ejemplo, ya clasificadas.");
+    expect(card).toHaveTextContent(/Las cuentas gratis tienen 5 clasificaciones al día/);
+    expect(screen.getByRole("button", { name: "Capturar tu primera tarea" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cerrar bienvenida" })).toBeInTheDocument();
+  });
+
   it("Remove the examples deletes every example task and the card goes away", async () => {
     const user = userEvent.setup();
-    render(<WelcomeCard />);
+    renderWithIntl(<WelcomeCard />);
     await user.click(screen.getByRole("button", { name: "Remove the examples" }));
     expect(useStore.getState().tasks).toHaveLength(0);
     expect(screen.queryByTestId("welcome-card")).toBeNull();
@@ -116,7 +126,7 @@ describe("WelcomeCard", () => {
 
   it("Dismiss hides it and persists the choice", async () => {
     const user = userEvent.setup();
-    render(<WelcomeCard />);
+    renderWithIntl(<WelcomeCard />);
     await user.click(screen.getByRole("button", { name: "Dismiss welcome" }));
     expect(screen.queryByTestId("welcome-card")).toBeNull();
     expect(useStore.getState().welcomeDismissed).toBe(true);

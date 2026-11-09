@@ -1,6 +1,7 @@
-import { type AiStatus, SIFT_STAGES, SIFT_STAGE_LABELS, type SiftStage } from "@/lib/domain/types";
+import { type AiStatus, SIFT_STAGES, type SiftStage } from "@/lib/domain/types";
 import { cn } from "@/lib/utils/cn";
 import { Sparkles } from "lucide-react";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 
 /**
@@ -23,6 +24,7 @@ export function AiStatusInline({
   stage?: SiftStage | null;
   className?: string;
 }) {
+  const t = useTranslations("tasks.ai");
   if (status === "ready" || status === "idle") return null;
   if (status === "pending" || status === "running") {
     return (
@@ -35,7 +37,7 @@ export function AiStatusInline({
         data-testid="ai-status"
       >
         <Sparkles size={11} />
-        {status === "running" && stage ? SIFT_STAGE_LABELS[stage] : "Organizing"}
+        {status === "running" && stage ? t(`stages.${stage}`) : t("organizing")}
       </span>
     );
   }
@@ -43,7 +45,7 @@ export function AiStatusInline({
     <span
       className={cn("inline-flex items-center gap-1.5 text-[11.5px] text-[var(--warn)]", className)}
     >
-      Couldn't organize
+      {t("failed")}
     </span>
   );
 }
@@ -54,12 +56,21 @@ export function AiStatusInline({
  * pulsing, the rest hollow.
  */
 export function AiThinking({ stage }: { stage?: SiftStage | null }) {
+  const t = useTranslations("tasks.ai");
   const current = stage ? SIFT_STAGES.indexOf(stage) : -1;
   return (
     <span
       className="inline-flex items-center gap-2 text-[12px] text-[var(--ai)]"
       data-testid="sift-progress"
-      aria-label={stage ? `${SIFT_STAGE_LABELS[stage]} (step ${current + 1} of 5)` : undefined}
+      aria-label={
+        stage
+          ? t("stageStep", {
+              stage: t(`stages.${stage}`),
+              step: current + 1,
+              total: SIFT_STAGES.length,
+            })
+          : undefined
+      }
     >
       <span className="inline-flex items-center gap-[3px]">
         {SIFT_STAGES.map((s, i) => (
@@ -75,7 +86,7 @@ export function AiThinking({ stage }: { stage?: SiftStage | null }) {
           />
         ))}
       </span>
-      {stage ? `${SIFT_STAGE_LABELS[stage]}…` : "Sifty is organizing this…"}
+      {stage ? t("stageRunning", { stage: t(`stages.${stage}`) }) : t("thinking")}
     </span>
   );
 }

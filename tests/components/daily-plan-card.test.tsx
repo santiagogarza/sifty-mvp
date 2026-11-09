@@ -4,9 +4,10 @@ import { useToastStore } from "@/components/ui/toast";
 import type { PublicDailyPlan } from "@/lib/ai/plan/public";
 import type { Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "../helpers/intl";
 
 /** The daily plan card above Today: what it shows, hides, and does on Re-plan. */
 
@@ -112,14 +113,23 @@ afterEach(() => {
 describe("DailyPlanCard", () => {
   it("renders nothing for an account that cannot plan and has no plan", async () => {
     responses = [{ plan: null, running: false, canReplan: false }];
-    render(<DailyPlanCard />);
+    renderWithIntl(<DailyPlanCard />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(screen.queryByTestId("daily-plan-card")).toBeNull();
   });
 
+  it("renders the card chrome in Spanish, with plural-aware counts", async () => {
+    responses = [{ plan: plan(), running: false, canReplan: true }];
+    renderWithIntl(<DailyPlanCard />, { locale: "es" });
+    expect(await screen.findByText("Plan del día")).toBeInTheDocument();
+    expect(screen.getByText(/Pasó a Hoy: due tomorrow/)).toBeInTheDocument();
+    expect(screen.getByText(/1 movimiento · 9 tareas abiertas consideradas/)).toBeInTheDocument();
+    expect(screen.getByTestId("replan-today")).toHaveTextContent("Volver a planear hoy");
+  });
+
   it("shows the summary, the moves with their explanation, and the footer", async () => {
     responses = [{ plan: plan(), running: false, canReplan: true }];
-    render(<DailyPlanCard />);
+    renderWithIntl(<DailyPlanCard />);
     expect(await screen.findByText("Lead with the deck.")).toBeInTheDocument();
     expect(screen.getByText("Deck")).toBeInTheDocument();
     expect(screen.getByText(/Moved into Today: due tomorrow/)).toBeInTheDocument();
@@ -135,7 +145,7 @@ describe("DailyPlanCard", () => {
       reason: `reason ${i}`,
     }));
     responses = [{ plan: plan({ moves }), running: false, canReplan: false }];
-    render(<DailyPlanCard />);
+    renderWithIntl(<DailyPlanCard />);
     await userEvent.click(await screen.findByRole("button", { name: "Deck" }));
     expect(openDetail).toHaveBeenCalledWith("task_deck");
     expect(screen.getByRole("button", { name: "Gone 1" })).toBeDisabled();
@@ -154,7 +164,7 @@ describe("DailyPlanCard", () => {
         canReplan: true,
       },
     ];
-    render(<DailyPlanCard />);
+    renderWithIntl(<DailyPlanCard />);
     expect(await screen.findByText("Planning failed — try again.")).toBeInTheDocument();
     expect(screen.getByText(/^Attempted /)).toBeInTheDocument();
   });
@@ -170,7 +180,7 @@ describe("DailyPlanCard", () => {
         canReplan: true,
       },
     ];
-    render(<DailyPlanCard />);
+    renderWithIntl(<DailyPlanCard />);
     const button = await screen.findByTestId("replan-today");
     await userEvent.click(button);
 
@@ -195,7 +205,7 @@ describe("DailyPlanCard", () => {
 
   it("a plan row stuck in running past its lease does not disable Re-plan", async () => {
     responses = [{ plan: plan({ status: "running", moves: [] }), running: false, canReplan: true }];
-    render(<DailyPlanCard />);
+    renderWithIntl(<DailyPlanCard />);
     expect(
       await screen.findByText("The last plan did not finish. Re-plan to try again."),
     ).toBeInTheDocument();
@@ -207,7 +217,7 @@ describe("DailyPlanCard", () => {
     responses = [
       { plan: plan({ id: "plan_2", status: "running" }), running: true, canReplan: true },
     ];
-    render(<DailyPlanCard />);
+    renderWithIntl(<DailyPlanCard />);
     expect(await screen.findByText("Sifty is planning your day…")).toBeInTheDocument();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(125_000);
@@ -232,7 +242,7 @@ describe("DailyPlanCard", () => {
       return new Response(JSON.stringify(responses[0]), { status: 200 });
     });
     useToastStore.setState({ toasts: [] });
-    render(<DailyPlanCard />);
+    renderWithIntl(<DailyPlanCard />);
     await userEvent.click(await screen.findByTestId("replan-today"));
     await waitFor(() =>
       expect(useToastStore.getState().toasts.map((t) => t.message)).toEqual([

@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 import { TaskEmptyState } from "./empty-state";
 import { BOARD_BREAKOUT_CLASS, BOARD_GUTTER_CLASS, TaskBoard } from "./task-board";
@@ -42,6 +43,7 @@ export function TaskView({
   /** Rendered between the welcome card and the list, in list mode only. */
   aboveList?: React.ReactNode;
 }) {
+  const t = useTranslations("tasks.board");
   const { openDetail, serverReady } = useFrame();
   const tasks = useStore((s) => s.tasks);
   const hydrated = useStore((s) => s.hydrated);
@@ -57,10 +59,8 @@ export function TaskView({
   const header = (
     <PageHeader
       eyebrow={eyebrow}
-      title={board ? "Board" : title}
-      description={
-        board ? "Everything on the board, by status. Drag a card to move it." : description
-      }
+      title={board ? t("title") : title}
+      description={board ? t("description") : description}
       actions={
         <div className="flex items-center gap-2">
           {rightSlot}
@@ -88,10 +88,7 @@ export function TaskView({
         <TaskBoard
           onOpen={openDetail}
           emptyState={
-            <TaskEmptyState
-              title="Nothing on the board yet."
-              description="Capture a task and it will land in the Inbox column."
-            />
+            <TaskEmptyState title={t("emptyTitle")} description={t("emptyDescription")} />
           }
         />
       ) : (

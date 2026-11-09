@@ -6,17 +6,17 @@ import { toast } from "@/components/ui/toast";
 import { pruneSelection, rangeBetween } from "@/lib/domain/selection";
 import {
   SNOOZE_KEYS,
-  SNOOZE_LABELS,
   SNOOZE_PRESETS,
   type SnoozePreset,
-  describeSnooze,
   presetForKey,
   resolveSnooze,
 } from "@/lib/domain/snooze";
-import { statusLabel } from "@/lib/domain/status";
 import type { Lifecycle, Task } from "@/lib/domain/types";
+import { useDateCopy } from "@/lib/i18n/use-date-copy";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
+import { parseDay } from "@/lib/utils/dates";
+import { useFormatter, useTranslations } from "next-intl";
 import * as React from "react";
 import { StatusIcon } from "./status-icon";
 import { TaskRow } from "./task-row";
@@ -55,6 +55,7 @@ export function TaskList({
    */
   autoFocus?: boolean;
 }) {
+  const t = useTranslations("tasks.list");
   const labels = useStore((s) => s.labels);
   const [activeIndex, setActiveIndex] = React.useState<number>(-1);
   const listRef = React.useRef<HTMLDivElement>(null);
@@ -218,7 +219,7 @@ export function TaskList({
       ref={listRef}
       role="listbox"
       tabIndex={0}
-      aria-label="Tasks"
+      aria-label={t("label")}
       aria-multiselectable
       onKeyDown={onKeyDown}
       onPointerDown={(e) => {
@@ -297,12 +298,14 @@ export function TaskList({
  * way out. The moved tasks leave this view, and the selection with them.
  */
 function BulkBar({ ids, onClear }: { ids: string[]; onClear: () => void }) {
+  const t = useTranslations("tasks.list.bulk");
+  const status = useTranslations("common.status");
   const moveTasksToLifecycle = useStore((s) => s.moveTasksToLifecycle);
   const target: Lifecycle = "someday";
   return (
     <div
       role="toolbar"
-      aria-label="Bulk actions"
+      aria-label={t("label")}
       data-testid="bulk-bar"
       className={cn(
         "sticky top-2 z-10 mb-2 flex items-center justify-between gap-3",
@@ -311,7 +314,10 @@ function BulkBar({ ids, onClear }: { ids: string[]; onClear: () => void }) {
       )}
     >
       <span className="text-[12.5px] text-[var(--fg-muted)]">
-        <span className="text-num text-[var(--fg)]">{ids.length}</span> selected
+        {t.rich("selected", {
+          count: ids.length,
+          n: (chunks) => <span className="text-num text-[var(--fg)]">{chunks}</span>,
+        })}
       </span>
       <div className="flex items-center gap-1">
         <Button
@@ -321,14 +327,14 @@ function BulkBar({ ids, onClear }: { ids: string[]; onClear: () => void }) {
             const count = ids.length;
             moveTasksToLifecycle(ids, target);
             onClear();
-            toast(`Moved ${count} to ${statusLabel(target)}`);
+            toast(t("moved", { count, status: status(`${target}.label`) }));
           }}
         >
           <StatusIcon status={target} size={12} />
-          Move to {statusLabel(target)}
+          {t("moveTo", { status: status(`${target}.label`) })}
         </Button>
         <Button size="sm" variant="ghost" onClick={onClear}>
-          Clear
+          {t("clear")}
         </Button>
       </div>
     </div>
@@ -337,20 +343,22 @@ function BulkBar({ ids, onClear }: { ids: string[]; onClear: () => void }) {
 
 /** Shown while `s` is pending so the follow-up keys are discoverable. */
 function SnoozeHint() {
+  const t = useTranslations("tasks.list.snooze");
+  const { snooze } = useDateCopy();
   return (
     <div
       role="status"
       data-testid="snooze-hint"
       className="mb-2 flex items-center gap-2 px-2.5 text-[12px] text-[var(--fg-muted)] animate-fade-in"
     >
-      <span>Snooze until</span>
+      <span>{t("hint")}</span>
       {SNOOZE_PRESETS.map((preset) => (
         <span key={preset} className="inline-flex items-center gap-1">
           <Kbd>{SNOOZE_KEYS[preset]}</Kbd>
-          {SNOOZE_LABELS[preset]}
+          {snooze(preset)}
         </span>
       ))}
-      <span className="text-[var(--fg-subtle)]">· Esc to cancel</span>
+      <span className="text-[var(--fg-subtle)]">{t("cancel")}</span>
     </div>
   );
 }
@@ -367,6 +375,9 @@ function useSnoozeKeys(getActiveTask: () => Task | null): {
   /** Drop a pending chord; true when there was one. */
   cancelSnooze: () => boolean;
 } {
+  const t = useTranslations("tasks.list.snooze");
+  const actions = useTranslations("common.actions");
+  const format = useFormatter();
   const [pending, setPending] = React.useState(false);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -394,7 +405,18 @@ function useSnoozeKeys(getActiveTask: () => Task | null): {
       if (!preset) return false;
       e.preventDefault();
       const task = getActiveTask();
-      if (task) snoozeTask(task, preset);
+      if (task) {
+        const day = format.dateTime(parseDay(resolveSnooze(preset)), {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        });
+        snoozeTask(task, preset, {
+          message: t("done", { date: day }),
+          undo: actions("undo"),
+        });
+      }
       return true;
     }
     if (e.key !== "s" || !getActiveTask()) return false;
@@ -410,14 +432,18 @@ function useSnoozeKeys(getActiveTask: () => Task | null): {
   return { pendingSnooze: pending, handleSnoozeKey, cancelSnooze };
 }
 
-export function snoozeTask(task: Task, preset: SnoozePreset): void {
+export function snoozeTask(
+  task: Task,
+  preset: SnoozePreset,
+  copy: { message: string; undo: string },
+): void {
   const { updateTask } = useStore.getState();
   const previousDue = task.due;
   const due = resolveSnooze(preset);
   updateTask(task.id, { due }, { editedFields: ["due"] });
-  toast(`Snoozed until ${describeSnooze(preset)}`, {
+  toast(copy.message, {
     action: {
-      label: "Undo",
+      label: copy.undo,
       run: () => updateTask(task.id, { due: previousDue }, { editedFields: ["due"] }),
     },
   });

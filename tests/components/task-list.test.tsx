@@ -4,7 +4,7 @@ import { Toaster, useToastStore } from "@/components/ui/toast";
 import { resolveSnooze } from "@/lib/domain/snooze";
 import type { Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithIntl } from "../helpers/intl";
@@ -60,7 +60,9 @@ function row(title: string) {
 
 function renderList(tasks: Task[]) {
   const onOpen = vi.fn();
-  const view = render(<TaskList tasks={tasks} onOpen={onOpen} emptyState={<div>All clear</div>} />);
+  const view = renderWithIntl(
+    <TaskList tasks={tasks} onOpen={onOpen} emptyState={<div>All clear</div>} />,
+  );
   const rerenderWith = (next: Task[]) =>
     view.rerender(<TaskList tasks={next} onOpen={onOpen} emptyState={<div>All clear</div>} />);
   return { rerenderWith, onOpen };
@@ -126,7 +128,7 @@ describe("TaskList focus recovery", () => {
     // list renders a ghost before the empty state takes over.
     useStore.setState({ tasks: [only], labels: [] });
     const onOpen = vi.fn();
-    const view = render(
+    const view = renderWithIntl(
       <TaskList tasks={[only]} onOpen={onOpen} emptyState={<div>All clear</div>} />,
     );
 
@@ -170,7 +172,7 @@ describe("TaskList focus recovery", () => {
   it("does not steal focus that already moved to another surface", async () => {
     const user = userEvent.setup();
     const onOpen = vi.fn();
-    const view = render(
+    const view = renderWithIntl(
       <>
         <TaskList tasks={three} onOpen={onOpen} emptyState={<div>All clear</div>} />
         <input aria-label="Elsewhere" />
@@ -322,6 +324,36 @@ describe("TaskList bulk select", () => {
   });
 });
 
+describe("TaskList in Spanish", () => {
+  it("shows the bulk bar, snooze hint, and snooze toast in Spanish", async () => {
+    const user = userEvent.setup();
+    const tasks = [makeTask("a", "Alpha"), makeTask("b", "Beta"), makeTask("c", "Gamma")];
+    useStore.setState({ tasks, labels: [] });
+    renderWithIntl(
+      <>
+        <TaskList tasks={tasks} onOpen={vi.fn()} />
+        <Toaster />
+      </>,
+      { locale: "es" },
+    );
+
+    await user.click(row("Alpha"));
+    await user.keyboard("{Shift>}");
+    await user.click(row("Beta"));
+    await user.keyboard("{/Shift}");
+    expect(screen.getByTestId("bulk-bar")).toHaveTextContent("2 seleccionadas");
+    expect(screen.getByRole("button", { name: /Mover a Algún día/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Limpiar" }));
+
+    await user.click(row("Gamma"));
+    await user.keyboard("s");
+    expect(screen.getByTestId("snooze-hint")).toHaveTextContent(/Posponer hasta.*Mañana/);
+    await user.keyboard("t");
+    expect(await screen.findByText(/^Pospuesta hasta el /)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Deshacer" })).toBeInTheDocument();
+  });
+});
+
 /** SIF-9: `s` then `t` / `w` snoozes the active row with an undoable toast. */
 describe("TaskList snooze keys", () => {
   it("s then t sets due to tomorrow, and Undo restores it", async () => {
@@ -354,7 +386,7 @@ describe("TaskList snooze keys", () => {
     const user = userEvent.setup();
     const tasks = [makeTask("a", "Alpha"), makeTask("b", "Beta"), makeTask("c", "Gamma")];
     useStore.setState({ tasks, labels: [] });
-    render(<TaskList tasks={tasks} onOpen={vi.fn()} />);
+    renderWithIntl(<TaskList tasks={tasks} onOpen={vi.fn()} />);
 
     await user.click(row("Beta"));
     expect(row("Beta")).toHaveAttribute("aria-selected", "true");
@@ -371,7 +403,7 @@ describe("TaskList snooze keys", () => {
     const user = userEvent.setup();
     const tasks = [makeTask("a", "Alpha")];
     useStore.setState({ tasks, labels: [] });
-    render(<TaskList tasks={tasks} onOpen={vi.fn()} />);
+    renderWithIntl(<TaskList tasks={tasks} onOpen={vi.fn()} />);
 
     await user.keyboard("{ArrowDown}");
     await user.keyboard("s");
@@ -388,7 +420,7 @@ describe("TaskList snooze keys", () => {
     const user = userEvent.setup();
     const tasks = [makeTask("a", "Alpha"), makeTask("b", "Beta"), makeTask("c", "Gamma")];
     useStore.setState({ tasks, labels: [] });
-    render(<TaskList tasks={tasks} onOpen={vi.fn()} />);
+    renderWithIntl(<TaskList tasks={tasks} onOpen={vi.fn()} />);
 
     await user.click(row("Alpha"));
     await user.keyboard("{Shift>}");
@@ -408,7 +440,7 @@ describe("TaskList snooze keys", () => {
   it("a chord left hanging expires after two seconds", async () => {
     const tasks = [makeTask("a", "Alpha")];
     useStore.setState({ tasks, labels: [] });
-    render(<TaskList tasks={tasks} onOpen={vi.fn()} />);
+    renderWithIntl(<TaskList tasks={tasks} onOpen={vi.fn()} />);
 
     fireEvent.keyDown(screen.getByRole("listbox", { name: "Tasks" }), { key: "ArrowDown" });
     fireEvent.keyDown(row("Alpha"), { key: "s" });
@@ -425,7 +457,7 @@ describe("TaskList snooze keys", () => {
     const user = userEvent.setup();
     const tasks = [makeTask("a", "Alpha")];
     useStore.setState({ tasks, labels: [] });
-    render(<TaskList tasks={tasks} onOpen={vi.fn()} />);
+    renderWithIntl(<TaskList tasks={tasks} onOpen={vi.fn()} />);
 
     await user.keyboard("{ArrowDown}");
     await user.keyboard("s{Escape}");

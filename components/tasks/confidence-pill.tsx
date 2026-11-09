@@ -9,6 +9,7 @@ import {
 import type { Task } from "@/lib/domain/types";
 import { cn } from "@/lib/utils/cn";
 import { Sparkles, TriangleAlert } from "lucide-react";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 
 /** Below this, Sifty's own read of a task is flagged for a human look. */
@@ -48,13 +49,14 @@ export function ConfidencePill({
   compact?: boolean;
   className?: string;
 }) {
+  const t = useTranslations("tasks.confidence");
   const band = confidenceBand(task);
   if (!band) return null;
   if (compact && band !== "low") return null;
 
   const pct = confidencePercent(task.confidence);
   const low = band === "low";
-  const label = compact ? "Unsure" : `Sifted · ${pct}%`;
+  const label = compact ? t("unsure") : t("sifted", { pct });
 
   return (
     <TooltipProvider delayDuration={250}>
@@ -64,7 +66,7 @@ export function ConfidencePill({
             type="button"
             data-testid="confidence-pill"
             data-band={band}
-            aria-label={`Sifty confidence ${pct}%${low ? ", low" : ""}`}
+            aria-label={low ? t("ariaLow", { pct }) : t("aria", { pct })}
             className={cn(
               "inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 text-[11px] leading-[18px]",
               "transition-colors duration-150 ease-[var(--ease-product)]",
@@ -88,7 +90,7 @@ export function ConfidencePill({
         <TooltipContent side="bottom" align="start" className="max-w-[48ch] px-2.5 py-2">
           <div className="flex items-center gap-1.5 font-medium">
             {low ? <TriangleAlert size={11} className="shrink-0" /> : null}
-            <span>Confidence: {pct}%</span>
+            <span>{t("tooltip", { pct })}</span>
           </div>
           {task.rationale ? (
             <p className="mt-1 font-normal leading-[1.45] opacity-85 whitespace-normal">

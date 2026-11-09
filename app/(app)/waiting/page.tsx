@@ -2,20 +2,22 @@
 
 import { PageShell } from "@/components/app-shell/page-shell";
 import { TaskView } from "@/components/tasks/task-view";
-import { statusLabel } from "@/lib/domain/status";
 import type { Task } from "@/lib/domain/types";
 import { selectByLifecycle } from "@/lib/store/selectors";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 
 export default function WaitingPage() {
-  const select = React.useCallback((t: Task[]) => selectByLifecycle(t, "waiting"), []);
+  const t = useTranslations("tasks.views.waiting");
+  const status = useTranslations("common.status");
+  const select = React.useCallback((tasks: Task[]) => selectByLifecycle(tasks, "waiting"), []);
   return (
-    <PageShell title={statusLabel("waiting")}>
+    <PageShell title={status("waiting.label")}>
       <TaskView
-        title={statusLabel("waiting")}
-        description="Things you've handed off — to a person, an agent, or a process. Move them back to Focus when the ball returns; Today will nudge you when a deadline arrives."
+        title={status("waiting.label")}
+        description={t("description")}
         selector={select}
-        emptyTitle="Nothing in flight."
+        emptyTitle={t("emptyTitle")}
       />
     </PageShell>
   );

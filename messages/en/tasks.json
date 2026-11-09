@@ -1,1 +1,131 @@
-{}
+{
+  "greeting": {
+    "late": "Late one",
+    "morning": "Good morning",
+    "afternoon": "Good afternoon",
+    "evening": "Good evening"
+  },
+  "views": {
+    "today": {
+      "pageTitle": "Today",
+      "title": "What matters today",
+      "description": "Overdue, due today, and anything Sifty believes belongs in your top of mind.",
+      "emptyTitle": "Nothing pressing today.",
+      "emptyDescription": "When something needs your attention, it'll show up here. Until then, enjoy the quiet."
+    },
+    "focus": {
+      "description": "Work you've committed to, sorted by Sifty's read on what to do next. Sliding the priority moves things; letting AI re-triage rebalances.",
+      "emptyTitle": "Nothing in Focus.",
+      "emptyDescription": "Move tasks here from Inbox when you're ready to commit to them."
+    },
+    "inbox": {
+      "description": "Newly captured tasks. Review, then move them into Focus, Waiting on, or Someday — or just leave them; Today will pull what matters.",
+      "emptyTitle": "Inbox zero.",
+      "emptyDescription": "Capture anything on your mind. Sifty will organize it before you next check."
+    },
+    "waiting": {
+      "description": "Things you've handed off — to a person, an agent, or a process. Move them back to Focus when the ball returns; Today will nudge you when a deadline arrives.",
+      "emptyTitle": "Nothing in flight."
+    },
+    "someday": {
+      "description": "A quiet shelf for ideas that aren't urgent. Revisit when the season is right.",
+      "emptyTitle": "Empty shelf."
+    },
+    "done": {
+      "description": "Finished work, newest first. Uncheck anything to send it back to Focus.",
+      "emptyTitle": "Nothing finished yet.",
+      "emptyDescription": "Completed tasks land here, so checking one off never loses it."
+    }
+  },
+  "board": {
+    "title": "Board",
+    "description": "Everything on the board, by status. Drag a card to move it.",
+    "emptyTitle": "Nothing on the board yet.",
+    "emptyDescription": "Capture a task and it will land in the Inbox column.",
+    "column": "{status} column",
+    "dropHere": "Drop here",
+    "moreCompleted": "+{count} more completed"
+  },
+  "viewMode": {
+    "group": "View mode",
+    "list": "List view",
+    "board": "Board view"
+  },
+  "empty": {
+    "capture": "Capture a task",
+    "orPress": "or press <key>C</key>"
+  },
+  "welcome": {
+    "dismiss": "Dismiss welcome",
+    "eyebrow": "Welcome",
+    "title": "Three example tasks, already sifted.",
+    "body": "Capture anything in your own words — press <key>C</key>. Sifty sifts it into a clear title, the next step, priority, effort, labels, and subtasks. Every field stays editable, and the sheet shows why it decided what it did.",
+    "limits": "Capture is unlimited. Free accounts get {sifts, plural, one {# sift} other {# sifts}} a day; your first {days} days include unlimited sifting.",
+    "captureFirst": "Capture your first task",
+    "removeExamples": "Remove the examples"
+  },
+  "list": {
+    "label": "Tasks",
+    "bulk": {
+      "label": "Bulk actions",
+      "selected": "<n>{count}</n> selected",
+      "moveTo": "Move to {status}",
+      "moved": "Moved {count} to {status}",
+      "clear": "Clear"
+    },
+    "snooze": {
+      "hint": "Snooze until",
+      "cancel": "· Esc to cancel",
+      "done": "Snoozed until {date}"
+    }
+  },
+  "row": {
+    "markDone": "Mark as done",
+    "markNotDone": "Mark as not done"
+  },
+  "plan": {
+    "eyebrow": "Daily plan",
+    "running": "Sifty is planning your day…",
+    "stale": "The last plan did not finish. Re-plan to try again.",
+    "failed": "Planning failed — try again.",
+    "idle": "Sifty can re-rank Today against everything on your list.",
+    "replan": "Re-plan today",
+    "planning": "Planning…",
+    "more": "and {count} more",
+    "move": {
+      "moved_in": "Moved into Today",
+      "moved_out": "Moved out of Today",
+      "rescored": "Re-ranked",
+      "withReason": "{move}: {reason}"
+    },
+    "planned": "Planned {time} · {moves, plural, =0 {nothing moved} one {# move} other {# moves}} · {considered, plural, one {# open task} other {# open tasks}} considered",
+    "attempted": "Attempted {time}",
+    "errors": {
+      "couldNotStart": "Planning could not start — try again.",
+      "offline": "Can't reach Sifty — try again in a moment.",
+      "proFeature": "Daily planning is part of Sifty Pro. Upgrade to have Sifty plan your day.",
+      "fairUseCap": "You've hit today's fair-use limit for sifting. It resets tomorrow."
+    }
+  },
+  "ai": {
+    "organizing": "Organizing",
+    "failed": "Couldn't organize",
+    "thinking": "Sifty is organizing this…",
+    "stageRunning": "{stage}…",
+    "stageStep": "{stage} (step {step} of {total})",
+    "stages": {
+      "enrich": "Enriching",
+      "prioritize": "Prioritizing",
+      "triage": "Triaging",
+      "subtasks": "Breaking down",
+      "plan": "Planning"
+    }
+  },
+  "confidence": {
+    "unsure": "Unsure",
+    "sifted": "Sifted · {pct}%",
+    "aria": "Sifty confidence {pct}%",
+    "ariaLow": "Sifty confidence {pct}%, low",
+    "tooltip": "Confidence: {pct}%"
+  }
+}

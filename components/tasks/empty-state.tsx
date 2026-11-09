@@ -4,6 +4,7 @@ import { useFrame } from "@/components/app-shell/app-frame";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Sparkles } from "lucide-react";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 
 /**
@@ -21,6 +22,7 @@ export function TaskEmptyState({
   title: string;
   description?: string;
 }) {
+  const t = useTranslations("tasks.empty");
   const { openCapture } = useFrame();
   return (
     <div className="rounded-[var(--radius-xl)] border border-dashed border-[var(--border-strong)] bg-[var(--surface-muted)]/40 px-6 py-10 text-center">
@@ -35,10 +37,10 @@ export function TaskEmptyState({
       ) : null}
       <div className="mt-4 inline-flex items-center gap-2">
         <Button variant="primary" size="sm" onClick={openCapture}>
-          Capture a task
+          {t("capture")}
         </Button>
         <span className="hidden sm:flex items-center gap-1 text-[11px] text-[var(--fg-subtle)]">
-          or press <Kbd>C</Kbd>
+          {t.rich("orPress", { key: (chunks) => <Kbd>{chunks}</Kbd> })}
         </span>
       </div>
     </div>

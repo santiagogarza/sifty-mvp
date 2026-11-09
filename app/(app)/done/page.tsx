@@ -4,22 +4,24 @@ import { useFrame } from "@/components/app-shell/app-frame";
 import { PageShell } from "@/components/app-shell/page-shell";
 import { TaskList } from "@/components/tasks/task-list";
 import { TaskView } from "@/components/tasks/task-view";
-import { statusLabel } from "@/lib/domain/status";
 import { selectDoneTasks, selectDroppedTasks } from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import { ChevronRight } from "lucide-react";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 
 export default function DonePage() {
+  const t = useTranslations("tasks.views.done");
+  const status = useTranslations("common.status");
   return (
-    <PageShell title={statusLabel("done")}>
+    <PageShell title={status("done.label")}>
       <TaskView
-        title="Done"
-        description="Finished work, newest first. Uncheck anything to send it back to Focus."
+        title={status("done.label")}
+        description={t("description")}
         selector={selectDoneTasks}
-        emptyTitle="Nothing finished yet."
-        emptyDescription="Completed tasks land here, so checking one off never loses it."
+        emptyTitle={t("emptyTitle")}
+        emptyDescription={t("emptyDescription")}
       />
       <DroppedSection />
     </PageShell>
@@ -33,6 +35,7 @@ export default function DonePage() {
  */
 function DroppedSection() {
   const { openDetail } = useFrame();
+  const status = useTranslations("common.status");
   const tasks = useStore((s) => s.tasks);
   const hydrated = useStore((s) => s.hydrated);
   const [expanded, setExpanded] = React.useState(false);
@@ -50,7 +53,7 @@ function DroppedSection() {
         className="flex w-full items-center justify-between text-[12.5px] text-[var(--fg-muted)] hover:text-[var(--fg)]"
       >
         <span>
-          Dropped{" "}
+          {status("dropped.label")}{" "}
           <span className="text-num text-[11.5px] text-[var(--fg-subtle)]">{dropped.length}</span>
         </span>
         <ChevronRight

@@ -4,17 +4,20 @@ import { PageShell } from "@/components/app-shell/page-shell";
 import { TaskView } from "@/components/tasks/task-view";
 import type { Task } from "@/lib/domain/types";
 import { selectByLifecycle } from "@/lib/store/selectors";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 
 export default function SomedayPage() {
-  const select = React.useCallback((t: Task[]) => selectByLifecycle(t, "someday"), []);
+  const t = useTranslations("tasks.views.someday");
+  const status = useTranslations("common.status");
+  const select = React.useCallback((tasks: Task[]) => selectByLifecycle(tasks, "someday"), []);
   return (
-    <PageShell title="Someday">
+    <PageShell title={status("someday.label")}>
       <TaskView
-        title="Someday"
-        description="A quiet shelf for ideas that aren't urgent. Revisit when the season is right."
+        title={status("someday.label")}
+        description={t("description")}
         selector={select}
-        emptyTitle="Empty shelf."
+        emptyTitle={t("emptyTitle")}
       />
     </PageShell>
   );

@@ -4,9 +4,10 @@ import {
   confidenceBand,
   confidencePercent,
 } from "@/components/tasks/confidence-pill";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
+import { renderWithIntl } from "../helpers/intl";
 
 /**
  * SIF-11: confidence and rationale surface on a pill; low confidence is
@@ -32,7 +33,7 @@ describe("confidenceBand", () => {
 describe("ConfidencePill", () => {
   it("renders the percent and opens the rationale on keyboard focus", async () => {
     const user = userEvent.setup();
-    render(
+    renderWithIntl(
       <ConfidencePill
         task={{ aiStatus: "ready", confidence: 0.874, rationale: "Deadline is explicit." }}
       />,
@@ -48,15 +49,27 @@ describe("ConfidencePill", () => {
     expect((await screen.findAllByText("Deadline is explicit.")).length).toBeGreaterThan(0);
   });
 
+  it("reads in Spanish", () => {
+    renderWithIntl(
+      <ConfidencePill task={{ aiStatus: "ready", confidence: 0.38, rationale: null }} />,
+      { locale: "es" },
+    );
+    const pill = screen.getByTestId("confidence-pill");
+    expect(pill).toHaveTextContent("Clasificada · 38%");
+    expect(pill).toHaveAccessibleName("Confianza de Sifty: 38%, baja");
+  });
+
   it("flags low confidence", () => {
-    render(<ConfidencePill task={{ aiStatus: "ready", confidence: 0.38, rationale: null }} />);
+    renderWithIntl(
+      <ConfidencePill task={{ aiStatus: "ready", confidence: 0.38, rationale: null }} />,
+    );
     const pill = screen.getByTestId("confidence-pill");
     expect(pill).toHaveAttribute("data-band", "low");
     expect(pill).toHaveAccessibleName("Sifty confidence 38%, low");
   });
 
   it("in compact form renders only for low confidence", () => {
-    const { rerender } = render(
+    const { rerender } = renderWithIntl(
       <ConfidencePill compact task={{ aiStatus: "ready", confidence: 0.9, rationale: null }} />,
     );
     expect(screen.queryByTestId("confidence-pill")).toBeNull();
@@ -68,13 +81,15 @@ describe("ConfidencePill", () => {
   });
 
   it("renders nothing for tasks without a confidence", () => {
-    render(<ConfidencePill task={{ aiStatus: "ready", confidence: 0, rationale: null }} />);
+    renderWithIntl(<ConfidencePill task={{ aiStatus: "ready", confidence: 0, rationale: null }} />);
     expect(screen.queryByTestId("confidence-pill")).toBeNull();
   });
 
   it("tooltip without a rationale shows only the confidence line", async () => {
     const user = userEvent.setup();
-    render(<ConfidencePill task={{ aiStatus: "ready", confidence: 0.7, rationale: null }} />);
+    renderWithIntl(
+      <ConfidencePill task={{ aiStatus: "ready", confidence: 0.7, rationale: null }} />,
+    );
     await user.tab();
     expect((await screen.findAllByText("Confidence: 70%")).length).toBeGreaterThan(0);
     // The rationale paragraph is the only <p> the tooltip ever renders.
