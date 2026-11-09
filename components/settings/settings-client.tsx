@@ -200,14 +200,16 @@ export function SettingsClient({ account }: { account: SettingsAccount }) {
                       size={14}
                       className={active ? "text-[var(--accent)]" : "text-[var(--fg-muted)]"}
                     />
-                    <div className="text-[13.5px] text-[var(--fg)]">{p.label}</div>
+                    <div className="text-[13.5px] text-[var(--fg)]">
+                      {t(`model.options.${p.id}.label`)}
+                    </div>
                   </div>
                   <Badge tone={primaryProvider(p) === "anthropic" ? "ember" : "mist"}>
                     {primaryProvider(p)}
                   </Badge>
                 </div>
                 <div className="text-[12px] text-[var(--fg-muted)] mt-1.5 leading-[1.5]">
-                  {p.description}
+                  {t(`model.options.${p.id}.description`)}
                 </div>
                 <div className="text-[11px] text-[var(--fg-subtle)] mt-1">
                   {t("model.routes", {

@@ -60,9 +60,18 @@ import { getTranslations } from "next-intl/server";
 const t = await getTranslations("tasks");
 ```
 
-Shared vocabulary: `useTranslations("common.status")` then
-`t(\`${lifecycle}.label\`)`. Keys are type-checked against the English
-catalog, so a typo or a missing English key fails `pnpm typecheck`.
+Keys are type-checked against the English catalog, so a typo or a missing
+English key fails `pnpm typecheck`.
+
+Shared helpers (use these instead of the English-only originals):
+
+| Instead of | Use |
+| --- | --- |
+| `STATUS_META[s].label` / `statusLabel(s)` | `useTranslations("common.status")` → `t(\`${s}.label\`)`, or `.short` in tight spots (nav, board column headers) |
+| `STATUS_META[s].description` | `t(\`${s}.description\`)` from the same namespace |
+| `formatRelativeDay`, `formatTimeAgo`, `formatExactTime` (`lib/utils/dates`) | `useDateCopy()` from `lib/i18n/use-date-copy` |
+| `SNOOZE_LABELS[preset]` | `useDateCopy().snooze(preset)` |
+| `tierLabel`, `tierSummary` (`lib/entitlements`) | `useTierCopy()` from `lib/i18n/use-tier-copy` |
 
 ## Rules
 

@@ -11,9 +11,6 @@
     "tipTooltip": "Consejo: presiona / para abrir la paleta de comandos y c para capturar.",
     "tipBody": "Presiona <key>c</key> en cualquier lugar para capturar. Presiona <key>/</key> para buscar y navegar."
   },
-  "bottomNav": {
-    "inbox": "Bandeja"
-  },
   "topBar": {
     "openCommandPalette": "Abrir la paleta de comandos",
     "searchAndJump": "Buscar e ir",

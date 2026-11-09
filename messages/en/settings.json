@@ -44,7 +44,25 @@
   "model": {
     "title": "AI model",
     "description": "Pick the trade-off between speed and depth. Each choice sets a primary model and a fallback from another provider, so an outage never stalls your list. Edits you make are protected from being overwritten.",
-    "routes": "Sift: {fast} · Plan: {deep}"
+    "routes": "Sift: {fast} · Plan: {deep}",
+    "options": {
+      "recommended": {
+        "label": "Recommended",
+        "description": "Claude Haiku for everyday sifting, Claude Sonnet when a task needs a plan."
+      },
+      "quality": {
+        "label": "Best quality",
+        "description": "Claude Sonnet for everything. Slower and pricier; worth it for high-stakes lists."
+      },
+      "fast": {
+        "label": "Fastest",
+        "description": "Claude Haiku for everything, including planning. Best for capture-heavy days."
+      },
+      "openai": {
+        "label": "Prefer OpenAI",
+        "description": "GPT-5 mini and GPT-5 first, with Claude as the fallback."
+      }
+    }
   },
   "behavior": {
     "title": "AI behavior",

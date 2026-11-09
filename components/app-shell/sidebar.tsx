@@ -44,7 +44,7 @@ export function Sidebar() {
     ...STATUS_VIEWS.map((view) => {
       const countKey = STATUS_COUNT_KEY[view.status];
       return {
-        label: tStatus(`${view.status}.label`),
+        label: tStatus(`${view.status}.short`),
         href: view.href,
         icon: STATUS_ICONS[view.status],
         count: countKey ? counts[countKey] : undefined,

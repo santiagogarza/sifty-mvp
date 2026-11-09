@@ -20,26 +20,32 @@
   "status": {
     "inbox": {
       "label": "Inbox",
+      "short": "Inbox",
       "description": "New — not yet sorted"
     },
     "active": {
       "label": "Focus",
+      "short": "Focus",
       "description": "Committed — working on it"
     },
     "waiting": {
       "label": "Waiting on",
+      "short": "Waiting on",
       "description": "Handed off — the ball is with someone else"
     },
     "someday": {
       "label": "Someday",
+      "short": "Someday",
       "description": "Not now, maybe later"
     },
     "done": {
       "label": "Done",
+      "short": "Done",
       "description": "Finished"
     },
     "dropped": {
       "label": "Dropped",
+      "short": "Dropped",
       "description": "Let go — kept for reference"
     }
   },

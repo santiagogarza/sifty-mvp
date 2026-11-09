@@ -42,7 +42,7 @@ describe("LanguagePicker", () => {
 describe("Sidebar", () => {
   it("renders the navigation in Spanish", () => {
     renderWithIntl(<Sidebar />, { locale: "es" });
-    for (const label of ["Hoy", "Bandeja de entrada", "Enfoque", "Decisiones", "Configuración"]) {
+    for (const label of ["Hoy", "Bandeja", "Enfoque", "Decisiones", "Configuración"]) {
       expect(screen.getByRole("link", { name: new RegExp(label) })).toBeInTheDocument();
     }
   });

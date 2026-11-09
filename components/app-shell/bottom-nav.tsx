@@ -25,14 +25,14 @@ export function BottomNav({ onCapture }: { onCapture: () => void }) {
     { href: "/today", label: t("nav.today"), icon: Sun, count: counts.today },
     {
       href: "/focus",
-      label: tStatus("active.label"),
+      label: tStatus("active.short"),
       icon: STATUS_ICONS.active,
       count: counts.focus,
     },
     null,
     {
       href: "/inbox",
-      label: t("bottomNav.inbox"),
+      label: tStatus("inbox.short"),
       icon: STATUS_ICONS.inbox,
       count: counts.inbox,
     },

@@ -20,26 +20,32 @@
   "status": {
     "inbox": {
       "label": "Bandeja de entrada",
+      "short": "Bandeja",
       "description": "Nueva — aún sin ordenar"
     },
     "active": {
       "label": "Enfoque",
+      "short": "Enfoque",
       "description": "Comprometida — trabajando en ella"
     },
     "waiting": {
       "label": "En espera",
+      "short": "En espera",
       "description": "Delegada — la pelota está en otra cancha"
     },
     "someday": {
       "label": "Algún día",
+      "short": "Algún día",
       "description": "Ahora no, quizá más adelante"
     },
     "done": {
       "label": "Hecho",
+      "short": "Hecho",
       "description": "Terminada"
     },
     "dropped": {
       "label": "Descartado",
+      "short": "Descartado",
       "description": "Soltada — se guarda como referencia"
     }
   },

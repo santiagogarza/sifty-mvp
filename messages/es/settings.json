@@ -44,7 +44,25 @@
   "model": {
     "title": "Modelo de IA",
     "description": "Elige el equilibrio entre velocidad y profundidad. Cada opción define un modelo principal y uno de respaldo de otro proveedor, para que una caída nunca detenga tu lista. Los cambios que hagas están protegidos para que no se sobrescriban.",
-    "routes": "Clasificar: {fast} · Planear: {deep}"
+    "routes": "Clasificar: {fast} · Planear: {deep}",
+    "options": {
+      "recommended": {
+        "label": "Recomendado",
+        "description": "Claude Haiku para clasificar en el día a día, Claude Sonnet cuando una tarea necesita un plan."
+      },
+      "quality": {
+        "label": "Máxima calidad",
+        "description": "Claude Sonnet para todo. Más lento y más caro; vale la pena para listas importantes."
+      },
+      "fast": {
+        "label": "Más rápido",
+        "description": "Claude Haiku para todo, incluida la planeación. Ideal para días de mucha captura."
+      },
+      "openai": {
+        "label": "Preferir OpenAI",
+        "description": "GPT-5 mini y GPT-5 primero, con Claude como respaldo."
+      }
+    }
   },
   "behavior": {
     "title": "Comportamiento de la IA",

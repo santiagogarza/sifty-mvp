@@ -11,9 +11,6 @@
     "tipTooltip": "Pro tip: press / to open the command palette and c to capture.",
     "tipBody": "Press <key>c</key> anywhere to capture. Press <key>/</key> to search and navigate."
   },
-  "bottomNav": {
-    "inbox": "Inbox"
-  },
   "topBar": {
     "openCommandPalette": "Open command palette",
     "searchAndJump": "Search & jump",
