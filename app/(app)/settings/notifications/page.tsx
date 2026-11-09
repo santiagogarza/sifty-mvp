@@ -3,9 +3,13 @@ import { PageShell } from "@/components/app-shell/page-shell";
 import { NotificationsPanel } from "@/components/settings/notifications-panel";
 import { getSession } from "@/lib/auth/session";
 import { getPushConfig } from "@/lib/notifications/push";
+import { getTranslations } from "next-intl/server";
 import { redirect } from "next/navigation";
 
-export const metadata = { title: "Notifications" };
+export async function generateMetadata() {
+  const t = await getTranslations("account.notifications");
+  return { title: t("title") };
+}
 
 export default async function NotificationsPage({
   searchParams,
@@ -17,12 +21,10 @@ export default async function NotificationsPage({
     redirect("/sign-in?next=/settings/notifications");
   }
   const params = (await searchParams) ?? {};
+  const t = await getTranslations("account.notifications");
   return (
-    <PageShell title="Notifications">
-      <PageHeader
-        title="Notifications"
-        description="A morning plan, a nudge for what is due, and a weekly review — by email, as a notification, or both. Nothing else."
-      />
+    <PageShell title={t("title")}>
+      <PageHeader title={t("title")} description={t("description")} />
       <NotificationsPanel
         email={session.user.email}
         vapidPublicKey={getPushConfig()?.publicKey ?? null}

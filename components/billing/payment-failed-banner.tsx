@@ -1,4 +1,5 @@
-import { type PaymentProblem, formatBillingDay } from "@/lib/entitlements/entitlements";
+import type { PaymentProblem } from "@/lib/entitlements/entitlements";
+import { useFormatter, useTranslations } from "next-intl";
 import Link from "next/link";
 
 /**
@@ -8,10 +9,19 @@ import Link from "next/link";
  * turns off.
  */
 export function PaymentFailedBanner({ problem }: { problem: PaymentProblem }) {
+  const t = useTranslations("account.paymentBanner");
+  const format = useFormatter();
+  // UTC, like `formatBillingDay`, so the banner names the same day as the email.
   const message =
     problem.kind === "grace"
-      ? `Your last Sifty Pro payment didn't go through. Update your payment method by ${formatBillingDay(problem.graceEndsAt)} to keep Pro.`
-      : "Your Sifty Pro payment is still failing, so Pro is paused. Update your payment method to turn it back on.";
+      ? t("grace", {
+          date: format.dateTime(new Date(problem.graceEndsAt), {
+            month: "long",
+            day: "numeric",
+            timeZone: "UTC",
+          }),
+        })
+      : t("lapsed");
   return (
     <div
       role="alert"
@@ -23,7 +33,7 @@ export function PaymentFailedBanner({ problem }: { problem: PaymentProblem }) {
         href="/settings/billing"
         className="shrink-0 font-medium text-[var(--accent)] underline-offset-2 hover:underline"
       >
-        Update payment method
+        {t("update")}
       </Link>
     </div>
   );

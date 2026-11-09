@@ -10,9 +10,15 @@ import {
 } from "@/lib/ai/cost-report";
 import { getSession } from "@/lib/auth/session";
 import { getRepos } from "@/lib/db/repos";
+import { getTranslations } from "next-intl/server";
 import { notFound, redirect } from "next/navigation";
 
-export const metadata = { title: "AI costs" };
+type Translate = Awaited<ReturnType<typeof getTranslations<"account.admin">>>;
+
+export async function generateMetadata() {
+  const t = await getTranslations("account.admin");
+  return { title: t("title") };
+}
 export const dynamic = "force-dynamic";
 
 /**
@@ -26,45 +32,46 @@ export default async function AdminCostsPage() {
   if (!session.user.isCreator) notFound();
 
   const report = await buildCostReport(getRepos());
+  const t = await getTranslations("account.admin");
 
   return (
-    <PageShell title="AI costs">
+    <PageShell title={t("title")}>
       <PageHeader
-        eyebrow="Admin"
-        title="AI costs"
-        description={`Every AI run across all accounts in the last ${report.days} days, priced from the model registry. Creator-only.`}
+        eyebrow={t("eyebrow")}
+        title={t("title")}
+        description={t("description", { days: report.days })}
       />
 
-      <Totals report={report} />
+      <Totals t={t} report={report} />
 
-      <Section title="By day">
-        <RollupTable rows={report.byDay} keyHeader="Day" />
+      <Section title={t("sections.byDay")}>
+        <RollupTable t={t} rows={report.byDay} keyHeader={t("columns.day")} />
       </Section>
-      <Section title="By stage">
-        <RollupTable rows={report.byStage} keyHeader="Stage" />
+      <Section title={t("sections.byStage")}>
+        <RollupTable t={t} rows={report.byStage} keyHeader={t("columns.stage")} />
       </Section>
-      <Section title="By model">
-        <RollupTable rows={report.byModel} keyHeader="Model" />
+      <Section title={t("sections.byModel")}>
+        <RollupTable t={t} rows={report.byModel} keyHeader={t("columns.model")} />
       </Section>
-      <Section title="By account">
-        <RollupTable rows={report.byUser} keyHeader="Account" />
+      <Section title={t("sections.byAccount")}>
+        <RollupTable t={t} rows={report.byUser} keyHeader={t("columns.account")} />
       </Section>
 
-      <Section title="Workflow runtime">
+      <Section title={t("sections.workflow")}>
         <WorkflowPing />
       </Section>
     </PageShell>
   );
 }
 
-function Totals({ report }: { report: CostReport }) {
-  const t = report.totals;
+function Totals({ t, report }: { t: Translate; report: CostReport }) {
+  const totals = report.totals;
   const stats: Array<[string, string]> = [
-    ["Spend", formatUsd(t.costCents)],
-    ["Runs", String(t.runs)],
-    ["Failed", String(t.failed)],
-    ["Tokens in", formatTokens(t.inputTokens)],
-    ["Tokens out", formatTokens(t.outputTokens)],
+    [t("totals.spend"), formatUsd(totals.costCents)],
+    [t("totals.runs"), String(totals.runs)],
+    [t("totals.failed"), String(totals.failed)],
+    [t("totals.tokensIn"), formatTokens(totals.inputTokens)],
+    [t("totals.tokensOut"), formatTokens(totals.outputTokens)],
   ];
   return (
     <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-2" data-testid="cost-totals">
@@ -90,9 +97,17 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function RollupTable({ rows, keyHeader }: { rows: CostReportRow[]; keyHeader: string }) {
+function RollupTable({
+  t,
+  rows,
+  keyHeader,
+}: {
+  t: Translate;
+  rows: CostReportRow[];
+  keyHeader: string;
+}) {
   if (rows.length === 0) {
-    return <p className="text-[13px] text-[var(--fg-muted)]">No runs in this window.</p>;
+    return <p className="text-[13px] text-[var(--fg-muted)]">{t("empty")}</p>;
   }
   return (
     <div className="overflow-x-auto rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)]">
@@ -100,11 +115,11 @@ function RollupTable({ rows, keyHeader }: { rows: CostReportRow[]; keyHeader: st
         <thead>
           <tr className="text-left text-[var(--fg-muted)] border-b border-[var(--border)]">
             <th className="font-normal px-3 py-2">{keyHeader}</th>
-            <th className="font-normal px-3 py-2 text-right">Runs</th>
-            <th className="font-normal px-3 py-2 text-right">Failed</th>
-            <th className="font-normal px-3 py-2 text-right">In</th>
-            <th className="font-normal px-3 py-2 text-right">Out</th>
-            <th className="font-normal px-3 py-2 text-right">Cost</th>
+            <th className="font-normal px-3 py-2 text-right">{t("columns.runs")}</th>
+            <th className="font-normal px-3 py-2 text-right">{t("columns.failed")}</th>
+            <th className="font-normal px-3 py-2 text-right">{t("columns.in")}</th>
+            <th className="font-normal px-3 py-2 text-right">{t("columns.out")}</th>
+            <th className="font-normal px-3 py-2 text-right">{t("columns.cost")}</th>
           </tr>
         </thead>
         <tbody>

@@ -1,1 +1,199 @@
-{}
+{
+  "notifications": {
+    "title": "Notifications",
+    "description": "A morning plan, a nudge for what is due, and a weekly review — by email, as a notification, or both. Nothing else.",
+    "loading": "Loading notification settings…",
+    "loadFailed": "Couldn't load notification settings.",
+    "notices": {
+      "unsubscribed": "Digest emails are off. Account and security emails still arrive.",
+      "unsubscribeInvalid": "That unsubscribe link was not valid. Use the switch below instead.",
+      "confirmZone": "Reminders are off until you confirm your time zone ({zone}). Check the settings below, then turn them on.",
+      "turnOn": "Turn on reminders"
+    },
+    "channels": {
+      "title": "Channels",
+      "description": "Where digests go. Turn both off to pause everything.",
+      "email": "Email",
+      "emailSwitch": "Email digests",
+      "push": "Notifications on this device",
+      "pushUnavailable": "Notifications",
+      "pushUnavailableDetail": "Not set up on this server yet (VAPID keys missing). Email still works.",
+      "sendTest": "Send a test",
+      "turnOff": "Turn off",
+      "turnOn": "Turn on",
+      "asking": "Asking…",
+      "iosHint": "On iPhone and iPad, notifications only reach installed apps: tap <hl>Share</hl> → <hl>Add to Home Screen</hl>, open Sifty from there, and turn notifications on in this screen (iOS 16.4 or later)."
+    },
+    "pushDetail": {
+      "iosNotInstalled": "Add Sifty to your Home Screen first — see below.",
+      "insecure": "Needs https.",
+      "unsupported": "This browser cannot receive push notifications.",
+      "onThisAndOthers": "On for this device and {count, plural, one {# other} other {# others}}.",
+      "onThis": "On for this device.",
+      "offHereOnOthers": "Off here; on for {count, plural, one {# other device} other {# other devices}}.",
+      "pitch": "Reminders as system notifications, even when Sifty is closed."
+    },
+    "pushMessages": {
+      "sent": "Sent to {count, plural, one {# device} other {# devices}}.",
+      "noneAccepted": "No device accepted the test — re-enable notifications on this device.",
+      "testFailed": "Couldn't send a test.",
+      "noSubscriptions": "This account has no push subscriptions.",
+      "notConfigured": "Push notifications are not configured on this server.",
+      "tooManyDevices": "Too many devices. Turn notifications off on one you no longer use.",
+      "registerFailed": "Couldn't register this device.",
+      "enableFailed": "Couldn't turn on notifications.",
+      "permissionDenied": "Notifications are blocked for this site. Allow them in the browser settings."
+    },
+    "schedule": {
+      "title": "Schedule",
+      "description": "Times are in your time zone. Digests only go out when there is something to say.",
+      "timeZone": "Time zone",
+      "useZone": "Use {zone}",
+      "morningPlan": "Morning plan",
+      "morningPlanHint": "Today, Focus, and anything due or overdue.",
+      "morningPlanTime": "Morning plan time",
+      "dueReminder": "Due reminder",
+      "dueReminderHint": "An afternoon nudge for what is still due today or overdue.",
+      "dueRemindersSwitch": "Due reminders",
+      "dueReminderTime": "Due reminder time",
+      "weeklyReview": "Weekly review",
+      "weeklyReviewHint": "What got done, what slipped, what the week holds. Sent at the morning plan time.",
+      "weeklyReviewDay": "Weekly review day",
+      "quietHours": "Quiet hours",
+      "quietHoursHint": "Anything scheduled inside this window waits until it ends.",
+      "quietHoursStart": "Quiet hours start",
+      "quietHoursEnd": "Quiet hours end",
+      "quietHoursRange": "<start></start> to <end></end>",
+      "saveFailed": "Couldn't save.",
+      "autosave": "Changes save automatically.",
+      "reset": "Reset to defaults"
+    },
+    "recent": {
+      "title": "Recent",
+      "description": "The last few digests Sifty sent you.",
+      "kind": {
+        "morning_plan": "Morning plan",
+        "due_reminder": "Due reminder",
+        "weekly_review": "Weekly review"
+      },
+      "channel": {
+        "email": "email",
+        "push": "push"
+      },
+      "status": {
+        "pending": "pending",
+        "sent": "sent",
+        "skipped": "skipped",
+        "failed": "failed"
+      }
+    }
+  },
+  "billing": {
+    "title": "Billing",
+    "description": "Free covers capture, organize, and sync. Pro is unlimited sifting.",
+    "trialEndsToday": "Your Pro trial ends today.",
+    "trialDaysLeft": "{count, plural, one {# day} other {# days}} left in your Pro trial.",
+    "creatorNote": "Permanent unlimited access — Stripe never bills this account.",
+    "subscription": "Subscription",
+    "upgradeMonthly": "Upgrade — Monthly",
+    "upgradeYearly": "Upgrade — Yearly",
+    "manage": "Manage subscription",
+    "inviteTitle": "Invite code",
+    "inviteComped": "Have another code? Redeeming it extends your Pro access.",
+    "inviteDefault": "Got an invite from Santi? Redeem it here for Pro without a card.",
+    "usage": {
+      "unlimited": "{count, plural, one {# sift} other {# sifts}} today.",
+      "freeExhausted": "You've used today's {cap} free sifts. Capture keeps working; sifting resumes tomorrow.",
+      "freeLeft": "{left} of {cap} free sifts left today.",
+      "fairUse": "{count, plural, one {# sift} other {# sifts}} today. Unlimited sifting, with a fair-use cap of {cap} a day."
+    },
+    "upgrade": {
+      "pro": "Unlimited sifting, autonomous execution budget, and connectors. Pause or cancel anytime from the portal.",
+      "compedUntil": "Your invite covers Pro for now. Add a subscription to keep Pro after it ends, or wait until then.",
+      "compedForever": "Your invite covers Pro permanently. No card needed.",
+      "trialing": "You're on the Pro trial: unlimited sifting. Subscribe to keep it after the trial, or drop to Free and keep capturing with a few sifts a day. Promo codes work at checkout.",
+      "free": "Free includes capture, organize, sync, reminders, and {count} sifts a day. Pro removes the sifting cap and adds autonomous execution and connectors. Promo codes work at checkout."
+    },
+    "errors": {
+      "checkoutFailed": "Checkout failed.",
+      "checkoutUnavailable": "Checkout isn't available right now.",
+      "alreadySubscribed": "You already have an active subscription. Manage it from the billing portal.",
+      "portalFailed": "Couldn't open the billing portal.",
+      "noCustomer": "No Stripe customer for this account. Start a checkout first.",
+      "rateLimited": "Too many attempts. Try again in a minute."
+    }
+  },
+  "paymentBanner": {
+    "grace": "Your last Sifty Pro payment didn't go through. Update your payment method by {date} to keep Pro.",
+    "lapsed": "Your Sifty Pro payment is still failing, so Pro is paused. Update your payment method to turn it back on.",
+    "update": "Update payment method"
+  },
+  "redeem": {
+    "shellTitle": "Redeem",
+    "title": "Redeem an invite",
+    "description": "Invite codes unlock Sifty Pro — unlimited sifting — without a card.",
+    "later": "You can also redeem later from <link>Settings → Billing</link>.",
+    "form": {
+      "label": "Invite code",
+      "submit": "Redeem",
+      "submitting": "Redeeming…",
+      "creator": "Code accepted. The creator account is already unlimited.",
+      "proUntil": "You're on Pro until {date}. Unlimited sifting, no card needed.",
+      "pro": "You're on Pro. Unlimited sifting, no card needed."
+    },
+    "errors": {
+      "empty": "Enter an invite code.",
+      "malformed": "That doesn't look like a Sifty invite code. Codes start with sifty- and have 20 characters.",
+      "unknown": "We don't recognize that invite code. Check it for typos.",
+      "revoked": "That invite code has been revoked.",
+      "expired": "That invite code has expired.",
+      "exhausted": "That invite code has already been used the maximum number of times.",
+      "already_redeemed": "You've already redeemed this code.",
+      "rate_limited": "Too many attempts. Try again in a minute.",
+      "bot_detected": "Automated requests are not allowed here.",
+      "notSignedIn": "Your session ended. Sign in again to redeem.",
+      "unavailable": "Invite codes aren't available right now.",
+      "generic": "Could not redeem that code.",
+      "network": "Couldn't reach Sifty. Check your connection and try again."
+    }
+  },
+  "admin": {
+    "eyebrow": "Admin",
+    "title": "AI costs",
+    "description": "Every AI run across all accounts in the last {days} days, priced from the model registry. Creator-only.",
+    "sections": {
+      "byDay": "By day",
+      "byStage": "By stage",
+      "byModel": "By model",
+      "byAccount": "By account",
+      "workflow": "Workflow runtime"
+    },
+    "columns": {
+      "day": "Day",
+      "stage": "Stage",
+      "model": "Model",
+      "account": "Account",
+      "runs": "Runs",
+      "failed": "Failed",
+      "in": "In",
+      "out": "Out",
+      "cost": "Cost"
+    },
+    "totals": {
+      "spend": "Spend",
+      "runs": "Runs",
+      "failed": "Failed",
+      "tokensIn": "Tokens in",
+      "tokensOut": "Tokens out"
+    },
+    "empty": "No runs in this window.",
+    "ping": {
+      "intro": "Starts a one-step workflow and waits up to 20 seconds for it to finish. A completed run means Vercel Workflow is enabled for this deployment.",
+      "run": "Run workflow ping",
+      "running": "Running…",
+      "notStarted": "not started",
+      "unknown": "unknown",
+      "requestFailed": "request failed"
+    }
+  }
+}

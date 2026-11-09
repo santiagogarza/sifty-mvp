@@ -14,6 +14,7 @@ import {
 } from "@/lib/notifications/push-client";
 import { cn } from "@/lib/utils/cn";
 import { Bell, BellOff, Check, Mail } from "lucide-react";
+import { useFormatter, useTranslations } from "next-intl";
 import * as React from "react";
 
 interface PreferencesResponse {
@@ -37,13 +38,8 @@ interface PreferencesResponse {
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
-const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
-const KIND_LABEL: Record<string, string> = {
-  morning_plan: "Morning plan",
-  due_reminder: "Due reminder",
-  weekly_review: "Weekly review",
-};
 
 /**
  * Settings → Notifications.
@@ -62,6 +58,9 @@ export function NotificationsPanel({
   vapidPublicKey: string | null;
   unsubscribed: string | null;
 }) {
+  const t = useTranslations("account.notifications");
+  const tc = useTranslations("common.states");
+  const format = useFormatter();
   const [data, setData] = React.useState<PreferencesResponse | null>(null);
   const [prefs, setPrefs] = React.useState<NotificationPreferencesInput | null>(null);
   const [saved, setSaved] = React.useState(false);
@@ -84,7 +83,7 @@ export function NotificationsPanel({
 
   const load = React.useCallback(async () => {
     const res = await fetch("/api/notifications/preferences", { credentials: "include" });
-    if (!res.ok) throw new Error("Couldn't load notification settings.");
+    if (!res.ok) throw new Error(t("loadFailed"));
     const json = (await res.json()) as PreferencesResponse;
     setData(json);
     const { saved: wasSaved, updatedAt: _u, ...rest } = json.preferences;
@@ -92,7 +91,7 @@ export function NotificationsPanel({
     lastSaved.current = wasSaved ? rest : null;
     // A fresh account gets the browser's zone pre-filled, not UTC.
     setPrefs(wasSaved ? rest : { ...rest, timezone: detectedZone });
-  }, [detectedZone]);
+  }, [detectedZone, t]);
 
   React.useEffect(() => {
     load().catch((err) => setError(err instanceof Error ? err.message : String(err)));
@@ -101,29 +100,31 @@ export function NotificationsPanel({
       .catch(() => undefined);
   }, [load]);
 
-  const save = React.useCallback(async (next: NotificationPreferencesInput) => {
-    setSaveState("saving");
-    setError(null);
-    const res = await fetch("/api/notifications/preferences", {
-      method: "PUT",
-      credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(next),
-    });
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
-      setSaveState("error");
-      setError(body.error ?? "Couldn't save.");
-      // The server kept the last good row; show that instead of the
-      // rejected edit so the controls never disagree with what is stored.
-      if (lastSaved.current) setPrefs(lastSaved.current);
-      return false;
-    }
-    lastSaved.current = next;
-    setSaved(true);
-    setSaveState("saved");
-    return true;
-  }, []);
+  const save = React.useCallback(
+    async (next: NotificationPreferencesInput) => {
+      setSaveState("saving");
+      setError(null);
+      const res = await fetch("/api/notifications/preferences", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(next),
+      });
+      if (!res.ok) {
+        setSaveState("error");
+        setError(t("schedule.saveFailed"));
+        // The server kept the last good row; show that instead of the
+        // rejected edit so the controls never disagree with what is stored.
+        if (lastSaved.current) setPrefs(lastSaved.current);
+        return false;
+      }
+      lastSaved.current = next;
+      setSaved(true);
+      setSaveState("saved");
+      return true;
+    },
+    [t],
+  );
 
   // Autosave after the first explicit save; before that, edits only stage.
   const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -151,7 +152,15 @@ export function NotificationsPanel({
         headers: { "content-type": "application/json" },
         body: JSON.stringify(subscription.toJSON()),
       });
-      if (!res.ok) throw new Error("Couldn't register this device.");
+      if (!res.ok) {
+        throw new Error(
+          res.status === 409
+            ? t("pushMessages.tooManyDevices")
+            : res.status === 503
+              ? t("pushMessages.notConfigured")
+              : t("pushMessages.registerFailed"),
+        );
+      }
       setThisDeviceSubscribed(true);
       const next = { ...prefs, pushEnabled: true };
       setPrefs(next);
@@ -159,10 +168,10 @@ export function NotificationsPanel({
     } catch (err) {
       setPushMessage(
         err instanceof PushPermissionDeniedError
-          ? err.message
+          ? t("pushMessages.permissionDenied")
           : err instanceof Error
             ? err.message
-            : "Couldn't turn on notifications.",
+            : t("pushMessages.enableFailed"),
       );
     } finally {
       setPushBusy(false);
@@ -210,50 +219,52 @@ export function NotificationsPanel({
         credentials: "include",
       });
       const body = (await res.json().catch(() => ({}))) as {
-        error?: string;
         delivered?: number;
         removed?: number;
       };
-      if (!res.ok) throw new Error(body.error ?? "Couldn't send a test.");
+      if (!res.ok) {
+        throw new Error(
+          res.status === 404
+            ? t("pushMessages.noSubscriptions")
+            : res.status === 503
+              ? t("pushMessages.notConfigured")
+              : t("pushMessages.testFailed"),
+        );
+      }
       setPushMessage(
         body.delivered
-          ? `Sent to ${body.delivered} device${body.delivered === 1 ? "" : "s"}.`
-          : "No device accepted the test — re-enable notifications on this device.",
+          ? t("pushMessages.sent", { count: body.delivered })
+          : t("pushMessages.noneAccepted"),
       );
     } catch (err) {
-      setPushMessage(err instanceof Error ? err.message : "Couldn't send a test.");
+      setPushMessage(err instanceof Error ? err.message : t("pushMessages.testFailed"));
     } finally {
       setPushBusy(false);
     }
   };
 
   if (!prefs || !data) {
-    return (
-      <div className="mt-6 text-[13px] text-[var(--fg-muted)]">
-        {error ?? "Loading notification settings…"}
-      </div>
-    );
+    return <div className="mt-6 text-[13px] text-[var(--fg-muted)]">{error ?? t("loading")}</div>;
   }
 
   const showIosHint = isIOS() && !isStandalone();
+  const sendLabel = (group: "kind" | "channel" | "status", value: string) => {
+    const key = `recent.${group}.${value}` as Parameters<typeof t>[0];
+    return t.has(key) ? t(key) : value;
+  };
 
   return (
     <div className="max-w-2xl" data-testid="notifications-panel">
       {unsubscribed === "1" && !prefs.emailEnabled ? (
-        <Notice tone="ok">Digest emails are off. Account and security emails still arrive.</Notice>
+        <Notice tone="ok">{t("notices.unsubscribed")}</Notice>
       ) : null}
       {unsubscribed === "invalid" ? (
-        <Notice tone="warn">
-          That unsubscribe link was not valid. Use the switch below instead.
-        </Notice>
+        <Notice tone="warn">{t("notices.unsubscribeInvalid")}</Notice>
       ) : null}
       {!saved ? (
         <Notice tone="info">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <span>
-              Reminders are off until you confirm your time zone ({prefs.timezone}). Check the
-              settings below, then turn them on.
-            </span>
+            <span>{t("notices.confirmZone", { zone: prefs.timezone })}</span>
             <Button
               variant="primary"
               size="sm"
@@ -262,39 +273,39 @@ export function NotificationsPanel({
               data-testid="turn-on-reminders"
             >
               <Bell size={13} />
-              Turn on reminders
+              {t("notices.turnOn")}
             </Button>
           </div>
         </Notice>
       ) : null}
 
-      <Section title="Channels" description="Where digests go. Turn both off to pause everything.">
+      <Section title={t("channels.title")} description={t("channels.description")}>
         <Row
           icon={Mail}
-          title="Email"
+          title={t("channels.email")}
           detail={email}
           control={
             <Switch
               checked={prefs.emailEnabled}
               onChange={(v) => update({ emailEnabled: v })}
-              label="Email digests"
+              label={t("channels.emailSwitch")}
             />
           }
         />
         {vapidPublicKey ? (
           <Row
             icon={prefs.pushEnabled ? Bell : BellOff}
-            title="Notifications on this device"
-            detail={pushDetail(support, thisDeviceSubscribed, data.pushSubscriptions.length)}
+            title={t("channels.push")}
+            detail={pushDetail(t, support, thisDeviceSubscribed, data.pushSubscriptions.length)}
             control={
               support.ok ? (
                 thisDeviceSubscribed ? (
                   <div className="flex items-center gap-1.5">
                     <Button variant="ghost" size="sm" onClick={sendTest} disabled={pushBusy}>
-                      Send a test
+                      {t("channels.sendTest")}
                     </Button>
                     <Button variant="secondary" size="sm" onClick={disablePush} disabled={pushBusy}>
-                      Turn off
+                      {t("channels.turnOff")}
                     </Button>
                   </div>
                 ) : (
@@ -305,7 +316,7 @@ export function NotificationsPanel({
                     disabled={pushBusy}
                     data-testid="enable-push"
                   >
-                    {pushBusy ? "Asking…" : "Turn on"}
+                    {pushBusy ? t("channels.asking") : t("channels.turnOn")}
                   </Button>
                 )
               ) : null
@@ -314,16 +325,15 @@ export function NotificationsPanel({
         ) : (
           <Row
             icon={BellOff}
-            title="Notifications"
-            detail="Not set up on this server yet (VAPID keys missing). Email still works."
+            title={t("channels.pushUnavailable")}
+            detail={t("channels.pushUnavailableDetail")}
           />
         )}
         {showIosHint ? (
           <p className="mt-2 text-[12.5px] leading-[1.5] text-[var(--fg-muted)]">
-            On iPhone and iPad, notifications only reach installed apps: tap{" "}
-            <span className="text-[var(--fg)]">Share</span> →{" "}
-            <span className="text-[var(--fg)]">Add to Home Screen</span>, open Sifty from there, and
-            turn notifications on in this screen (iOS 16.4 or later).
+            {t.rich("channels.iosHint", {
+              hl: (chunks) => <span className="text-[var(--fg)]">{chunks}</span>,
+            })}
           </p>
         ) : null}
         {pushMessage ? (
@@ -333,15 +343,12 @@ export function NotificationsPanel({
         ) : null}
       </Section>
 
-      <Section
-        title="Schedule"
-        description="Times are in your time zone. Digests only go out when there is something to say."
-      >
+      <Section title={t("schedule.title")} description={t("schedule.description")}>
         <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] divide-y divide-[var(--border)]">
-          <Field label="Time zone">
+          <Field label={t("schedule.timeZone")}>
             <div className="flex items-center gap-2">
               <select
-                aria-label="Time zone"
+                aria-label={t("schedule.timeZone")}
                 value={prefs.timezone}
                 onChange={(e) => update({ timezone: e.target.value })}
                 className={selectClass}
@@ -354,75 +361,75 @@ export function NotificationsPanel({
               </select>
               {prefs.timezone !== detectedZone ? (
                 <Button variant="link" size="sm" onClick={() => update({ timezone: detectedZone })}>
-                  Use {detectedZone.replace(/_/g, " ")}
+                  {t("schedule.useZone", { zone: detectedZone.replace(/_/g, " ") })}
                 </Button>
               ) : null}
             </div>
           </Field>
           <Field
-            label="Morning plan"
-            hint="Today, Focus, and anything due or overdue."
+            label={t("schedule.morningPlan")}
+            hint={t("schedule.morningPlanHint")}
             control={
               <Switch
                 checked={prefs.morningPlanEnabled}
                 onChange={(v) => update({ morningPlanEnabled: v })}
-                label="Morning plan"
+                label={t("schedule.morningPlan")}
               />
             }
           >
             <HourSelect
-              label="Morning plan time"
+              label={t("schedule.morningPlanTime")}
               value={prefs.morningPlanHour}
               disabled={!prefs.morningPlanEnabled}
               onChange={(h) => update({ morningPlanHour: h })}
             />
           </Field>
           <Field
-            label="Due reminder"
-            hint="An afternoon nudge for what is still due today or overdue."
+            label={t("schedule.dueReminder")}
+            hint={t("schedule.dueReminderHint")}
             control={
               <Switch
                 checked={prefs.dueRemindersEnabled}
                 onChange={(v) => update({ dueRemindersEnabled: v })}
-                label="Due reminders"
+                label={t("schedule.dueRemindersSwitch")}
               />
             }
           >
             <HourSelect
-              label="Due reminder time"
+              label={t("schedule.dueReminderTime")}
               value={prefs.dueReminderHour}
               disabled={!prefs.dueRemindersEnabled}
               onChange={(h) => update({ dueReminderHour: h })}
             />
           </Field>
           <Field
-            label="Weekly review"
-            hint="What got done, what slipped, what the week holds. Sent at the morning plan time."
+            label={t("schedule.weeklyReview")}
+            hint={t("schedule.weeklyReviewHint")}
             control={
               <Switch
                 checked={prefs.weeklyReviewEnabled}
                 onChange={(v) => update({ weeklyReviewEnabled: v })}
-                label="Weekly review"
+                label={t("schedule.weeklyReview")}
               />
             }
           >
             <select
-              aria-label="Weekly review day"
+              aria-label={t("schedule.weeklyReviewDay")}
               value={prefs.weeklyReviewDay}
               disabled={!prefs.weeklyReviewEnabled}
               onChange={(e) => update({ weeklyReviewDay: Number(e.target.value) })}
               className={selectClass}
             >
-              {WEEKDAYS.map((d, i) => (
-                <option key={d} value={i}>
-                  {d}
+              {WEEKDAYS.map((d) => (
+                <option key={d} value={d}>
+                  {weekdayName(format, d)}
                 </option>
               ))}
             </select>
           </Field>
           <Field
-            label="Quiet hours"
-            hint="Anything scheduled inside this window waits until it ends."
+            label={t("schedule.quietHours")}
+            hint={t("schedule.quietHoursHint")}
             control={
               <Switch
                 checked={prefs.quietHoursStart !== null}
@@ -433,23 +440,28 @@ export function NotificationsPanel({
                       : { quietHoursStart: null, quietHoursEnd: null },
                   )
                 }
-                label="Quiet hours"
+                label={t("schedule.quietHours")}
               />
             }
           >
             {prefs.quietHoursStart !== null && prefs.quietHoursEnd !== null ? (
               <div className="flex items-center gap-2 text-[13px] text-[var(--fg-muted)]">
-                <HourSelect
-                  label="Quiet hours start"
-                  value={prefs.quietHoursStart}
-                  onChange={(h) => update({ quietHoursStart: h })}
-                />
-                <span>to</span>
-                <HourSelect
-                  label="Quiet hours end"
-                  value={prefs.quietHoursEnd}
-                  onChange={(h) => update({ quietHoursEnd: h })}
-                />
+                {t.rich("schedule.quietHoursRange", {
+                  start: () => (
+                    <HourSelect
+                      label={t("schedule.quietHoursStart")}
+                      value={prefs.quietHoursStart ?? 0}
+                      onChange={(h) => update({ quietHoursStart: h })}
+                    />
+                  ),
+                  end: () => (
+                    <HourSelect
+                      label={t("schedule.quietHoursEnd")}
+                      value={prefs.quietHoursEnd ?? 0}
+                      onChange={(h) => update({ quietHoursEnd: h })}
+                    />
+                  ),
+                })}
               </div>
             ) : null}
           </Field>
@@ -457,13 +469,13 @@ export function NotificationsPanel({
         <div className="mt-2 flex items-center justify-between text-[12px] text-[var(--fg-subtle)]">
           <span role="status">
             {saveState === "saving"
-              ? "Saving…"
+              ? tc("saving")
               : saveState === "saved"
-                ? "Saved"
+                ? tc("saved")
                 : saveState === "error"
-                  ? (error ?? "Couldn't save")
+                  ? (error ?? t("schedule.saveFailed"))
                   : saved
-                    ? "Changes save automatically."
+                    ? t("schedule.autosave")
                     : ""}
           </span>
           {saved ? (
@@ -472,14 +484,14 @@ export function NotificationsPanel({
               size="sm"
               onClick={() => update({ ...DEFAULT_PREFERENCES, timezone: prefs.timezone })}
             >
-              Reset to defaults
+              {t("schedule.reset")}
             </Button>
           ) : null}
         </div>
       </Section>
 
       {data.recentSends.length > 0 ? (
-        <Section title="Recent" description="The last few digests Sifty sent you.">
+        <Section title={t("recent.title")} description={t("recent.description")}>
           <ul className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] divide-y divide-[var(--border)]">
             {data.recentSends.map((s) => (
               <li
@@ -487,11 +499,14 @@ export function NotificationsPanel({
                 className="flex items-center justify-between gap-3 px-4 py-2.5 text-[13px]"
               >
                 <span className="text-[var(--fg)]">
-                  {KIND_LABEL[s.kind] ?? s.kind}
-                  <span className="text-[var(--fg-muted)]"> · {s.channel}</span>
+                  {sendLabel("kind", s.kind)}
+                  <span className="text-[var(--fg-muted)]">
+                    {" "}
+                    · {sendLabel("channel", s.channel)}
+                  </span>
                 </span>
                 <span className="text-[var(--fg-muted)]">
-                  {s.periodKey} · {s.status}
+                  {s.periodKey} · {sendLabel("status", s.status)}
                 </span>
               </li>
             ))}
@@ -505,7 +520,11 @@ export function NotificationsPanel({
 const selectClass =
   "h-8 rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[var(--surface)] px-2 text-[13px] text-[var(--fg)] disabled:opacity-40";
 
+type Translate = ReturnType<typeof useTranslations<"account.notifications">>;
+type Format = ReturnType<typeof useFormatter>;
+
 function pushDetail(
+  t: Translate,
   support: ReturnType<typeof pushSupport>,
   thisDevice: boolean,
   total: number,
@@ -513,21 +532,35 @@ function pushDetail(
   if (!support.ok) {
     switch (support.reason) {
       case "ios_not_installed":
-        return "Add Sifty to your Home Screen first — see below.";
+        return t("pushDetail.iosNotInstalled");
       case "insecure":
-        return "Needs https.";
+        return t("pushDetail.insecure");
       default:
-        return "This browser cannot receive push notifications.";
+        return t("pushDetail.unsupported");
     }
   }
   if (thisDevice) {
     return total > 1
-      ? `On for this device and ${total - 1} other${total - 1 === 1 ? "" : "s"}.`
-      : "On for this device.";
+      ? t("pushDetail.onThisAndOthers", { count: total - 1 })
+      : t("pushDetail.onThis");
   }
-  return total > 0
-    ? `Off here; on for ${total} other device${total === 1 ? "" : "s"}.`
-    : "Reminders as system notifications, even when Sifty is closed.";
+  return total > 0 ? t("pushDetail.offHereOnOthers", { count: total }) : t("pushDetail.pitch");
+}
+
+/** 0 = Sunday, matching `weeklyReviewDay`. 2023-01-01 was a Sunday. */
+function weekdayName(format: Format, day: number): string {
+  return format.dateTime(new Date(Date.UTC(2023, 0, 1 + day)), {
+    weekday: "long",
+    timeZone: "UTC",
+  });
+}
+
+function formatHour(format: Format, h: number): string {
+  return format.dateTime(new Date(Date.UTC(2000, 0, 1, h)), {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "UTC",
+  });
 }
 
 function timeZoneOptions(detected: string): string[] {
@@ -548,6 +581,7 @@ function HourSelect({
   onChange: (hour: number) => void;
   disabled?: boolean;
 }) {
+  const format = useFormatter();
   return (
     <select
       aria-label={label}
@@ -557,18 +591,12 @@ function HourSelect({
       className={selectClass}
     >
       {HOURS.map((h) => (
-        <option key={formatHour(h)} value={h}>
-          {formatHour(h)}
+        <option key={h} value={h}>
+          {formatHour(format, h)}
         </option>
       ))}
     </select>
   );
-}
-
-export function formatHour(h: number): string {
-  const suffix = h < 12 ? "AM" : "PM";
-  const twelve = h % 12 === 0 ? 12 : h % 12;
-  return `${twelve}:00 ${suffix}`;
 }
 
 function Switch({

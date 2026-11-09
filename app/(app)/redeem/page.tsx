@@ -2,10 +2,14 @@ import { PageHeader } from "@/components/app-shell/page-header";
 import { PageShell } from "@/components/app-shell/page-shell";
 import { RedeemInviteForm } from "@/components/billing/redeem-invite-form";
 import { getSession } from "@/lib/auth/session";
+import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-export const metadata = { title: "Redeem an invite" };
+export async function generateMetadata() {
+  const t = await getTranslations("account.redeem");
+  return { title: t("title") };
+}
 
 /**
  * Landing page for invite links (`/redeem?code=sifty-…`). Signed-out
@@ -26,20 +30,21 @@ export default async function RedeemPage({
     redirect(`/sign-in?next=${encodeURIComponent(next)}`);
   }
 
+  const t = await getTranslations("account.redeem");
+
   return (
-    <PageShell title="Redeem">
-      <PageHeader
-        title="Redeem an invite"
-        description="Invite codes unlock Sifty Pro — unlimited sifting — without a card."
-      />
+    <PageShell title={t("shellTitle")}>
+      <PageHeader title={t("title")} description={t("description")} />
       <section className="surface-card p-5 max-w-lg">
         <RedeemInviteForm initialCode={code} autoSubmit={!!code} />
         <p className="text-[12.5px] text-[var(--fg-muted)] mt-4">
-          You can also redeem later from{" "}
-          <Link href="/settings/billing" className="text-[var(--accent)] hover:underline">
-            Settings → Billing
-          </Link>
-          .
+          {t.rich("later", {
+            link: (chunks) => (
+              <Link href="/settings/billing" className="text-[var(--accent)] hover:underline">
+                {chunks}
+              </Link>
+            ),
+          })}
         </p>
       </section>
     </PageShell>
