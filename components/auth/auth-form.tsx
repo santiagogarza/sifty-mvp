@@ -2,12 +2,14 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { authClient, authErrorMessage } from "@/lib/auth/client";
+import { authClient } from "@/lib/auth/client";
 import { safeNextPath } from "@/lib/auth/safe-next";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { GoogleButton } from "./google-button";
+import { useAuthErrorMessage } from "./use-auth-error";
 
 interface AuthFormProps {
   mode: "sign-in" | "sign-up";
@@ -20,6 +22,8 @@ type Sent = { kind: "verify" | "magic"; email: string } | null;
 
 export function AuthForm({ mode, next, googleEnabled }: AuthFormProps) {
   const router = useRouter();
+  const t = useTranslations("auth");
+  const authErrorMessage = useAuthErrorMessage();
   // Origin only matters for the same-origin comparison; the result is a path.
   const callbackURL = safeNextPath(next, "http://sifty.local");
   const [email, setEmail] = React.useState("");
@@ -53,7 +57,7 @@ export function AuthForm({ mode, next, googleEnabled }: AuthFormProps) {
       router.push(callbackURL);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(t("errors.network"));
     } finally {
       setPending(null);
     }
@@ -61,7 +65,7 @@ export function AuthForm({ mode, next, googleEnabled }: AuthFormProps) {
 
   async function onMagicLink() {
     setError(null);
-    if (!email) return setError("Enter your email first.");
+    if (!email) return setError(t("form.enterEmailFirst"));
     setPending("magic");
     try {
       const { error } = await authClient.signIn.magicLink({ email, callbackURL });
@@ -87,7 +91,7 @@ export function AuthForm({ mode, next, googleEnabled }: AuthFormProps) {
       }
       // On success the browser is navigating to Google; keep the form disabled.
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(t("errors.network"));
       setPending(null);
     }
   }
@@ -108,7 +112,7 @@ export function AuthForm({ mode, next, googleEnabled }: AuthFormProps) {
       <form onSubmit={onSubmit} className="flex flex-col gap-3" noValidate>
         <div>
           <label htmlFor="auth-email" className="text-[13px] text-[var(--fg-muted)]">
-            Email
+            {t("form.email")}
           </label>
           <Input
             id="auth-email"
@@ -118,13 +122,13 @@ export function AuthForm({ mode, next, googleEnabled }: AuthFormProps) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="mt-1.5"
-            placeholder="you@example.com"
+            placeholder={t("form.emailPlaceholder")}
           />
         </div>
         {mode === "sign-up" ? (
           <div>
             <label htmlFor="auth-name" className="text-[13px] text-[var(--fg-muted)]">
-              Display name (optional)
+              {t("form.displayName")}
             </label>
             <Input
               id="auth-name"
@@ -140,14 +144,14 @@ export function AuthForm({ mode, next, googleEnabled }: AuthFormProps) {
         <div>
           <div className="flex items-baseline justify-between">
             <label htmlFor="auth-password" className="text-[13px] text-[var(--fg-muted)]">
-              Password
+              {t("form.password")}
             </label>
             {mode === "sign-in" ? (
               <Link
                 href="/forgot-password"
                 className="text-[12px] text-[var(--fg-muted)] hover:text-[var(--fg)]"
               >
-                Forgot password?
+                {t("form.forgotPassword")}
               </Link>
             ) : null}
           </div>
@@ -160,7 +164,7 @@ export function AuthForm({ mode, next, googleEnabled }: AuthFormProps) {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="mt-1.5"
-            placeholder={mode === "sign-up" ? "At least 8 characters" : ""}
+            placeholder={mode === "sign-up" ? t("form.passwordPlaceholder") : ""}
           />
         </div>
         {error ? (
@@ -175,11 +179,11 @@ export function AuthForm({ mode, next, googleEnabled }: AuthFormProps) {
         <Button type="submit" variant="primary" disabled={pending !== null} className="mt-2">
           {pending === "password"
             ? mode === "sign-up"
-              ? "Creating account…"
-              : "Signing in…"
+              ? t("form.creatingAccount")
+              : t("form.signingIn")
             : mode === "sign-up"
-              ? "Create account"
-              : "Sign in"}
+              ? t("form.createAccount")
+              : t("form.signIn")}
         </Button>
       </form>
 
@@ -192,7 +196,7 @@ export function AuthForm({ mode, next, googleEnabled }: AuthFormProps) {
           disabled={pending !== null}
           className="self-center"
         >
-          {pending === "magic" ? "Sending link…" : "Email me a sign-in link instead"}
+          {pending === "magic" ? t("form.sendingLink") : t("form.magicLink")}
         </Button>
       ) : null}
     </div>
@@ -204,6 +208,8 @@ function CheckInbox({
   callbackURL,
   onBack,
 }: { sent: NonNullable<Sent>; callbackURL: string; onBack: () => void }) {
+  const t = useTranslations("auth");
+  const authErrorMessage = useAuthErrorMessage();
   const [resent, setResent] = React.useState(false);
   const [resendError, setResendError] = React.useState<string | null>(null);
   async function resend() {
@@ -216,16 +222,16 @@ function CheckInbox({
       if (error) return setResendError(authErrorMessage(error));
       setResent(true);
     } catch (err) {
-      setResendError(err instanceof Error ? err.message : "Network error");
+      setResendError(t("errors.network"));
     }
   }
   return (
     <div data-testid="auth-check-inbox">
-      <h2 className="text-[16px] text-[var(--fg)]">Check your inbox</h2>
+      <h2 className="text-[16px] text-[var(--fg)]">{t("checkInbox.title")}</h2>
       <p className="text-[13.5px] text-[var(--fg-muted)] mt-1.5 leading-[1.5]">
         {sent.kind === "verify"
-          ? `We sent a confirmation link to ${sent.email}. Open it to finish setting up your account.`
-          : `We sent a one-time link to ${sent.email}. Open it soon: it signs you in, confirms your address if that was still pending, or creates your account if you don't have one yet.`}
+          ? t("checkInbox.verify", { email: sent.email })
+          : t("checkInbox.magic", { email: sent.email })}
       </p>
       {resendError ? (
         <div role="alert" className="mt-2 text-[13px] text-[var(--warn)]">
@@ -234,10 +240,10 @@ function CheckInbox({
       ) : null}
       <div className="mt-4 flex items-center gap-2">
         <Button variant="secondary" size="sm" onClick={resend} disabled={resent}>
-          {resent ? "Sent again" : "Resend"}
+          {resent ? t("checkInbox.resent") : t("checkInbox.resend")}
         </Button>
         <Button variant="ghost" size="sm" onClick={onBack}>
-          Use a different email
+          {t("checkInbox.differentEmail")}
         </Button>
       </div>
     </div>
@@ -245,10 +251,11 @@ function CheckInbox({
 }
 
 function Divider() {
+  const t = useTranslations("auth.form");
   return (
     <div className="flex items-center gap-3 text-[12px] text-[var(--fg-subtle)]">
       <div className="h-px flex-1 bg-[var(--border)]" />
-      or
+      {t("or")}
       <div className="h-px flex-1 bg-[var(--border)]" />
     </div>
   );

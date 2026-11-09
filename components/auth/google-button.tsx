@@ -1,8 +1,10 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { useTranslations } from "next-intl";
 
 export function GoogleButton({ onClick, pending }: { onClick: () => void; pending: boolean }) {
+  const t = useTranslations("auth.google");
   return (
     <Button
       type="button"
@@ -13,7 +15,7 @@ export function GoogleButton({ onClick, pending }: { onClick: () => void; pendin
       data-testid="auth-google"
     >
       <GoogleMark />
-      {pending ? "Redirecting to Google…" : "Continue with Google"}
+      {pending ? t("redirecting") : t("continue")}
     </Button>
   );
 }

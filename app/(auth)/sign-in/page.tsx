@@ -1,16 +1,24 @@
 import { AuthForm } from "@/components/auth/auth-form";
 import { isGoogleAuthEnabled } from "@/lib/auth/auth";
+import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 
-export const metadata = { title: { absolute: "Sign in to Sifty" } };
+export async function generateMetadata() {
+  const t = await getTranslations("auth.signIn");
+  return { title: { absolute: t("metaTitle") } };
+}
 
-const ERROR_COPY: Record<string, string> = {
-  INVALID_TOKEN: "That link has expired or was already used. Sign in to get a new one.",
-  EXPIRED_TOKEN: "That link has expired. Sign in to get a new one.",
-  signup_disabled: "Sign-ups are closed right now.",
-  account_not_linked:
-    "An account with this email exists but isn't confirmed yet. Sign in with your password or a sign-in link first; Google will work after that.",
-};
+const ERROR_KEYS = [
+  "INVALID_TOKEN",
+  "EXPIRED_TOKEN",
+  "signup_disabled",
+  "account_not_linked",
+] as const;
+type ErrorKey = (typeof ERROR_KEYS)[number];
+
+function isErrorKey(value: string): value is ErrorKey {
+  return (ERROR_KEYS as readonly string[]).includes(value);
+}
 
 export default async function SignInPage({
   searchParams,
@@ -18,17 +26,18 @@ export default async function SignInPage({
   searchParams?: Promise<{ next?: string; error?: string; reset?: string; deleted?: string }>;
 }) {
   const params = (await searchParams) ?? {};
+  const t = await getTranslations("auth.signIn");
   const banner = params.error
-    ? (ERROR_COPY[params.error] ?? "Sign-in failed. Try again.")
+    ? t(`errors.${isErrorKey(params.error) ? params.error : "generic"}`)
     : params.reset
-      ? "Password updated. Sign in with your new password."
+      ? t("passwordUpdated")
       : params.deleted === "1"
-        ? "Your account and all of its data have been deleted."
+        ? t("accountDeleted")
         : null;
   return (
     <div className="surface-card p-7">
-      <h1 className="text-[20px] tracking-[-0.01em] text-[var(--fg)]">Welcome back</h1>
-      <p className="text-[13.5px] text-[var(--fg-muted)] mt-1">Sign in to your Sifty account.</p>
+      <h1 className="text-[20px] tracking-[-0.01em] text-[var(--fg)]">{t("title")}</h1>
+      <p className="text-[13.5px] text-[var(--fg-muted)] mt-1">{t("description")}</p>
       {banner ? (
         <div
           role="alert"
@@ -41,13 +50,16 @@ export default async function SignInPage({
         <AuthForm mode="sign-in" next={params.next} googleEnabled={isGoogleAuthEnabled()} />
       </div>
       <div className="mt-6 text-[13px] text-[var(--fg-muted)]">
-        New to Sifty?{" "}
-        <Link
-          href={params.next ? `/sign-up?next=${encodeURIComponent(params.next)}` : "/sign-up"}
-          className="text-[var(--accent)] hover:underline"
-        >
-          Create an account
-        </Link>
+        {t.rich("newHere", {
+          link: (chunks) => (
+            <Link
+              href={params.next ? `/sign-up?next=${encodeURIComponent(params.next)}` : "/sign-up"}
+              className="text-[var(--accent)] hover:underline"
+            >
+              {chunks}
+            </Link>
+          ),
+        })}
       </div>
     </div>
   );

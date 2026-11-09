@@ -322,8 +322,8 @@ describe.each(STORES)("per-route rate limits — $name", ({ make }) => {
     expect((await post("/api/auth/sign-up", "1.2.3.4")).status).toBe(200);
     const limited = await post("/api/auth/magic-link", "1.2.3.4");
     const body = await expect429(limited);
-    // The sign-in form renders `message` (via `authErrorMessage`), so the
-    // middleware 429 must say the same thing as the per-email hook's 429.
+    // Both 429s carry `code: "rate_limited"`, which the sign-in form maps
+    // to its localized copy; the English `message` must still match.
     expect(body.message).toBe(RATE_LIMIT_MESSAGE);
     expect(body.error).toBe(RATE_LIMIT_MESSAGE);
     // Other IPs and reads are unaffected.
