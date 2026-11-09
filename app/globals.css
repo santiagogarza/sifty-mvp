@@ -108,6 +108,10 @@
   --done: var(--color-sage-500);
   --warn: var(--color-rose-500);
 
+  /* Elevation: raised = hovered surface, float = lifted off the page. */
+  --shadow-raised: 0 1px 2px oklch(0% 0 0 / 0.05), 0 3px 8px -3px oklch(0% 0 0 / 0.1);
+  --shadow-float: 0 2px 6px oklch(0% 0 0 / 0.06), 0 18px 36px -12px oklch(0% 0 0 / 0.28);
+
   /* A faint top-down light wash. Optical only, never above content. */
   --page-light: radial-gradient(120% 60% at 50% -10%, oklch(99% 0.01 70 / 0.7), transparent 60%);
 }
@@ -142,6 +146,9 @@
   --done: var(--color-sage-500);
   --warn: var(--color-rose-500);
 
+  --shadow-raised: 0 1px 2px oklch(0% 0 0 / 0.4), 0 4px 10px -4px oklch(0% 0 0 / 0.5);
+  --shadow-float: 0 2px 6px oklch(0% 0 0 / 0.35), 0 22px 44px -12px oklch(0% 0 0 / 0.7);
+
   --page-light: radial-gradient(120% 60% at 50% -20%, oklch(35% 0.025 70 / 0.45), transparent 65%);
 }
 
@@ -171,6 +178,9 @@
 
     --ai: var(--color-mist-400);
     --ai-soft: oklch(22% 0.025 215);
+
+    --shadow-raised: 0 1px 2px oklch(0% 0 0 / 0.4), 0 4px 10px -4px oklch(0% 0 0 / 0.5);
+    --shadow-float: 0 2px 6px oklch(0% 0 0 / 0.35), 0 22px 44px -12px oklch(0% 0 0 / 0.7);
 
     --page-light: radial-gradient(120% 60% at 50% -20%, oklch(35% 0.025 70 / 0.45), transparent 65%);
   }
@@ -330,6 +340,30 @@ button,
     background-color: transparent;
   }
 }
+@keyframes sifty-settle-wash {
+  from {
+    background-color: var(--ai-soft);
+  }
+  to {
+    background-color: var(--surface);
+  }
+}
+@keyframes sifty-lift {
+  from {
+    transform: none;
+    box-shadow: var(--shadow-raised);
+  }
+  to {
+    transform: rotate(-2deg) scale(1.02);
+    box-shadow: var(--shadow-float);
+  }
+}
+@keyframes sifty-retire {
+  to {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
 @keyframes sifty-count-pulse {
   0% {
     transform: none;
@@ -369,6 +403,20 @@ button,
   border-radius: var(--radius-md);
   animation: sifty-fill-in 420ms var(--ease-product) both, sifty-ai-wash 1200ms var(--ease-soft)
     both;
+}
+/* A board card landing in its new column: a short settle, then the same
+   quiet AI wash, fading back to the card surface rather than transparent. */
+.animate-settle {
+  animation: sifty-fill-in 160ms var(--ease-product) both, sifty-settle-wash 1200ms var(--ease-soft)
+    both;
+}
+/* A board card picked up: tilts and floats off the column. */
+.animate-lift {
+  animation: sifty-lift 120ms var(--ease-product) both;
+}
+/* A transient pill leaving. */
+.animate-retire {
+  animation: sifty-retire 240ms var(--ease-product) both;
 }
 /* One-shot pulse when a sidebar count goes up. */
 .animate-count-pulse {

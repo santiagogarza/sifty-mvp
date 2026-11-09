@@ -55,6 +55,8 @@ describe("task sync contract", () => {
     const { task } = await res.json();
     expect(task.id).toBe("task_client1");
     expect(task.title).toBe("Ship the thing, properly");
+    // A board column's "Add" creates straight into that status.
+    expect(task.lifecycle).toBe("active");
     expect(task.labelIds).toEqual(["label_abc123"]);
     expect(task.createdAt).toBe("2026-07-01T10:00:00.000Z");
     expect(task.editedFields).toEqual(["title"]);
