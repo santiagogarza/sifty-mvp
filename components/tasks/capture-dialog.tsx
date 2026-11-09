@@ -7,9 +7,12 @@ import { Textarea } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import { runTriage } from "@/lib/ai/run-triage";
 import { TASK_LIMITS } from "@/lib/domain/limits";
+import { statusLabel } from "@/lib/domain/status";
+import type { Lifecycle } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
 import { ArrowUpRight, Sparkles } from "lucide-react";
 import * as React from "react";
+import { StatusIcon } from "./status-icon";
 
 /**
  * Capture dialog.
@@ -24,14 +27,18 @@ import * as React from "react";
  *      Never blocking: Esc dismisses, triage continues in the background.
  *   4. Optional context, never required: a separate "Add context" affordance
  *      reveals a second textarea so the empty state stays calm.
+ *   5. A board column's "Add" captures straight into that status; a chip
+ *      in the header says where the task will land.
  */
 
 export function CaptureDialog({
   open,
   onOpenChange,
+  lifecycle = "inbox",
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  lifecycle?: Lifecycle;
 }) {
   const { openDetail } = useFrame();
   const createTask = useStore((s) => s.createTask);
@@ -55,6 +62,7 @@ export function CaptureDialog({
     const task = createTask({
       sourceText: text,
       sourceContext: context.trim() || null,
+      lifecycle,
     });
     onOpenChange(false);
     // Open the sheet on the next frame so this dialog's close (and its
@@ -70,6 +78,13 @@ export function CaptureDialog({
           <div className="flex items-center gap-2">
             <Sparkles size={14} className="text-[var(--ai)]" />
             <DialogTitle>Capture</DialogTitle>
+            {lifecycle !== "inbox" ? (
+              <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11.5px] text-[var(--fg-muted)]">
+                <StatusIcon status={lifecycle} size={11} />
+                <span className="sr-only">Adds to </span>
+                {statusLabel(lifecycle)}
+              </span>
+            ) : null}
           </div>
           <DialogDescription className="hidden sm:block text-[12px]">
             Type the task as you'd say it. Sifty organizes it.
