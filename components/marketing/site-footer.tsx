@@ -1,15 +1,17 @@
 import { SiftyWordmark } from "@/components/marketing/sifty-wordmark";
 import { LEGAL_ENTITY, getSupportEmail } from "@/lib/site/config";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 
 const LINKS = [
-  { href: "/pricing", label: "Pricing" },
-  { href: "/privacy", label: "Privacy" },
-  { href: "/terms", label: "Terms" },
-  { href: "/sign-in", label: "Sign in" },
-];
+  { href: "/pricing", key: "pricing" },
+  { href: "/privacy", key: "privacy" },
+  { href: "/terms", key: "terms" },
+  { href: "/sign-in", key: "signIn" },
+] as const;
 
 export function SiteFooter() {
+  const t = useTranslations("marketing.footer");
   const support = getSupportEmail();
   const year = new Date().getFullYear();
   return (
@@ -18,36 +20,39 @@ export function SiteFooter() {
         <div className="flex flex-col gap-3">
           <SiftyWordmark />
           <p className="text-[13px] text-[var(--fg-muted)]">
-            © {year} {LEGAL_ENTITY}. Sifty is in early access.
+            {t("copyright", { year: String(year), entity: LEGAL_ENTITY })}
           </p>
         </div>
-        <nav aria-label="Footer" className="flex flex-wrap gap-x-6 gap-y-2 text-[13.5px]">
+        <nav aria-label={t("navLabel")} className="flex flex-wrap gap-x-6 gap-y-2 text-[13.5px]">
           {LINKS.map((l) => (
             <Link
               key={l.href}
               href={l.href}
               className="text-[var(--fg-muted)] hover:text-[var(--fg)] rounded-[4px]"
             >
-              {l.label}
+              {t(l.key)}
             </Link>
           ))}
           <a
             href={`mailto:${support}`}
             className="text-[var(--fg-muted)] hover:text-[var(--fg)] rounded-[4px]"
           >
-            Support
+            {t("support")}
           </a>
         </nav>
       </div>
       <div className="mx-auto w-full max-w-5xl px-5 pb-8 text-[12.5px] text-[var(--fg-subtle)] sm:px-6">
-        Questions or a problem? Email{" "}
-        <a
-          href={`mailto:${support}`}
-          className="underline underline-offset-2 hover:text-[var(--fg)]"
-        >
-          {support}
-        </a>
-        . A person reads every message.
+        {t.rich("contact", {
+          address: support,
+          email: (chunks) => (
+            <a
+              href={`mailto:${support}`}
+              className="underline underline-offset-2 hover:text-[var(--fg)]"
+            >
+              {chunks}
+            </a>
+          ),
+        })}
       </div>
     </footer>
   );

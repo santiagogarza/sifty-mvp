@@ -1,1 +1,275 @@
-{}
+{
+  "site": {
+    "title": "Sifty — write it down, Sifty does the rest",
+    "description": "Capture a task in a second. Sifty fills in the details, prioritizes it, breaks it down, and gets most of it done before you come back."
+  },
+  "rollingOut": "rolling out",
+  "header": {
+    "skipToContent": "Skip to content",
+    "navLabel": "Site",
+    "pricing": "Pricing",
+    "signIn": "Sign in",
+    "startFree": "Start free"
+  },
+  "footer": {
+    "navLabel": "Footer",
+    "pricing": "Pricing",
+    "privacy": "Privacy",
+    "terms": "Terms",
+    "signIn": "Sign in",
+    "support": "Support",
+    "copyright": "© {year} {entity}. Sifty is in early access.",
+    "contact": "Questions or a problem? Email <email>{address}</email>. A person reads every message."
+  },
+  "landing": {
+    "eyebrow": "Early access",
+    "headline": "Write it down.<br></br>Sifty does the rest.",
+    "lede": "Capture a task in a second. Sifty fills in the details, decides what matters, breaks the work down, and gets most of it done or drafted before you come back. Nothing forgotten, and less of it left for you to do.",
+    "startFree": "Start free",
+    "seePricing": "See pricing",
+    "trialNote": "{days}-day Pro trial, no card. The free plan stays free.",
+    "how": {
+      "heading": "Three steps, two of them not yours.",
+      "capture": {
+        "title": "Capture",
+        "body": "One keystroke, type the thought, move on. No fields, no folders, no decisions at capture time."
+      },
+      "sift": {
+        "title": "Sift",
+        "body": "Sifty fills in the details, sets a priority, picks labels and a due date, and breaks the work into steps. Every field is editable, and it explains its reasoning."
+      },
+      "do": {
+        "title": "Do",
+        "body": "Next: Sifty does the work it can — research, drafts, bookings — and leaves you a decision instead of a chore. Nothing is sent without your approval."
+      }
+    },
+    "honest": {
+      "heading": "Where Sifty is today",
+      "body": "Sifty is new and built by a tiny team. Here is exactly what works now and what is being built next, so you can decide with your eyes open.",
+      "worksToday": "Works today",
+      "comingNext": "Coming next",
+      "today": {
+        "capture": "Capture from anywhere with a keystroke, on phone or laptop",
+        "sifting": "AI sifting: details, priority, labels, due dates, subtasks, and the reasoning behind them",
+        "views": "Today, Inbox, Focus, Waiting on, Someday, and Done views",
+        "memory": "A memory of your preferences that sifting learns from",
+        "sync": "Sync across devices; edits made offline replay when you are back",
+        "brief": "A ready-to-paste brief when you want to hand a task to an AI agent"
+      },
+      "next": {
+        "reminders": "Reminders by push and email",
+        "execution": "Autonomous execution: drafts, research, and bookings done for you, waiting for approval",
+        "connectors": "Connectors to your email, calendar, and tools"
+      },
+      "planNote": "Free includes {count, plural, one {# sift} other {# sifts}} a day forever. Pro removes the cap and, as autonomous execution rolls out, includes a monthly budget for it."
+    },
+    "cta": {
+      "heading": "Try it on your real list.",
+      "body": "Paste in the five things rattling around your head. See what Sifty makes of them before you decide anything."
+    }
+  },
+  "illustration": {
+    "label": "Example: a rough note on the left becomes a prioritized, broken-down task on the right",
+    "youType": "You type",
+    "toCapture": "<key>c</key> to capture",
+    "moveOn": "and move on",
+    "rawNote": "landlord about the kitchen leak before friday, he never answers email",
+    "siftyFillsIn": "Sifty fills in",
+    "sifted": "sifted",
+    "title": "Call the landlord about the kitchen leak",
+    "urgent": "Urgent",
+    "home": "Home",
+    "due": "Due Fri",
+    "step1": "Find the landlord's phone number in last lease email",
+    "step2": "Draft what to say: leak since Tue, photos attached",
+    "step3": "Call Thu 9am, before he leaves for the day",
+    "why": "Why urgent: active water damage and a hard deadline. Phone over email because you said he never answers."
+  },
+  "pricing": {
+    "metaTitle": "Pricing",
+    "metaDescription": "Sifty is free to capture, organize, and sync, with {count, plural, one {# AI sift} other {# AI sifts}} a day. Pro removes the cap and adds autonomous execution.",
+    "eyebrow": "Pricing",
+    "headline": "Free to capture. Pay when Sifty does the work.",
+    "lede": "Every new account starts with {days} days of Pro, no card. Prices are in USD and may change before launch; your current plan is always shown in Settings.",
+    "invite": "Have an invite code? <link>Redeem it here</link>.",
+    "faqHeading": "Questions",
+    "faq": {
+      "sift": {
+        "q": "What is a sift?",
+        "a": "One pass of Sifty's AI over a task: it fills in details, sets priority and labels, picks a due date, breaks the work into steps, and explains why. Re-running on the same task counts as another sift."
+      },
+      "trialEnds": {
+        "q": "What happens when my trial ends?",
+        "a": "Your account becomes a Free account. Everything you captured stays, sync keeps working, and you get {count, plural, one {# sift} other {# sifts}} a day. Nothing is deleted and you are never charged without choosing a plan."
+      },
+      "cancel": {
+        "q": "Can I cancel?",
+        "a": "Yes, from Settings → Billing at any time. You keep Pro until the end of the period you paid for, then move to Free."
+      },
+      "rollingOut": {
+        "q": "What does “rolling out” mean?",
+        "a": "Those features are being built now and will switch on for Pro accounts as they ship. We list them so you know what you are paying toward, not to charge you for them before they exist."
+      }
+    }
+  },
+  "plans": {
+    "forever": "forever",
+    "perMonth": "per month",
+    "yearly": "or {price} a year (save {percent}%)",
+    "startFree": "Start free",
+    "startTrial": "Start {days}-day Pro trial",
+    "free": {
+      "tagline": "Capture everything. Sift a little every day.",
+      "footnote": "{count, plural, one {# sift} other {# sifts}} a day. Everything you capture is always yours.",
+      "features": {
+        "unlimitedTasks": "Unlimited tasks, labels, and memories",
+        "capture": "Capture from anywhere with one keystroke",
+        "sync": "Sync across devices, offline edits replay",
+        "dailySifts": "{count, plural, one {# sift} other {# sifts}} a day",
+        "reminders": "Reminders"
+      }
+    },
+    "pro": {
+      "tagline": "Everything in Free, plus Sifty does the work.",
+      "footnote": "No card for the trial. After it ends you drop to Free unless you choose to pay. Cancel anytime.",
+      "features": {
+        "unlimitedSifting": "Unlimited sifting",
+        "betterModels": "Higher-quality models",
+        "executionBudget": "Monthly budget for autonomous execution",
+        "connectors": "Connectors to email, calendar, and tools"
+      }
+    }
+  },
+  "legal": {
+    "eyebrow": "Legal",
+    "updated": "Last updated <time>{date}</time>",
+    "draft": "<strong>Draft.</strong> This document is a plain-language starting point awaiting review by {entity}. It describes how Sifty actually works today, but it has not yet been reviewed by a lawyer and may change before launch.",
+    "translation": "This translation is provided for convenience. If it differs from the English version, the English version prevails."
+  },
+  "privacy": {
+    "title": "Privacy policy",
+    "metaDescription": "How {entity} collects, uses, and protects your data when you use Sifty.",
+    "who": {
+      "title": "Who we are",
+      "body": "Sifty is operated by {entity} (“we”, “us”). This policy explains what we collect when you use Sifty, why, who processes it on our behalf, and the choices you have. Questions go to <email>{address}</email>."
+    },
+    "collect": {
+      "title": "What we collect",
+      "account": "<strong>Account data:</strong> your email address, a display name, and a salted hash of your password. We never store the password itself.",
+      "content": "<strong>Your content:</strong> the tasks you capture, everything Sifty fills in (titles, details, priorities, labels, subtasks, reasoning), your edits, and the memories you ask Sifty to keep.",
+      "usage": "<strong>Usage records:</strong> which AI runs happened, when, with which model, and roughly what they cost, so we can enforce plan limits and understand costs.",
+      "billing": "<strong>Billing data:</strong> if you subscribe, Stripe handles your card. We store only Stripe’s customer and subscription identifiers and the status of your subscription.",
+      "technical": "<strong>Technical data:</strong> request logs (IP address, browser, timestamps) and error reports needed to keep the service running.",
+      "noSelling": "We do not buy data about you, and we do not run advertising or third-party trackers."
+    },
+    "use": {
+      "title": "How we use it",
+      "provide": "To provide Sifty: store and sync your tasks, sift them with AI, and remind you.",
+      "account": "To run your account: sign you in, bill you if you subscribe, and answer support.",
+      "health": "To keep the service healthy: rate limiting, abuse prevention, and fixing errors.",
+      "noTraining": "We do not use your tasks or memories to train AI models, and our AI providers are contractually prohibited from doing so with the requests we send."
+    },
+    "ai": {
+      "title": "AI processing",
+      "sifting": "When Sifty sifts a task, the text of that task, relevant memories, and your settings are sent to an AI model provider through Vercel AI Gateway to produce the result. Only the content needed for that task is sent. Sifted output is stored with the task so you can review, edit, or discard it.",
+      "execution": "Autonomous execution (where Sifty performs work for you through connected tools) is being built. When it launches, it will be off by default, each connection will be opt-in, and this policy will be updated before anything runs on your behalf."
+    },
+    "processors": {
+      "title": "Who processes your data",
+      "intro": "We use a small number of service providers. Each only receives what it needs for its purpose and is bound by a data-processing agreement.",
+      "provider": "Provider",
+      "purpose": "Purpose",
+      "location": "Location",
+      "purposes": {
+        "vercel": "Hosting, serverless compute, and request logs",
+        "neon": "Postgres database storing your account and tasks",
+        "stripe": "Payments and subscription billing",
+        "resend": "Transactional email (verification, receipts)",
+        "aiGateway": "Routes task text to AI model providers for sifting",
+        "sentry": "Error monitoring and crash reports"
+      },
+      "regions": {
+        "US": "US"
+      },
+      "transfer": "Sifty is hosted in the United States. If you use it from elsewhere, your data is transferred to and processed there."
+    },
+    "cookies": {
+      "title": "Cookies and local storage",
+      "body": "Sifty sets one cookie, <code>sifty_session</code>, to keep you signed in. It is strictly necessary, so no consent banner is shown. We use your browser’s local storage to remember your theme and to keep a copy of your tasks so the app works offline. There are no analytics or advertising cookies."
+    },
+    "retention": {
+      "title": "How long we keep it",
+      "body": "Your content stays as long as your account exists. When you delete a task it is removed from your views and purged from our database. Request logs and error reports are kept for a short period (currently up to 30 days) and then discarded. If you delete your account we remove your data within 30 days, except records we must keep for tax or accounting."
+    },
+    "rights": {
+      "title": "Your choices and rights",
+      "body": "You can edit or delete any task or memory from inside Sifty. To export your data or delete your account, email <email>{address}</email> from your account address and we will do it within 30 days; in-app export and deletion are on the way. Depending on where you live you may also have rights to access, correct, port, or object to processing of your data. Email us and we will help."
+    },
+    "security": {
+      "title": "Security",
+      "body": "Data is encrypted in transit and at rest by our hosting and database providers. Passwords are hashed with bcrypt. Access to production systems is limited to the people who operate Sifty. If you find a vulnerability, see our <link>security.txt</link> for how to report it."
+    },
+    "children": {
+      "title": "Children",
+      "body": "Sifty is not directed to children under 16 and we do not knowingly collect their data."
+    },
+    "changes": {
+      "title": "Changes",
+      "body": "When this policy changes in a way that matters, we will update the date at the top and, for significant changes, tell you by email or in the app before they take effect."
+    }
+  },
+  "terms": {
+    "title": "Terms of service",
+    "metaDescription": "The terms under which {entity} provides Sifty.",
+    "agreement": {
+      "title": "The agreement",
+      "body": "These terms are a contract between you and {entity} (“we”, “us”) covering your use of Sifty, the website, and the apps. By creating an account you agree to them. If you are using Sifty for an organization, you confirm you can bind that organization."
+    },
+    "service": {
+      "title": "What Sifty is",
+      "body": "Sifty is a task tool that uses AI to organize, prioritize, and break down what you capture, and, as those features ship, to carry out work on your behalf. It is in early access: features change, some are labeled “rolling out” before they exist, and occasional downtime or bugs are likely. We will be straightforward about what works."
+    },
+    "account": {
+      "title": "Your account",
+      "body": "You need an account to use Sifty. Keep your password private and tell us right away if you think someone else is using your account. You are responsible for activity under it. You must be at least 16 years old."
+    },
+    "content": {
+      "title": "Your content",
+      "body": "You own what you put into Sifty and what Sifty produces from it. You give us only the permission we need to store, process, sync, and display that content to run the service for you, including sending task text to AI providers as described in the <link>privacy policy</link>. We do not use your content to train AI models."
+    },
+    "ai": {
+      "title": "AI output and autonomous actions",
+      "body": "AI output can be wrong. Priorities, due dates, summaries, and drafts are suggestions; check anything that matters before you rely on it. When autonomous execution launches, Sifty will only act through tools you explicitly connect and, by default, will prepare work for your approval rather than send or submit anything itself. You remain responsible for what you approve."
+    },
+    "acceptable": {
+      "title": "Acceptable use",
+      "intro": "You agree not to:",
+      "law": "break the law, or use Sifty to harass, defraud, or harm anyone;",
+      "interfere": "probe, overload, or interfere with the service or other people’s accounts;",
+      "resell": "resell access, scrape the service, or build a competing product from our output;",
+      "rights": "upload content you have no right to share.",
+      "research": "Security research is welcome; see our security.txt for how to report findings."
+    },
+    "plans": {
+      "title": "Plans, trials, and payment",
+      "body": "New accounts get a Pro trial with no card required. When it ends you move to the Free plan unless you subscribe. Paid plans are billed in advance through Stripe, monthly or yearly, and renew automatically until you cancel in Settings → Billing. Cancelling keeps Pro until the end of the period you paid for. We do not offer refunds for partial periods except where the law requires it. Prices may change; we will tell you at least 30 days before a change affects a renewal. Invite codes grant the access stated when issued and may be revoked if misused."
+    },
+    "termination": {
+      "title": "Ending the relationship",
+      "body": "You can stop using Sifty and ask us to delete your account at any time by emailing <email>{address}</email>. We may suspend or close accounts that break these terms, with notice where practical. If we shut Sifty down, we will give you at least 30 days’ notice and a way to export your data."
+    },
+    "warranty": {
+      "title": "Warranty and liability",
+      "body": "Sifty is provided “as is”. To the extent the law allows, we disclaim implied warranties, and our total liability to you for any claim related to Sifty is limited to the amount you paid us in the twelve months before the claim. We are not liable for indirect or consequential losses, including lost data or missed deadlines. Nothing here limits liability that cannot be limited by law."
+    },
+    "law": {
+      "title": "Governing law",
+      "body": "These terms are governed by the laws of the State of Delaware, United States, and disputes will be resolved in its courts, unless the law where you live gives you other rights.",
+      "reviewNote": "[Review note: confirm governing law matches {entity}’s state of incorporation.]"
+    },
+    "changes": {
+      "title": "Changes to these terms",
+      "body": "We may update these terms. The date at the top shows the current version. For material changes we will notify you by email or in the app before they take effect; continuing to use Sifty after that means you accept them."
+    }
+  }
+}

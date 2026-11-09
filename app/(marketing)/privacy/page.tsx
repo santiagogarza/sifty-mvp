@@ -1,179 +1,129 @@
 import { LegalPage, Section } from "@/components/marketing/legal-page";
 import { LEGAL_ENTITY, PROCESSORS, getSupportEmail, pageMetadata } from "@/lib/site/config";
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import Link from "next/link";
+import type * as React from "react";
 
-export const metadata: Metadata = pageMetadata({
-  title: "Privacy policy",
-  description: `How ${LEGAL_ENTITY} collects, uses, and protects your data when you use Sifty.`,
-  path: "/privacy",
-});
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("marketing.privacy");
+  return pageMetadata({
+    title: t("title"),
+    description: t("metaDescription", { entity: LEGAL_ENTITY }),
+    path: "/privacy",
+  });
+}
 
 const UPDATED = "2026-10-12";
 
-export default function PrivacyPage() {
+const strong = (chunks: React.ReactNode) => (
+  <strong className="text-[var(--fg)] font-medium">{chunks}</strong>
+);
+
+export default async function PrivacyPage() {
+  const t = await getTranslations("marketing.privacy");
   const support = getSupportEmail();
+  const email = (chunks: React.ReactNode) => (
+    <a href={`mailto:${support}`} className="underline underline-offset-2">
+      {chunks}
+    </a>
+  );
   return (
-    <LegalPage title="Privacy policy" updated={UPDATED}>
-      <Section id="who" title="Who we are">
-        <p>
-          Sifty is operated by {LEGAL_ENTITY} (&ldquo;we&rdquo;, &ldquo;us&rdquo;). This policy
-          explains what we collect when you use Sifty, why, who processes it on our behalf, and the
-          choices you have. Questions go to{" "}
-          <a href={`mailto:${support}`} className="underline underline-offset-2">
-            {support}
-          </a>
-          .
-        </p>
+    <LegalPage title={t("title")} updated={UPDATED}>
+      <Section id="who" title={t("who.title")}>
+        <p>{t.rich("who.body", { entity: LEGAL_ENTITY, address: support, email })}</p>
       </Section>
 
-      <Section id="collect" title="What we collect">
+      <Section id="collect" title={t("collect.title")}>
         <ul className="list-disc pl-5 flex flex-col gap-1.5">
-          <li>
-            <strong className="text-[var(--fg)] font-medium">Account data:</strong> your email
-            address, a display name, and a salted hash of your password. We never store the password
-            itself.
-          </li>
-          <li>
-            <strong className="text-[var(--fg)] font-medium">Your content:</strong> the tasks you
-            capture, everything Sifty fills in (titles, details, priorities, labels, subtasks,
-            reasoning), your edits, and the memories you ask Sifty to keep.
-          </li>
-          <li>
-            <strong className="text-[var(--fg)] font-medium">Usage records:</strong> which AI runs
-            happened, when, with which model, and roughly what they cost, so we can enforce plan
-            limits and understand costs.
-          </li>
-          <li>
-            <strong className="text-[var(--fg)] font-medium">Billing data:</strong> if you
-            subscribe, Stripe handles your card. We store only Stripe&rsquo;s customer and
-            subscription identifiers and the status of your subscription.
-          </li>
-          <li>
-            <strong className="text-[var(--fg)] font-medium">Technical data:</strong> request logs
-            (IP address, browser, timestamps) and error reports needed to keep the service running.
-          </li>
+          <li>{t.rich("collect.account", { strong })}</li>
+          <li>{t.rich("collect.content", { strong })}</li>
+          <li>{t.rich("collect.usage", { strong })}</li>
+          <li>{t.rich("collect.billing", { strong })}</li>
+          <li>{t.rich("collect.technical", { strong })}</li>
         </ul>
-        <p>We do not buy data about you, and we do not run advertising or third-party trackers.</p>
+        <p>{t("collect.noSelling")}</p>
       </Section>
 
-      <Section id="use" title="How we use it">
+      <Section id="use" title={t("use.title")}>
         <ul className="list-disc pl-5 flex flex-col gap-1.5">
-          <li>To provide Sifty: store and sync your tasks, sift them with AI, and remind you.</li>
-          <li>To run your account: sign you in, bill you if you subscribe, and answer support.</li>
-          <li>To keep the service healthy: rate limiting, abuse prevention, and fixing errors.</li>
+          <li>{t("use.provide")}</li>
+          <li>{t("use.account")}</li>
+          <li>{t("use.health")}</li>
         </ul>
-        <p>
-          We do not use your tasks or memories to train AI models, and our AI providers are
-          contractually prohibited from doing so with the requests we send.
-        </p>
+        <p>{t("use.noTraining")}</p>
       </Section>
 
-      <Section id="ai" title="AI processing">
-        <p>
-          When Sifty sifts a task, the text of that task, relevant memories, and your settings are
-          sent to an AI model provider through Vercel AI Gateway to produce the result. Only the
-          content needed for that task is sent. Sifted output is stored with the task so you can
-          review, edit, or discard it.
-        </p>
-        <p>
-          Autonomous execution (where Sifty performs work for you through connected tools) is being
-          built. When it launches, it will be off by default, each connection will be opt-in, and
-          this policy will be updated before anything runs on your behalf.
-        </p>
+      <Section id="ai" title={t("ai.title")}>
+        <p>{t("ai.sifting")}</p>
+        <p>{t("ai.execution")}</p>
       </Section>
 
-      <Section id="processors" title="Who processes your data">
-        <p>
-          We use a small number of service providers. Each only receives what it needs for its
-          purpose and is bound by a data-processing agreement.
-        </p>
+      <Section id="processors" title={t("processors.title")}>
+        <p>{t("processors.intro")}</p>
         <div className="overflow-x-auto rounded-[var(--radius-md)] border border-[var(--border)]">
           <table className="w-full text-[14px]">
             <thead className="bg-[var(--surface-muted)] text-left text-[var(--fg)]">
               <tr>
                 <th scope="col" className="px-3 py-2 font-medium">
-                  Provider
+                  {t("processors.provider")}
                 </th>
                 <th scope="col" className="px-3 py-2 font-medium">
-                  Purpose
+                  {t("processors.purpose")}
                 </th>
                 <th scope="col" className="px-3 py-2 font-medium">
-                  Location
+                  {t("processors.location")}
                 </th>
               </tr>
             </thead>
             <tbody>
               {PROCESSORS.map((p) => (
-                <tr key={p.name} className="border-t border-[var(--border)]">
+                <tr key={p.id} className="border-t border-[var(--border)]">
                   <td className="px-3 py-2 text-[var(--fg)]">{p.name}</td>
-                  <td className="px-3 py-2">{p.purpose}</td>
-                  <td className="px-3 py-2">{p.region}</td>
+                  <td className="px-3 py-2">{t(`processors.purposes.${p.id}`)}</td>
+                  <td className="px-3 py-2">{t(`processors.regions.${p.region}`)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        <p>{t("processors.transfer")}</p>
+      </Section>
+
+      <Section id="cookies" title={t("cookies.title")}>
         <p>
-          Sifty is hosted in the United States. If you use it from elsewhere, your data is
-          transferred to and processed there.
+          {t.rich("cookies.body", {
+            code: (chunks) => <code className="font-mono text-[13px]">{chunks}</code>,
+          })}
         </p>
       </Section>
 
-      <Section id="cookies" title="Cookies and local storage">
+      <Section id="retention" title={t("retention.title")}>
+        <p>{t("retention.body")}</p>
+      </Section>
+
+      <Section id="rights" title={t("rights.title")}>
+        <p>{t.rich("rights.body", { address: support, email })}</p>
+      </Section>
+
+      <Section id="security" title={t("security.title")}>
         <p>
-          Sifty sets one cookie, <code className="font-mono text-[13px]">sifty_session</code>, to
-          keep you signed in. It is strictly necessary, so no consent banner is shown. We use your
-          browser&rsquo;s local storage to remember your theme and to keep a copy of your tasks so
-          the app works offline. There are no analytics or advertising cookies.
+          {t.rich("security.body", {
+            link: (chunks) => (
+              <Link href="/.well-known/security.txt" className="underline underline-offset-2">
+                {chunks}
+              </Link>
+            ),
+          })}
         </p>
       </Section>
 
-      <Section id="retention" title="How long we keep it">
-        <p>
-          Your content stays as long as your account exists. When you delete a task it is removed
-          from your views and purged from our database. Request logs and error reports are kept for
-          a short period (currently up to 30 days) and then discarded. If you delete your account we
-          remove your data within 30 days, except records we must keep for tax or accounting.
-        </p>
+      <Section id="children" title={t("children.title")}>
+        <p>{t("children.body")}</p>
       </Section>
 
-      <Section id="rights" title="Your choices and rights">
-        <p>
-          You can edit or delete any task or memory from inside Sifty. To export your data or delete
-          your account, email{" "}
-          <a href={`mailto:${support}`} className="underline underline-offset-2">
-            {support}
-          </a>{" "}
-          from your account address and we will do it within 30 days; in-app export and deletion are
-          on the way. Depending on where you live you may also have rights to access, correct, port,
-          or object to processing of your data. Email us and we will help.
-        </p>
-      </Section>
-
-      <Section id="security" title="Security">
-        <p>
-          Data is encrypted in transit and at rest by our hosting and database providers. Passwords
-          are hashed with bcrypt. Access to production systems is limited to the people who operate
-          Sifty. If you find a vulnerability, see our{" "}
-          <Link href="/.well-known/security.txt" className="underline underline-offset-2">
-            security.txt
-          </Link>{" "}
-          for how to report it.
-        </p>
-      </Section>
-
-      <Section id="children" title="Children">
-        <p>
-          Sifty is not directed to children under 16 and we do not knowingly collect their data.
-        </p>
-      </Section>
-
-      <Section id="changes" title="Changes">
-        <p>
-          When this policy changes in a way that matters, we will update the date at the top and,
-          for significant changes, tell you by email or in the app before they take effect.
-        </p>
+      <Section id="changes" title={t("changes.title")}>
+        <p>{t("changes.body")}</p>
       </Section>
     </LegalPage>
   );

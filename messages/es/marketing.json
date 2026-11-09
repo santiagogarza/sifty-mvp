@@ -1,1 +1,275 @@
-{}
+{
+  "site": {
+    "title": "Sifty — anótalo y Sifty hace el resto",
+    "description": "Captura una tarea en un segundo. Sifty completa los detalles, la prioriza, la divide en pasos y deja casi todo hecho antes de que vuelvas."
+  },
+  "rollingOut": "en camino",
+  "header": {
+    "skipToContent": "Saltar al contenido",
+    "navLabel": "Sitio",
+    "pricing": "Precios",
+    "signIn": "Iniciar sesión",
+    "startFree": "Empezar gratis"
+  },
+  "footer": {
+    "navLabel": "Pie de página",
+    "pricing": "Precios",
+    "privacy": "Privacidad",
+    "terms": "Términos",
+    "signIn": "Iniciar sesión",
+    "support": "Soporte",
+    "copyright": "© {year} {entity}. Sifty está en acceso anticipado.",
+    "contact": "¿Preguntas o algún problema? Escribe a <email>{address}</email>. Una persona lee cada mensaje."
+  },
+  "landing": {
+    "eyebrow": "Acceso anticipado",
+    "headline": "Anótalo.<br></br>Sifty hace el resto.",
+    "lede": "Captura una tarea en un segundo. Sifty completa los detalles, decide qué importa, divide el trabajo en pasos y deja casi todo hecho o en borrador antes de que vuelvas. Nada se olvida y te queda menos por hacer.",
+    "startFree": "Empezar gratis",
+    "seePricing": "Ver precios",
+    "trialNote": "Prueba de Pro de {days} días, sin tarjeta. El plan gratis sigue siendo gratis.",
+    "how": {
+      "heading": "Tres pasos, y dos no te tocan a ti.",
+      "capture": {
+        "title": "Capturar",
+        "body": "Una tecla, escribe la idea y sigue con lo tuyo. Sin campos, sin carpetas, sin decisiones al capturar."
+      },
+      "sift": {
+        "title": "Clasificar",
+        "body": "Sifty completa los detalles, asigna una prioridad, elige etiquetas y una fecha límite, y divide el trabajo en pasos. Puedes editar cada campo, y Sifty explica su razonamiento."
+      },
+      "do": {
+        "title": "Hacer",
+        "body": "Lo siguiente: Sifty hace el trabajo que puede — investigación, borradores, reservaciones — y te deja una decisión en lugar de una tarea pesada. Nada se envía sin tu aprobación."
+      }
+    },
+    "honest": {
+      "heading": "Dónde está Sifty hoy",
+      "body": "Sifty es nuevo y lo construye un equipo muy pequeño. Aquí está exactamente lo que funciona ahora y lo que viene después, para que decidas con los ojos abiertos.",
+      "worksToday": "Funciona hoy",
+      "comingNext": "Lo que viene",
+      "today": {
+        "capture": "Captura desde cualquier lugar con una tecla, en el celular o la computadora",
+        "sifting": "Clasificación con IA: detalles, prioridad, etiquetas, fechas límite, subtareas y el razonamiento detrás",
+        "views": "Vistas de Hoy, Bandeja de entrada, Enfoque, En espera, Algún día y Hecho",
+        "memory": "Una memoria de tus preferencias de la que aprende la clasificación",
+        "sync": "Sincronización entre dispositivos; los cambios hechos sin conexión se aplican cuando vuelves",
+        "brief": "Un resumen listo para pegar cuando quieras pasarle una tarea a un agente de IA"
+      },
+      "next": {
+        "reminders": "Recordatorios por notificación push y correo",
+        "execution": "Ejecución autónoma: borradores, investigación y reservaciones hechos por ti, esperando tu aprobación",
+        "connectors": "Conectores con tu correo, calendario y herramientas"
+      },
+      "planNote": "El plan Gratis incluye {count, plural, one {# clasificación} other {# clasificaciones}} al día para siempre. Pro quita el límite y, a medida que llegue la ejecución autónoma, incluye un presupuesto mensual para ella."
+    },
+    "cta": {
+      "heading": "Pruébalo con tu lista real.",
+      "body": "Pega las cinco cosas que te dan vueltas en la cabeza. Mira qué hace Sifty con ellas antes de decidir nada."
+    }
+  },
+  "illustration": {
+    "label": "Ejemplo: una nota rápida a la izquierda se convierte en una tarea priorizada y dividida en pasos a la derecha",
+    "youType": "Tú escribes",
+    "toCapture": "<key>c</key> para capturar",
+    "moveOn": "y sigue con lo tuyo",
+    "rawNote": "casero lo de la fuga de la cocina antes del viernes, nunca contesta correos",
+    "siftyFillsIn": "Sifty completa",
+    "sifted": "clasificada",
+    "title": "Llamar al casero por la fuga de la cocina",
+    "urgent": "Urgente",
+    "home": "Casa",
+    "due": "Vence vie.",
+    "step1": "Buscar el teléfono del casero en el último correo del contrato",
+    "step2": "Preparar qué decir: fuga desde el martes, fotos adjuntas",
+    "step3": "Llamar el jueves a las 9 a. m., antes de que salga",
+    "why": "Por qué es urgente: hay daño por agua activo y un plazo fijo. Teléfono en lugar de correo porque dijiste que nunca contesta."
+  },
+  "pricing": {
+    "metaTitle": "Precios",
+    "metaDescription": "Sifty es gratis para capturar, organizar y sincronizar, con {count, plural, one {# clasificación con IA} other {# clasificaciones con IA}} al día. Pro quita el límite y agrega la ejecución autónoma.",
+    "eyebrow": "Precios",
+    "headline": "Gratis para capturar. Paga cuando Sifty haga el trabajo.",
+    "lede": "Cada cuenta nueva empieza con {days} días de Pro, sin tarjeta. Los precios están en USD y pueden cambiar antes del lanzamiento; tu plan actual siempre aparece en Configuración.",
+    "invite": "¿Tienes un código de invitación? <link>Canjéalo aquí</link>.",
+    "faqHeading": "Preguntas",
+    "faq": {
+      "sift": {
+        "q": "¿Qué es una clasificación?",
+        "a": "Una pasada de la IA de Sifty sobre una tarea: completa los detalles, asigna prioridad y etiquetas, elige una fecha límite, divide el trabajo en pasos y explica por qué. Volver a ejecutarla sobre la misma tarea cuenta como otra clasificación."
+      },
+      "trialEnds": {
+        "q": "¿Qué pasa cuando termina mi prueba?",
+        "a": "Tu cuenta pasa a ser una cuenta Gratis. Todo lo que capturaste se queda, la sincronización sigue funcionando y tienes {count, plural, one {# clasificación} other {# clasificaciones}} al día. No se elimina nada y nunca se te cobra sin que elijas un plan."
+      },
+      "cancel": {
+        "q": "¿Puedo cancelar?",
+        "a": "Sí, desde Configuración → Facturación en cualquier momento. Conservas Pro hasta el final del periodo que pagaste y después pasas a Gratis."
+      },
+      "rollingOut": {
+        "q": "¿Qué significa “en camino”?",
+        "a": "Esas funciones se están construyendo ahora y se activarán para las cuentas Pro a medida que salgan. Las mostramos para que sepas hacia qué estás pagando, no para cobrártelas antes de que existan."
+      }
+    }
+  },
+  "plans": {
+    "forever": "para siempre",
+    "perMonth": "al mes",
+    "yearly": "o {price} al año (ahorra {percent}%)",
+    "startFree": "Empezar gratis",
+    "startTrial": "Empezar prueba de Pro de {days} días",
+    "free": {
+      "tagline": "Captura todo. Clasifica un poco cada día.",
+      "footnote": "{count, plural, one {# clasificación} other {# clasificaciones}} al día. Todo lo que capturas siempre es tuyo.",
+      "features": {
+        "unlimitedTasks": "Tareas, etiquetas y memorias ilimitadas",
+        "capture": "Captura desde cualquier lugar con una tecla",
+        "sync": "Sincronización entre dispositivos; los cambios sin conexión se aplican después",
+        "dailySifts": "{count, plural, one {# clasificación} other {# clasificaciones}} al día",
+        "reminders": "Recordatorios"
+      }
+    },
+    "pro": {
+      "tagline": "Todo lo de Gratis, y además Sifty hace el trabajo.",
+      "footnote": "Sin tarjeta para la prueba. Cuando termina pasas a Gratis, a menos que decidas pagar. Cancela cuando quieras.",
+      "features": {
+        "unlimitedSifting": "Clasificaciones ilimitadas",
+        "betterModels": "Modelos de mayor calidad",
+        "executionBudget": "Presupuesto mensual para la ejecución autónoma",
+        "connectors": "Conectores con correo, calendario y herramientas"
+      }
+    }
+  },
+  "legal": {
+    "eyebrow": "Legal",
+    "updated": "Última actualización: <time>{date}</time>",
+    "draft": "<strong>Borrador.</strong> Este documento es un punto de partida en lenguaje sencillo, pendiente de revisión por parte de {entity}. Describe cómo funciona Sifty hoy en día, pero aún no lo ha revisado un abogado y puede cambiar antes del lanzamiento.",
+    "translation": "Esta traducción se ofrece por conveniencia. Si difiere de la versión en inglés, prevalece la versión en inglés."
+  },
+  "privacy": {
+    "title": "Política de privacidad",
+    "metaDescription": "Cómo {entity} recopila, usa y protege tus datos cuando usas Sifty.",
+    "who": {
+      "title": "Quiénes somos",
+      "body": "Sifty es operado por {entity} (“nosotros”). Esta política explica qué recopilamos cuando usas Sifty, por qué, quién lo procesa en nuestro nombre y qué opciones tienes. Envía tus preguntas a <email>{address}</email>."
+    },
+    "collect": {
+      "title": "Qué recopilamos",
+      "account": "<strong>Datos de la cuenta:</strong> tu dirección de correo electrónico, un nombre visible y un hash con sal de tu contraseña. Nunca guardamos la contraseña en sí.",
+      "content": "<strong>Tu contenido:</strong> las tareas que capturas, todo lo que Sifty completa (títulos, detalles, prioridades, etiquetas, subtareas, razonamiento), tus cambios y las memorias que le pides a Sifty que guarde.",
+      "usage": "<strong>Registros de uso:</strong> qué ejecuciones de IA ocurrieron, cuándo, con qué modelo y cuánto costaron aproximadamente, para poder aplicar los límites de los planes y entender los costos.",
+      "billing": "<strong>Datos de facturación:</strong> si te suscribes, Stripe gestiona tu tarjeta. Solo guardamos los identificadores de cliente y de suscripción de Stripe y el estado de tu suscripción.",
+      "technical": "<strong>Datos técnicos:</strong> registros de solicitudes (dirección IP, navegador, marcas de tiempo) e informes de errores necesarios para mantener el servicio en funcionamiento.",
+      "noSelling": "No compramos datos sobre ti, y no mostramos publicidad ni usamos rastreadores de terceros."
+    },
+    "use": {
+      "title": "Cómo los usamos",
+      "provide": "Para ofrecer Sifty: guardar y sincronizar tus tareas, clasificarlas con IA y enviarte recordatorios.",
+      "account": "Para gestionar tu cuenta: iniciar tu sesión, cobrarte si te suscribes y responder a soporte.",
+      "health": "Para mantener el servicio en buen estado: limitar la frecuencia de solicitudes, prevenir abusos y corregir errores.",
+      "noTraining": "No usamos tus tareas ni tus memorias para entrenar modelos de IA, y nuestros proveedores de IA tienen prohibido por contrato hacerlo con las solicitudes que les enviamos."
+    },
+    "ai": {
+      "title": "Procesamiento con IA",
+      "sifting": "Cuando Sifty clasifica una tarea, el texto de esa tarea, las memorias relevantes y tu configuración se envían a un proveedor de modelos de IA a través de Vercel AI Gateway para producir el resultado. Solo se envía el contenido necesario para esa tarea. El resultado de la clasificación se guarda con la tarea para que puedas revisarlo, editarlo o descartarlo.",
+      "execution": "La ejecución autónoma (en la que Sifty realiza trabajo por ti mediante herramientas conectadas) está en construcción. Cuando se lance, estará desactivada de forma predeterminada, cada conexión requerirá tu consentimiento expreso y esta política se actualizará antes de que se ejecute algo en tu nombre."
+    },
+    "processors": {
+      "title": "Quién procesa tus datos",
+      "intro": "Usamos un número reducido de proveedores de servicios. Cada uno recibe solo lo que necesita para su finalidad y está sujeto a un acuerdo de procesamiento de datos.",
+      "provider": "Proveedor",
+      "purpose": "Finalidad",
+      "location": "Ubicación",
+      "purposes": {
+        "vercel": "Alojamiento, cómputo sin servidor y registros de solicitudes",
+        "neon": "Base de datos Postgres que guarda tu cuenta y tus tareas",
+        "stripe": "Pagos y facturación de suscripciones",
+        "resend": "Correo transaccional (verificación, recibos)",
+        "aiGateway": "Envía el texto de las tareas a proveedores de modelos de IA para clasificarlas",
+        "sentry": "Monitoreo de errores e informes de fallos"
+      },
+      "regions": {
+        "US": "EE. UU."
+      },
+      "transfer": "Sifty está alojado en Estados Unidos. Si lo usas desde otro lugar, tus datos se transfieren a ese país y se procesan allí."
+    },
+    "cookies": {
+      "title": "Cookies y almacenamiento local",
+      "body": "Sifty establece una cookie, <code>sifty_session</code>, para mantener tu sesión iniciada. Es estrictamente necesaria, por lo que no se muestra un aviso de consentimiento. Usamos el almacenamiento local de tu navegador para recordar tu tema y guardar una copia de tus tareas para que la app funcione sin conexión. No hay cookies de analítica ni de publicidad."
+    },
+    "retention": {
+      "title": "Cuánto tiempo los conservamos",
+      "body": "Tu contenido se conserva mientras exista tu cuenta. Cuando eliminas una tarea, se quita de tus vistas y se borra de nuestra base de datos. Los registros de solicitudes y los informes de errores se conservan durante un periodo corto (actualmente hasta 30 días) y después se descartan. Si eliminas tu cuenta, borramos tus datos en un plazo de 30 días, salvo los registros que debemos conservar por motivos fiscales o contables."
+    },
+    "rights": {
+      "title": "Tus opciones y derechos",
+      "body": "Puedes editar o eliminar cualquier tarea o memoria desde Sifty. Para exportar tus datos o eliminar tu cuenta, escribe a <email>{address}</email> desde el correo de tu cuenta y lo haremos en un plazo de 30 días; la exportación y la eliminación desde la app están en camino. Según dónde vivas, también puedes tener derecho a acceder a tus datos, corregirlos, portarlos u oponerte a su procesamiento. Escríbenos y te ayudaremos."
+    },
+    "security": {
+      "title": "Seguridad",
+      "body": "Nuestros proveedores de alojamiento y de base de datos cifran los datos en tránsito y en reposo. Las contraseñas se protegen con hash mediante bcrypt. El acceso a los sistemas de producción está limitado a las personas que operan Sifty. Si encuentras una vulnerabilidad, consulta nuestro <link>security.txt</link> para saber cómo reportarla."
+    },
+    "children": {
+      "title": "Menores",
+      "body": "Sifty no está dirigido a menores de 16 años y no recopilamos sus datos a sabiendas."
+    },
+    "changes": {
+      "title": "Cambios",
+      "body": "Cuando esta política cambie de forma relevante, actualizaremos la fecha que aparece arriba y, si los cambios son importantes, te avisaremos por correo o en la app antes de que entren en vigor."
+    }
+  },
+  "terms": {
+    "title": "Términos del servicio",
+    "metaDescription": "Los términos bajo los cuales {entity} ofrece Sifty.",
+    "agreement": {
+      "title": "El acuerdo",
+      "body": "Estos términos son un contrato entre tú y {entity} (“nosotros”) que regula tu uso de Sifty, del sitio web y de las apps. Al crear una cuenta, los aceptas. Si usas Sifty en nombre de una organización, confirmas que puedes obligar a esa organización."
+    },
+    "service": {
+      "title": "Qué es Sifty",
+      "body": "Sifty es una herramienta de tareas que usa IA para organizar, priorizar y dividir en pasos lo que capturas y, a medida que esas funciones estén disponibles, para realizar trabajo en tu nombre. Está en acceso anticipado: las funciones cambian, algunas se marcan como “en camino” antes de existir y es probable que haya caídas o errores ocasionales. Seremos claros sobre lo que funciona."
+    },
+    "account": {
+      "title": "Tu cuenta",
+      "body": "Necesitas una cuenta para usar Sifty. Mantén tu contraseña en privado y avísanos de inmediato si crees que alguien más está usando tu cuenta. Eres responsable de la actividad que se realice con ella. Debes tener al menos 16 años."
+    },
+    "content": {
+      "title": "Tu contenido",
+      "body": "Eres dueño de lo que pones en Sifty y de lo que Sifty produce a partir de ello. Solo nos das el permiso que necesitamos para guardar, procesar, sincronizar y mostrar ese contenido a fin de prestarte el servicio, incluido el envío del texto de las tareas a proveedores de IA como se describe en la <link>política de privacidad</link>. No usamos tu contenido para entrenar modelos de IA."
+    },
+    "ai": {
+      "title": "Resultados de la IA y acciones autónomas",
+      "body": "Los resultados de la IA pueden ser incorrectos. Las prioridades, fechas límite, resúmenes y borradores son sugerencias; revisa todo lo importante antes de confiar en ello. Cuando se lance la ejecución autónoma, Sifty solo actuará mediante herramientas que conectes de forma explícita y, de forma predeterminada, preparará el trabajo para tu aprobación en lugar de enviar o presentar algo por su cuenta. Sigues siendo responsable de lo que apruebas."
+    },
+    "acceptable": {
+      "title": "Uso aceptable",
+      "intro": "Te comprometes a no:",
+      "law": "infringir la ley, ni usar Sifty para acosar, defraudar o perjudicar a nadie;",
+      "interfere": "sondear, sobrecargar o interferir con el servicio o con las cuentas de otras personas;",
+      "resell": "revender el acceso, hacer scraping del servicio ni crear un producto competidor a partir de nuestros resultados;",
+      "rights": "subir contenido que no tengas derecho a compartir.",
+      "research": "La investigación de seguridad es bienvenida; consulta nuestro security.txt para saber cómo reportar hallazgos."
+    },
+    "plans": {
+      "title": "Planes, pruebas y pagos",
+      "body": "Las cuentas nuevas reciben una prueba de Pro sin necesidad de tarjeta. Cuando termina, pasas al plan Gratis a menos que te suscribas. Los planes de pago se cobran por adelantado a través de Stripe, de forma mensual o anual, y se renuevan automáticamente hasta que canceles en Configuración → Facturación. Si cancelas, conservas Pro hasta el final del periodo que pagaste. No ofrecemos reembolsos por periodos parciales, salvo cuando la ley lo exija. Los precios pueden cambiar; te avisaremos con al menos 30 días de anticipación antes de que un cambio afecte una renovación. Los códigos de invitación otorgan el acceso indicado al emitirse y pueden revocarse si se usan indebidamente."
+    },
+    "termination": {
+      "title": "Fin de la relación",
+      "body": "Puedes dejar de usar Sifty y pedirnos que eliminemos tu cuenta en cualquier momento escribiendo a <email>{address}</email>. Podemos suspender o cerrar cuentas que incumplan estos términos, con aviso previo cuando sea posible. Si cerramos Sifty, te avisaremos con al menos 30 días de anticipación y te daremos una forma de exportar tus datos."
+    },
+    "warranty": {
+      "title": "Garantía y responsabilidad",
+      "body": "Sifty se ofrece “tal cual”. En la medida en que la ley lo permita, renunciamos a las garantías implícitas, y nuestra responsabilidad total ante ti por cualquier reclamación relacionada con Sifty se limita al monto que nos hayas pagado en los doce meses anteriores a la reclamación. No somos responsables de pérdidas indirectas o consecuentes, incluidos datos perdidos o plazos incumplidos. Nada de lo aquí dispuesto limita la responsabilidad que la ley no permite limitar."
+    },
+    "law": {
+      "title": "Ley aplicable",
+      "body": "Estos términos se rigen por las leyes del Estado de Delaware, Estados Unidos, y las disputas se resolverán en sus tribunales, a menos que la ley del lugar donde vives te otorgue otros derechos.",
+      "reviewNote": "[Nota de revisión: confirmar que la ley aplicable coincide con el estado de constitución de {entity}.]"
+    },
+    "changes": {
+      "title": "Cambios en estos términos",
+      "body": "Podemos actualizar estos términos. La fecha que aparece arriba indica la versión vigente. Si hay cambios sustanciales, te avisaremos por correo o en la app antes de que entren en vigor; si sigues usando Sifty después, significa que los aceptas."
+    }
+  }
+}

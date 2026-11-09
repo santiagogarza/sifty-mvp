@@ -1,44 +1,49 @@
 import { Analytics } from "@/components/observability/analytics";
 import { SentryClient } from "@/components/observability/sentry-client";
 import { BOTID_PROTECTED_ROUTES } from "@/lib/abuse/botid-routes";
-import { SITE_DESCRIPTION, getSiteUrl } from "@/lib/site/config";
+import { getSiteUrl } from "@/lib/site/config";
 import { BotIdClient } from "botid/client";
 import type { Metadata, Viewport } from "next";
 import { NextIntlClientProvider } from "next-intl";
-import { getLocale } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  metadataBase: new URL(getSiteUrl()),
-  title: { default: "Sifty — write it down, Sifty does the rest", template: "%s — Sifty" },
-  description: SITE_DESCRIPTION,
-  openGraph: {
-    type: "website",
-    siteName: "Sifty",
-    title: "Sifty — write it down, Sifty does the rest",
-    description: SITE_DESCRIPTION,
-    url: "/",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Sifty — write it down, Sifty does the rest",
-    description: SITE_DESCRIPTION,
-  },
-  applicationName: "Sifty",
-  appleWebApp: {
-    title: "Sifty",
-    capable: true,
-    statusBarStyle: "black-translucent",
-  },
-  manifest: "/manifest.webmanifest",
-  icons: {
-    icon: [
-      { url: "/icons/favicon-32.png", sizes: "32x32", type: "image/png" },
-      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-    ],
-    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("marketing.site");
+  const title = t("title");
+  const description = t("description");
+  return {
+    metadataBase: new URL(getSiteUrl()),
+    title: { default: title, template: "%s — Sifty" },
+    description,
+    openGraph: {
+      type: "website",
+      siteName: "Sifty",
+      title,
+      description,
+      url: "/",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+    },
+    applicationName: "Sifty",
+    appleWebApp: {
+      title: "Sifty",
+      capable: true,
+      statusBarStyle: "black-translucent",
+    },
+    manifest: "/manifest.webmanifest",
+    icons: {
+      icon: [
+        { url: "/icons/favicon-32.png", sizes: "32x32", type: "image/png" },
+        { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      ],
+      apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+    },
+  };
+}
 
 export const viewport: Viewport = {
   themeColor: [

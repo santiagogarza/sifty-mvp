@@ -5,84 +5,58 @@ import { FREE_SIFTS_PER_DAY, PRO_TRIAL_DAYS } from "@/lib/billing/plans";
 import { cn } from "@/lib/utils/cn";
 import { Check, ListChecks, PenLine, Sparkles } from "lucide-react";
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: { absolute: "Sifty — write it down, Sifty does the rest" },
-  alternates: { canonical: "/" },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("marketing.site");
+  return { title: { absolute: t("title") }, alternates: { canonical: "/" } };
+}
 
 // Must be dynamic: a prerender has no cookies and would bake the signed-out
 // landing page for everyone, so signed-in visitors never reach /today.
 export const dynamic = "force-dynamic";
 
 const STEPS = [
-  {
-    icon: PenLine,
-    title: "Capture",
-    body: "One keystroke, type the thought, move on. No fields, no folders, no decisions at capture time.",
-  },
-  {
-    icon: Sparkles,
-    title: "Sift",
-    body: "Sifty fills in the details, sets a priority, picks labels and a due date, and breaks the work into steps. Every field is editable, and it explains its reasoning.",
-  },
-  {
-    icon: ListChecks,
-    title: "Do",
-    body: "Next: Sifty does the work it can — research, drafts, bookings — and leaves you a decision instead of a chore. Nothing is sent without your approval.",
-    soon: true,
-  },
-];
+  { key: "capture", icon: PenLine },
+  { key: "sift", icon: Sparkles },
+  { key: "do", icon: ListChecks, soon: true },
+] as const;
 
-const TODAY = [
-  "Capture from anywhere with a keystroke, on phone or laptop",
-  "AI sifting: details, priority, labels, due dates, subtasks, and the reasoning behind them",
-  "Today, Inbox, Focus, Waiting on, Someday, and Done views",
-  "A memory of your preferences that sifting learns from",
-  "Sync across devices; edits made offline replay when you are back",
-  "A ready-to-paste brief when you want to hand a task to an AI agent",
-];
+const TODAY = ["capture", "sifting", "views", "memory", "sync", "brief"] as const;
 
-const NEXT = [
-  "Reminders by push and email",
-  "Autonomous execution: drafts, research, and bookings done for you, waiting for approval",
-  "Connectors to your email, calendar, and tools",
-];
+const NEXT = ["reminders", "execution", "connectors"] as const;
 
 export default async function LandingPage() {
   const session = await getSession();
   if (session) redirect("/today");
+  const t = await getTranslations("marketing");
 
   return (
     <>
       <section className="mx-auto w-full max-w-5xl px-5 pt-10 pb-12 sm:px-6 sm:pt-16 sm:pb-16">
         <div className="max-w-2xl animate-rise">
-          <div className="text-eyebrow mb-4">Early access</div>
+          <div className="text-eyebrow mb-4">{t("landing.eyebrow")}</div>
           <h1 className="text-display text-[40px] sm:text-[56px] text-[var(--fg)]">
-            Write it down.
-            <br />
-            Sifty does the rest.
+            {t.rich("landing.headline", { br: () => <br /> })}
           </h1>
           <p className="mt-5 text-[17px] sm:text-[19px] leading-[1.5] text-[var(--fg-muted)] max-w-xl">
-            Capture a task in a second. Sifty fills in the details, decides what matters, breaks the
-            work down, and gets most of it done or drafted before you come back. Nothing forgotten,
-            and less of it left for you to do.
+            {t("landing.lede")}
           </p>
           <div className="mt-8 flex flex-col sm:flex-row sm:items-center gap-3">
             <Link
               href="/sign-up"
               className={cn(buttonVariants({ variant: "primary", size: "lg" }), "sm:min-w-[160px]")}
             >
-              Start free
+              {t("landing.startFree")}
             </Link>
             <Link href="/pricing" className={buttonVariants({ variant: "secondary", size: "lg" })}>
-              See pricing
+              {t("landing.seePricing")}
             </Link>
           </div>
           <p className="mt-3 text-[13px] text-[var(--fg-subtle)]">
-            {PRO_TRIAL_DAYS}-day Pro trial, no card. The free plan stays free.
+            {t("landing.trialNote", { days: PRO_TRIAL_DAYS })}
           </p>
         </div>
 
@@ -97,13 +71,13 @@ export default async function LandingPage() {
       >
         <div className="hairline mb-12" />
         <h2 id="how-heading" className="text-display text-[28px] sm:text-[34px] text-[var(--fg)]">
-          Three steps, two of them not yours.
+          {t("landing.how.heading")}
         </h2>
         <ol className="mt-8 grid gap-6 md:grid-cols-3">
           {STEPS.map((step, i) => {
             const Icon = step.icon;
             return (
-              <li key={step.title} className="surface-card p-5 flex flex-col gap-3">
+              <li key={step.key} className="surface-card p-5 flex flex-col gap-3">
                 <div className="flex items-center justify-between">
                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] bg-[var(--surface-muted)] text-[var(--fg-muted)]">
                     <Icon size={16} aria-hidden="true" />
@@ -111,14 +85,18 @@ export default async function LandingPage() {
                   <span className="text-num text-[12px] text-[var(--fg-subtle)]">0{i + 1}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-[17px] text-[var(--fg)]">{step.title}</h3>
-                  {step.soon ? (
+                  <h3 className="text-[17px] text-[var(--fg)]">
+                    {t(`landing.how.${step.key}.title`)}
+                  </h3>
+                  {"soon" in step ? (
                     <span className="rounded-full bg-[var(--ai-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--ai)]">
-                      rolling out
+                      {t("rollingOut")}
                     </span>
                   ) : null}
                 </div>
-                <p className="text-[14px] leading-[1.55] text-[var(--fg-muted)]">{step.body}</p>
+                <p className="text-[14px] leading-[1.55] text-[var(--fg-muted)]">
+                  {t(`landing.how.${step.key}.body`)}
+                </p>
               </li>
             );
           })}
@@ -134,15 +112,14 @@ export default async function LandingPage() {
           id="honest-heading"
           className="text-display text-[28px] sm:text-[34px] text-[var(--fg)]"
         >
-          Where Sifty is today
+          {t("landing.honest.heading")}
         </h2>
         <p className="mt-3 max-w-xl text-[15px] leading-[1.55] text-[var(--fg-muted)]">
-          Sifty is new and built by a tiny team. Here is exactly what works now and what is being
-          built next, so you can decide with your eyes open.
+          {t("landing.honest.body")}
         </p>
         <div className="mt-8 grid gap-6 md:grid-cols-2">
           <div>
-            <div className="text-eyebrow mb-3">Works today</div>
+            <div className="text-eyebrow mb-3">{t("landing.honest.worksToday")}</div>
             <ul className="flex flex-col gap-2.5">
               {TODAY.map((item) => (
                 <li
@@ -154,13 +131,13 @@ export default async function LandingPage() {
                     className="mt-[3px] shrink-0 text-[var(--done)]"
                     aria-hidden="true"
                   />
-                  <span>{item}</span>
+                  <span>{t(`landing.honest.today.${item}`)}</span>
                 </li>
               ))}
             </ul>
           </div>
           <div>
-            <div className="text-eyebrow mb-3">Coming next</div>
+            <div className="text-eyebrow mb-3">{t("landing.honest.comingNext")}</div>
             <ul className="flex flex-col gap-2.5">
               {NEXT.map((item) => (
                 <li
@@ -171,13 +148,12 @@ export default async function LandingPage() {
                     className="mt-[7px] h-2 w-2 shrink-0 rounded-full bg-[var(--ai)]"
                     aria-hidden="true"
                   />
-                  <span>{item}</span>
+                  <span>{t(`landing.honest.next.${item}`)}</span>
                 </li>
               ))}
             </ul>
             <p className="mt-5 text-[13px] leading-[1.5] text-[var(--fg-subtle)]">
-              Free includes {FREE_SIFTS_PER_DAY} sifts a day forever. Pro removes the cap and, as
-              autonomous execution rolls out, includes a monthly budget for it.
+              {t("landing.honest.planNote", { count: FREE_SIFTS_PER_DAY })}
             </p>
           </div>
         </div>
@@ -186,18 +162,17 @@ export default async function LandingPage() {
       <section className="mx-auto w-full max-w-5xl px-5 py-12 sm:px-6 sm:py-20">
         <div className="surface-card p-7 sm:p-10 text-center">
           <h2 className="text-display text-[28px] sm:text-[34px] text-[var(--fg)]">
-            Try it on your real list.
+            {t("landing.cta.heading")}
           </h2>
           <p className="mx-auto mt-3 max-w-md text-[15px] leading-[1.55] text-[var(--fg-muted)]">
-            Paste in the five things rattling around your head. See what Sifty makes of them before
-            you decide anything.
+            {t("landing.cta.body")}
           </p>
           <div className="mt-6 flex justify-center">
             <Link
               href="/sign-up"
               className={cn(buttonVariants({ variant: "primary", size: "lg" }), "min-w-[160px]")}
             >
-              Start free
+              {t("landing.startFree")}
             </Link>
           </div>
         </div>

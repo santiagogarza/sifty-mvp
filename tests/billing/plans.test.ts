@@ -7,6 +7,7 @@ import {
   yearlySavingsPercent,
 } from "@/lib/billing/plans";
 import { TRIAL_DAYS } from "@/lib/entitlements/entitlements";
+import en from "@/messages/en/marketing.json";
 import { describe, expect, it } from "vitest";
 
 describe("plan catalog", () => {
@@ -28,19 +29,27 @@ describe("plan catalog", () => {
   it("matches decision D3: 5 free sifts a day and the entitlement trial length", () => {
     expect(FREE_SIFTS_PER_DAY).toBe(5);
     expect(PRO_TRIAL_DAYS).toBe(TRIAL_DAYS);
-    expect(PLANS.free.features.some((f) => f.label === "5 sifts a day")).toBe(true);
-    expect(PLANS.pro.features.some((f) => f.label === "Unlimited sifting")).toBe(true);
+    expect(PLANS.free.features.map((f) => f.id)).toContain("dailySifts");
+    expect(PLANS.pro.features.map((f) => f.id)).toContain("unlimitedSifting");
   });
 
   it("labels unshipped Pro features honestly", () => {
+    const copy = en.plans.pro.features;
     const rolling = PLANS.pro.features
       .filter((f) => f.status === "rolling-out")
-      .map((f) => f.label);
+      .map((f) => copy[f.id]);
     expect(rolling).toEqual(
       expect.arrayContaining([
         expect.stringMatching(/autonomous/i),
         expect.stringMatching(/connector/i),
       ]),
     );
+  });
+
+  it("has copy for every plan feature", () => {
+    for (const plan of [PLANS.free, PLANS.pro]) {
+      const copy: Record<string, string> = en.plans[plan.id].features;
+      for (const f of plan.features) expect(copy[f.id], `${plan.id}.${f.id}`).toBeTruthy();
+    }
   });
 });

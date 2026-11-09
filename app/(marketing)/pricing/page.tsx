@@ -2,44 +2,31 @@ import { PricingCards } from "@/components/marketing/pricing-cards";
 import { FREE_SIFTS_PER_DAY, PRO_TRIAL_DAYS } from "@/lib/billing/plans";
 import { pageMetadata } from "@/lib/site/config";
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 
-export const metadata: Metadata = pageMetadata({
-  title: "Pricing",
-  description: `Sifty is free to capture, organize, and sync, with ${FREE_SIFTS_PER_DAY} AI sifts a day. Pro removes the cap and adds autonomous execution.`,
-  path: "/pricing",
-});
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("marketing.pricing");
+  return pageMetadata({
+    title: t("metaTitle"),
+    description: t("metaDescription", { count: FREE_SIFTS_PER_DAY }),
+    path: "/pricing",
+  });
+}
 
-const FAQ = [
-  {
-    q: "What is a sift?",
-    a: "One pass of Sifty's AI over a task: it fills in details, sets priority and labels, picks a due date, breaks the work into steps, and explains why. Re-running on the same task counts as another sift.",
-  },
-  {
-    q: "What happens when my trial ends?",
-    a: `Your account becomes a Free account. Everything you captured stays, sync keeps working, and you get ${FREE_SIFTS_PER_DAY} sifts a day. Nothing is deleted and you are never charged without choosing a plan.`,
-  },
-  {
-    q: "Can I cancel?",
-    a: "Yes, from Settings → Billing at any time. You keep Pro until the end of the period you paid for, then move to Free.",
-  },
-  {
-    q: "What does \u201crolling out\u201d mean?",
-    a: "Those features are being built now and will switch on for Pro accounts as they ship. We list them so you know what you are paying toward, not to charge you for them before they exist.",
-  },
-];
+const FAQ = ["sift", "trialEnds", "cancel", "rollingOut"] as const;
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  const t = await getTranslations("marketing.pricing");
   return (
     <div className="mx-auto w-full max-w-5xl px-5 py-10 sm:px-6 sm:py-16">
       <div className="max-w-2xl">
-        <div className="text-eyebrow mb-4">Pricing</div>
+        <div className="text-eyebrow mb-4">{t("eyebrow")}</div>
         <h1 className="text-display text-[36px] sm:text-[48px] text-[var(--fg)]">
-          Free to capture. Pay when Sifty does the work.
+          {t("headline")}
         </h1>
         <p className="mt-4 text-[16px] sm:text-[17px] leading-[1.5] text-[var(--fg-muted)]">
-          Every new account starts with {PRO_TRIAL_DAYS} days of Pro, no card. Prices are in USD and
-          may change before launch; your current plan is always shown in Settings.
+          {t("lede", { days: PRO_TRIAL_DAYS })}
         </p>
       </div>
 
@@ -48,26 +35,30 @@ export default function PricingPage() {
       </div>
 
       <p className="mt-6 text-[14px] text-[var(--fg-muted)]">
-        Have an invite code?{" "}
-        <Link
-          href="/redeem"
-          className="text-[var(--accent)] underline underline-offset-2 hover:opacity-80 rounded-[4px]"
-        >
-          Redeem it here
-        </Link>
-        .
+        {t.rich("invite", {
+          link: (chunks) => (
+            <Link
+              href="/redeem"
+              className="text-[var(--accent)] underline underline-offset-2 hover:opacity-80 rounded-[4px]"
+            >
+              {chunks}
+            </Link>
+          ),
+        })}
       </p>
 
       <section aria-labelledby="faq-heading" className="mt-16">
         <div className="hairline mb-10" />
         <h2 id="faq-heading" className="text-display text-[26px] sm:text-[30px] text-[var(--fg)]">
-          Questions
+          {t("faqHeading")}
         </h2>
         <dl className="mt-6 grid gap-x-10 gap-y-7 md:grid-cols-2">
-          {FAQ.map((item) => (
-            <div key={item.q}>
-              <dt className="text-[15px] text-[var(--fg)]">{item.q}</dt>
-              <dd className="mt-1.5 text-[14px] leading-[1.55] text-[var(--fg-muted)]">{item.a}</dd>
+          {FAQ.map((key) => (
+            <div key={key}>
+              <dt className="text-[15px] text-[var(--fg)]">{t(`faq.${key}.q`)}</dt>
+              <dd className="mt-1.5 text-[14px] leading-[1.55] text-[var(--fg-muted)]">
+                {t(`faq.${key}.a`, { count: FREE_SIFTS_PER_DAY })}
+              </dd>
             </div>
           ))}
         </dl>

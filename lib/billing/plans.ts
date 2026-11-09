@@ -1,7 +1,8 @@
 import { FREE_SIFTS_PER_DAY, TRIAL_DAYS } from "@/lib/entitlements/entitlements";
 
 /**
- * Plan catalog — the one place prices and tier copy live.
+ * Plan catalog — the one place prices and plan features live. Their copy
+ * lives in the `marketing` message catalog.
  *
  * The pricing page renders from this module and the billing layer should
  * read `PRO_PRICES` when creating Stripe prices so the two never drift.
@@ -28,43 +29,36 @@ export const PRO_TRIAL_DAYS = TRIAL_DAYS;
 
 export type FeatureStatus = "live" | "rolling-out";
 
-export interface PlanFeature {
-  label: string;
+/**
+ * Feature ids key the copy in `messages/<locale>/marketing.json`
+ * (`plans.<plan>.features.<id>`); the catalog test keeps the two in step.
+ */
+export interface PlanFeature<Id extends string = string> {
+  id: Id;
   status: FeatureStatus;
 }
 
-export interface Plan {
-  id: PlanId;
-  name: string;
-  tagline: string;
-  features: PlanFeature[];
-}
-
-export const PLANS: Record<PlanId, Plan> = {
+export const PLANS = {
   free: {
     id: "free",
-    name: "Free",
-    tagline: "Capture everything. Sift a little every day.",
     features: [
-      { label: "Unlimited tasks, labels, and memories", status: "live" },
-      { label: "Capture from anywhere with one keystroke", status: "live" },
-      { label: "Sync across devices, offline edits replay", status: "live" },
-      { label: `${FREE_SIFTS_PER_DAY} sifts a day`, status: "live" },
-      { label: "Reminders", status: "rolling-out" },
+      { id: "unlimitedTasks", status: "live" },
+      { id: "capture", status: "live" },
+      { id: "sync", status: "live" },
+      { id: "dailySifts", status: "live" },
+      { id: "reminders", status: "rolling-out" },
     ],
   },
   pro: {
     id: "pro",
-    name: "Pro",
-    tagline: "Everything in Free, plus Sifty does the work.",
     features: [
-      { label: "Unlimited sifting", status: "live" },
-      { label: "Higher-quality models", status: "live" },
-      { label: "Monthly budget for autonomous execution", status: "rolling-out" },
-      { label: "Connectors to email, calendar, and tools", status: "rolling-out" },
+      { id: "unlimitedSifting", status: "live" },
+      { id: "betterModels", status: "live" },
+      { id: "executionBudget", status: "rolling-out" },
+      { id: "connectors", status: "rolling-out" },
     ],
   },
-};
+} as const satisfies Record<PlanId, { id: PlanId; features: readonly PlanFeature[] }>;
 
 export function formatPrice(price: Price): string {
   const dollars = price.amountCents / 100;
