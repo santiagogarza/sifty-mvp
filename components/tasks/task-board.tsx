@@ -63,6 +63,12 @@ const ARROW_KEYS: Record<string, NavDirection> = {
   j: "down",
 };
 
+/** What the key handler reads — shared by React and native keydown events. */
+type BoardKeyEvent = Pick<
+  KeyboardEvent,
+  "key" | "shiftKey" | "metaKey" | "ctrlKey" | "altKey" | "target" | "defaultPrevented"
+> & { preventDefault(): void };
+
 interface Move {
   key: number;
   taskId: string;
@@ -229,7 +235,7 @@ export function TaskBoard({
     boardRef.current?.focus({ preventScroll: true });
   }, [isEmpty]);
 
-  const onKeyDown = (e: React.KeyboardEvent) => {
+  const handleKey = (e: BoardKeyEvent) => {
     if (e.defaultPrevented || isEditable(e.target)) return;
     pointerDriving.current = false;
 
@@ -271,7 +277,8 @@ export function TaskBoard({
     }
 
     const onCard = e.target instanceof HTMLElement && e.target.dataset.taskId !== undefined;
-    if ((e.key === "Enter" || e.key === " ") && onCard && selectedId) {
+    const opens = e.key === "Enter" || (e.key === " " && onCard);
+    if (opens && selectedId && (onCard || e.target === document.body)) {
       e.preventDefault();
       onOpen(selectedId);
       return;
@@ -283,6 +290,18 @@ export function TaskBoard({
       boardRef.current?.focus({ preventScroll: true });
     }
   };
+
+  // When nothing else holds focus — a click on the page background, or a
+  // sheet that closed after its card moved — the board takes the keys.
+  const handleKeyRef = React.useRef(handleKey);
+  handleKeyRef.current = handleKey;
+  React.useEffect(() => {
+    const onDocumentKey = (e: KeyboardEvent) => {
+      if (e.target === document.body) handleKeyRef.current(e);
+    };
+    document.addEventListener("keydown", onDocumentKey);
+    return () => document.removeEventListener("keydown", onDocumentKey);
+  }, []);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
@@ -352,7 +371,7 @@ export function TaskBoard({
           role="group"
           aria-label="Board"
           tabIndex={tabStopId ? -1 : 0}
-          onKeyDown={onKeyDown}
+          onKeyDown={handleKey}
           onPointerDown={(e) => {
             pointerDriving.current = true;
             setSelectionVisible(false);

@@ -139,6 +139,39 @@ describe("TaskBoard", () => {
     expect(lifecycleOf(inboxTask.id)).toBe("active");
   });
 
+  it("holds the undo window while the pill is hovered", () => {
+    vi.useFakeTimers();
+    renderBoard();
+    press("ArrowRight");
+    press("ArrowRight", { shiftKey: true });
+    const pill = screen.getByRole("button", { name: /Undo/ }).parentElement!;
+
+    fireEvent.mouseEnter(pill);
+    act(() => {
+      vi.advanceTimersByTime(UNDO_WINDOW_MS * 3);
+    });
+    expect(screen.getByText(/Moved to/)).toBeInTheDocument();
+
+    fireEvent.mouseLeave(pill);
+    act(() => {
+      vi.advanceTimersByTime(UNDO_WINDOW_MS + 500);
+    });
+    expect(screen.queryByText(/Moved to/)).not.toBeInTheDocument();
+  });
+
+  it("takes the keys when nothing else has focus", () => {
+    renderBoard();
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(document.activeElement).toHaveAttribute("data-task-id", inboxTask.id);
+
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.keyDown(document.body, { key: "ArrowRight", shiftKey: true });
+    expect(lifecycleOf(inboxTask.id)).toBe("active");
+  });
+
   it("opens a card with Enter or a click", () => {
     const { onOpen } = renderBoard();
     press("ArrowRight");

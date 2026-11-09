@@ -18,7 +18,8 @@ const RETIRE_MS = 240;
  * Portaled to <body> so its fixed position is always the viewport's.
  *
  * Screen readers hear the move from the board's own live region; this pill
- * is the visible, clickable half.
+ * is the visible, clickable half. Hovering or focusing it holds the timer,
+ * and leaving restarts the full window, so reaching for Undo never races it.
  */
 export function MoveUndoToast({
   moveKey,
@@ -35,11 +36,13 @@ export function MoveUndoToast({
   onExpire: () => void;
 }) {
   const [retiring, setRetiring] = React.useState(false);
+  const [held, setHeld] = React.useState(false);
   const onExpireRef = React.useRef(onExpire);
   onExpireRef.current = onExpire;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: moveKey is the restart signal.
   React.useEffect(() => {
+    if (held) return;
     setRetiring(false);
     const retire = setTimeout(() => setRetiring(true), UNDO_WINDOW_MS);
     const expire = setTimeout(() => onExpireRef.current(), UNDO_WINDOW_MS + RETIRE_MS);
@@ -47,11 +50,15 @@ export function MoveUndoToast({
       clearTimeout(retire);
       clearTimeout(expire);
     };
-  }, [moveKey]);
+  }, [moveKey, held]);
 
   return createPortal(
     <div
       key={moveKey}
+      onMouseEnter={() => setHeld(true)}
+      onMouseLeave={() => setHeld(false)}
+      onFocus={() => setHeld(true)}
+      onBlur={() => setHeld(false)}
       className={cn(
         "fixed left-1/2 z-40 -translate-x-1/2",
         lifted ? "bottom-[132px] md:bottom-14" : "bottom-[92px] md:bottom-4",
