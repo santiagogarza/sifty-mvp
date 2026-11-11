@@ -130,6 +130,7 @@ describe("task sync contract", () => {
       priorityBucket: "schedule",
       effort: "small",
       due: null,
+      snoozedUntil: "2026-11-14",
       delegationCandidate: "self",
       assigneeName: null,
       confidence: 0.7,
@@ -154,6 +155,41 @@ describe("task sync contract", () => {
     expect(persisted?.title).toBe("Edited title");
     expect(persisted?.sourceContext).toBe("Answer: yes, by Friday");
     expect(persisted?.editedFields).toEqual(["title"]);
+    expect(persisted?.snoozedUntil).toBe("2026-11-14");
+  });
+
+  it("round-trips snooze and rejects a wake day that isn't a calendar day", async () => {
+    const repos = getTestRepos();
+    const { user, cookie } = await createUserWithCookie(repos, { email: "snooze@example.com" });
+    const task = await repos.tasks.create(user.id, { sourceText: "Later", sourceContext: null });
+    expect(task.snoozedUntil).toBeNull();
+
+    const { PATCH } = await import("@/app/api/tasks/[id]/route");
+    const patch = (body: unknown) =>
+      PATCH(
+        new Request(`http://localhost/api/tasks/${task.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json", cookie },
+          body: JSON.stringify(body),
+        }),
+        { params: Promise.resolve({ id: task.id }) },
+      );
+
+    expect((await patch({ snoozedUntil: "2026-11-16" })).status).toBe(200);
+    expect((await repos.tasks.get(user.id, task.id))?.snoozedUntil).toBe("2026-11-16");
+
+    for (const bad of ["2026-02-30", "2026-13-01", "next monday", "2026-11-16T09:00:00Z"]) {
+      expect((await patch({ snoozedUntil: bad })).status).toBe(400);
+    }
+    expect((await repos.tasks.get(user.id, task.id))?.snoozedUntil).toBe("2026-11-16");
+
+    // Completing clears the snooze so un-completing can't make it vanish.
+    expect((await patch({ lifecycle: "done" })).status).toBe(200);
+    expect((await repos.tasks.get(user.id, task.id))?.snoozedUntil).toBeNull();
+
+    expect((await patch({ lifecycle: "active", snoozedUntil: "2026-11-20" })).status).toBe(200);
+    expect((await patch({ snoozedUntil: null })).status).toBe(200);
+    expect((await repos.tasks.get(user.id, task.id))?.snoozedUntil).toBeNull();
   });
 
   it("memory create accepts the client id and full shape", async () => {

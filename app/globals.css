@@ -382,6 +382,10 @@ button,
   grid-template-rows: 1fr;
   animation: sifty-ghost-collapse 240ms var(--ease-product) 600ms forwards;
 }
+/* A snoozed row carries a sentence ("Snoozed until …"); give it time to be read. */
+.ghost-collapse[data-reason="snoozed"] {
+  animation-delay: 1600ms;
+}
 .ghost-collapse > * {
   overflow: hidden;
   min-height: 0;

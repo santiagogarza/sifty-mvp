@@ -4,7 +4,9 @@ import { useFrame } from "@/components/app-shell/app-frame";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Task } from "@/lib/domain/types";
+import type { ViewArgs } from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
+import { useToday } from "@/lib/store/use-today";
 import * as React from "react";
 import { TaskEmptyState } from "./empty-state";
 import { TaskList } from "./task-list";
@@ -26,7 +28,7 @@ export function TaskView({
   eyebrow?: string;
   title: string;
   description?: React.ReactNode;
-  selector: (tasks: Task[]) => Task[];
+  selector: (tasks: Task[], args: ViewArgs) => Task[];
   emptyTitle: string;
   emptyDescription?: string;
   rightSlot?: React.ReactNode;
@@ -34,8 +36,9 @@ export function TaskView({
   const { openDetail } = useFrame();
   const tasks = useStore((s) => s.tasks);
   const hydrated = useStore((s) => s.hydrated);
+  const now = useToday();
 
-  const visible = React.useMemo(() => selector(tasks), [tasks, selector]);
+  const visible = React.useMemo(() => selector(tasks, { now }), [tasks, now, selector]);
 
   return (
     <>

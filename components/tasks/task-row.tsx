@@ -1,14 +1,17 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { assigneeDisplayValue } from "@/lib/domain/assignee";
+import { formatSnoozeDate, formatSnoozeShort, isSnoozed } from "@/lib/domain/snooze";
 import type { Label, Lifecycle, Task } from "@/lib/domain/types";
 import { cn } from "@/lib/utils/cn";
 import { formatRelativeDay, isOverdue, isToday } from "@/lib/utils/dates";
-import { Check } from "lucide-react";
+import { AlarmClock, Check } from "lucide-react";
 import * as React from "react";
 import { AiStatusInline } from "./ai-status";
 import { PriorityGlyph } from "./priority-glyph";
+import { SnoozeMenu, type SnoozeMenuMode } from "./snooze-menu";
 
 /**
  * Single task row.
@@ -34,8 +37,44 @@ export const TaskRow = React.forwardRef<
      * puts it back exactly where it was.
      */
     uncompleteTo?: Lifecycle;
+    /** Set when the row is a lingering ghost of a task that just left the list. */
+    ghost?: "done" | "snoozed";
+    /**
+     * Controlled snooze popover (the list opens it from the s-chord).
+     * Uncontrolled when omitted.
+     */
+    snoozeMenu?: SnoozeMenuMode | null;
+    onSnoozeMenuChange?: (mode: SnoozeMenuMode | null) => void;
+    onSnoozed?: (until: string | null) => void;
   }
->(function TaskRow({ task, onOpen, active, labels, tabIndex = -1, uncompleteTo = "active" }, ref) {
+>(function TaskRow(
+  {
+    task,
+    onOpen,
+    active,
+    labels,
+    tabIndex = -1,
+    uncompleteTo = "active",
+    ghost,
+    snoozeMenu,
+    onSnoozeMenuChange,
+    onSnoozed,
+  },
+  ref,
+) {
+  const [localSnoozeMenu, setLocalSnoozeMenu] = React.useState<SnoozeMenuMode | null>(null);
+  const menuMode = snoozeMenu !== undefined ? snoozeMenu : localSnoozeMenu;
+  const setMenuMode = onSnoozeMenuChange ?? setLocalSnoozeMenu;
+  const rowRef = React.useRef<HTMLDivElement | null>(null);
+  const setRowRef = React.useCallback(
+    (el: HTMLDivElement | null) => {
+      rowRef.current = el;
+      if (typeof ref === "function") ref(el);
+      else if (ref) ref.current = el;
+    },
+    [ref],
+  );
+
   const labelMap = React.useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels]);
   const taskLabels = task.labelIds.map((id) => labelMap.get(id)).filter(Boolean) as Label[];
 
@@ -54,10 +93,13 @@ export const TaskRow = React.forwardRef<
   };
 
   const isDone = task.lifecycle === "done";
+  const canSnooze = !isDone && task.lifecycle !== "dropped";
+  const snoozed = isSnoozed(task);
+  const snoozedGhost = ghost === "snoozed" && !!task.snoozedUntil;
 
   return (
     <div
-      ref={ref}
+      ref={setRowRef}
       role="option"
       aria-selected={active}
       tabIndex={tabIndex}
@@ -104,14 +146,21 @@ export const TaskRow = React.forwardRef<
               "truncate text-[14px] leading-[1.35] tracking-[-0.005em]",
               isDone
                 ? "text-[var(--fg-subtle)] line-through decoration-[1.5px]"
-                : "text-[var(--fg)]",
+                : snoozedGhost
+                  ? "text-[var(--fg-subtle)]"
+                  : "text-[var(--fg)]",
             )}
           >
             {task.title}
           </span>
           <AiStatusInline status={task.aiStatus} />
         </div>
-        {task.nextAction && !isDone ? (
+        {snoozedGhost ? (
+          <div className="flex items-center gap-1 truncate text-[12px] text-[var(--fg-muted)] mt-0.5 animate-fade-in">
+            <AlarmClock size={11} className="shrink-0" />
+            Snoozed until {formatSnoozeDate(task.snoozedUntil!)}
+          </div>
+        ) : task.nextAction && !isDone ? (
           <div className="truncate text-[12px] text-[var(--fg-muted)] mt-0.5">
             {task.nextAction}
           </div>
@@ -135,10 +184,69 @@ export const TaskRow = React.forwardRef<
             <span className="truncate">{assignee}</span>
           </Badge>
         ) : null}
+        {snoozed && !snoozedGhost ? (
+          <Badge tone="mist" variant="soft" className="gap-1">
+            <AlarmClock size={10} />
+            Snoozed · {formatSnoozeShort(task.snoozedUntil!)}
+          </Badge>
+        ) : null}
         {dueLabel ? (
           <Badge tone={dueTone} variant={dueTone === "neutral" ? "outline" : "soft"}>
             {dueLabel}
           </Badge>
+        ) : null}
+        {canSnooze ? (
+          // The popover portals out of the DOM but still bubbles through
+          // React: without this, its clicks and keys would open the row.
+          <span
+            className="contents"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <Popover
+              open={menuMode !== null}
+              onOpenChange={(open) => setMenuMode(open ? "menu" : null)}
+            >
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={snoozed ? "Change snooze" : "Snooze"}
+                  title="Snooze (S)"
+                  className={cn(
+                    "relative -my-1 flex size-7 items-center justify-center rounded-[var(--radius-sm)]",
+                    "text-[var(--fg-subtle)] hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]",
+                    "transition-opacity duration-150 ease-[var(--ease-product)]",
+                    "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+                    "data-[state=open]:opacity-100 data-[state=open]:bg-[var(--surface-hover)]",
+                    "[@media(hover:none)]:opacity-100",
+                    active && "opacity-100",
+                  )}
+                >
+                  <AlarmClock size={13} />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="end"
+                onCloseAutoFocus={(e) => {
+                  // Back to the row, not the trigger, so list keys keep working.
+                  if (active && rowRef.current?.isConnected) {
+                    e.preventDefault();
+                    rowRef.current.focus({ preventScroll: true });
+                  }
+                }}
+              >
+                <SnoozeMenu
+                  key={menuMode ?? "closed"}
+                  task={task}
+                  initialMode={menuMode ?? "menu"}
+                  onDone={(until) => {
+                    setMenuMode(null);
+                    onSnoozed?.(until);
+                  }}
+                />
+              </PopoverContent>
+            </Popover>
+          </span>
         ) : null}
       </div>
     </div>

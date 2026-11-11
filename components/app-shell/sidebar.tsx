@@ -7,7 +7,7 @@ import type { Lifecycle } from "@/lib/domain/types";
 import { type TaskCounts, useTaskCounts } from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
-import { Brain, Settings, Sun } from "lucide-react";
+import { AlarmClock, Brain, Settings, Sun } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as React from "react";
@@ -45,6 +45,7 @@ export function Sidebar() {
         count: countKey ? counts[countKey] : undefined,
       };
     }),
+    { label: "Snoozed", href: "/snoozed", icon: AlarmClock, count: counts.snoozed },
   ];
 
   return (

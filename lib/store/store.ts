@@ -77,6 +77,8 @@ interface SiftyState {
   addSubtask: (taskId: string, title: string) => void;
   removeSubtask: (taskId: string, subtaskId: string) => void;
   setLifecycle: (taskId: string, lifecycle: Lifecycle) => void;
+  /** Hide until a local wake day (`YYYY-MM-DD`); null unsnoozes. */
+  snoozeTask: (taskId: string, until: string | null) => void;
   setAiStatus: (taskId: string, status: AiStatus, error?: string | null) => void;
   applyTriage: (
     taskId: string,
@@ -126,7 +128,7 @@ interface SiftyState {
   ensureLabel: (name: string) => Label;
 }
 
-const VERSION = 3;
+const VERSION = 4;
 
 export const useStore = create<SiftyState>()(
   persist(
@@ -168,6 +170,7 @@ export const useStore = create<SiftyState>()(
             priorityBucket: "unset",
             effort: "small",
             due: null,
+            snoozedUntil: null,
             delegationCandidate: "unsure",
             assigneeName: null,
             confidence: 0,
@@ -215,6 +218,10 @@ export const useStore = create<SiftyState>()(
               }
               if (patch.lifecycle && patch.lifecycle !== "done") {
                 next.completedAt = null;
+              }
+              // Un-completing later must not make the task silently vanish.
+              if (patch.lifecycle === "done" || patch.lifecycle === "dropped") {
+                next.snoozedUntil = null;
               }
               return next;
             }),
@@ -281,6 +288,10 @@ export const useStore = create<SiftyState>()(
 
         setLifecycle: (taskId, lifecycle) => {
           get().updateTask(taskId, { lifecycle });
+        },
+
+        snoozeTask: (taskId, until) => {
+          get().updateTask(taskId, { snoozedUntil: until });
         },
 
         setAiStatus: (taskId, status, error) => {
@@ -408,6 +419,9 @@ export const useStore = create<SiftyState>()(
         }
         if (version < 3 && state.tasks) {
           state.tasks = state.tasks.map((t) => ({ ...t, assigneeName: t.assigneeName ?? null }));
+        }
+        if (version < 4 && state.tasks) {
+          state.tasks = state.tasks.map((t) => ({ ...t, snoozedUntil: t.snoozedUntil ?? null }));
         }
         return state as SiftyState;
       },

@@ -1,10 +1,12 @@
 "use client";
 
 import { focusScore } from "@/lib/domain/priority";
+import { isSnoozed } from "@/lib/domain/snooze";
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import { dayDelta, isOverdue } from "@/lib/utils/dates";
 import { useMemo } from "react";
 import { useStore } from "./store";
+import { useToday } from "./use-today";
 
 /**
  * Composable view selectors.
@@ -18,11 +20,26 @@ import { useStore } from "./store";
  * a task lives. Today is a smart lens over statuses, defined by
  * `isTodayTask` — the single predicate shared by the Today list and the
  * sidebar count so the two can never disagree.
+ *
+ * Snooze cuts across statuses: a snoozed task is hidden from every open
+ * view (Today, Inbox, Focus, Waiting on, Someday) until its wake day and
+ * listed in Snoozed instead. Done and Dropped ignore it.
  */
 
 export interface ViewArgs {
   labelId?: string | null;
   search?: string;
+  /** Defaults to the current time; views pass `useToday()`. */
+  now?: Date;
+}
+
+function isOpen(lifecycle: Lifecycle): boolean {
+  return lifecycle !== "done" && lifecycle !== "dropped";
+}
+
+/** Membership in the status view for `lifecycle`, snooze-aware. */
+function inStatusView(t: Task, lifecycle: Lifecycle, now: Date): boolean {
+  return t.lifecycle === lifecycle && (!isOpen(lifecycle) || !isSnoozed(t, now));
 }
 
 function applyCommonFilters(tasks: Task[], args: ViewArgs): Task[] {
@@ -50,8 +67,10 @@ function applyCommonFilters(tasks: Task[], args: ViewArgs): Task[] {
  *    the ball is elsewhere, but the date arrives regardless — chase it.
  *  - Someday never resurfaces (an explicit "not now"), and done/dropped
  *    are out of play.
+ *  - Snoozed tasks wait for their wake day, deadline or not.
  */
 export function isTodayTask(t: Task, now = new Date()): boolean {
+  if (isSnoozed(t, now)) return false;
   const dueForces = isOverdue(t.due, now) || (!!t.due && dayDelta(new Date(t.due), now) === 0);
   if (t.lifecycle === "inbox" || t.lifecycle === "active") {
     return dueForces || t.priorityBucket === "do_now";
@@ -79,23 +98,24 @@ function byFocusScore(now: Date) {
 }
 
 export function selectTodayTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
-  const now = new Date();
+  const now = args.now ?? new Date();
   return applyCommonFilters(tasks, args)
     .filter((t) => isTodayTask(t, now))
     .sort(byFocusScore(now));
 }
 
 export function selectInboxTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
+  const now = args.now ?? new Date();
   return applyCommonFilters(tasks, args)
-    .filter((t) => t.lifecycle === "inbox")
+    .filter((t) => inStatusView(t, "inbox", now))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
 /** Focus is exactly the "active" status — Inbox stays the review gate. */
 export function selectFocusTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
-  const now = new Date();
+  const now = args.now ?? new Date();
   return applyCommonFilters(tasks, args)
-    .filter((t) => t.lifecycle === "active")
+    .filter((t) => inStatusView(t, "active", now))
     .sort(byFocusScore(now));
 }
 
@@ -104,8 +124,9 @@ export function selectByLifecycle(
   lifecycle: Lifecycle,
   args: ViewArgs = {},
 ): Task[] {
+  const now = args.now ?? new Date();
   return applyCommonFilters(tasks, args)
-    .filter((t) => t.lifecycle === lifecycle)
+    .filter((t) => inStatusView(t, lifecycle, now))
     .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
 }
 
@@ -119,12 +140,24 @@ export function selectDroppedTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
   return selectByLifecycle(tasks, "dropped", args);
 }
 
+/** Open tasks waiting for a wake day, soonest first. */
+export function selectSnoozedTasks(tasks: Task[], args: ViewArgs = {}): Task[] {
+  const now = args.now ?? new Date();
+  return applyCommonFilters(tasks, args)
+    .filter((t) => isOpen(t.lifecycle) && isSnoozed(t, now))
+    .sort((a, b) => {
+      const byWake = (a.snoozedUntil ?? "").localeCompare(b.snoozedUntil ?? "");
+      return byWake !== 0 ? byWake : a.updatedAt < b.updatedAt ? 1 : -1;
+    });
+}
+
 export interface TaskCounts {
   today: number;
   inbox: number;
   focus: number;
   waiting: number;
   someday: number;
+  snoozed: number;
   done: number;
   dropped: number;
   total: number;
@@ -138,6 +171,7 @@ export function computeTaskCounts(tasks: Task[], now = new Date()): TaskCounts {
     focus: 0,
     waiting: 0,
     someday: 0,
+    snoozed: 0,
     done: 0,
     dropped: 0,
     total: tasks.length,
@@ -151,6 +185,10 @@ export function computeTaskCounts(tasks: Task[], now = new Date()): TaskCounts {
       counts.dropped += 1;
       continue;
     }
+    if (isSnoozed(t, now)) {
+      counts.snoozed += 1;
+      continue;
+    }
     if (t.lifecycle === "inbox") counts.inbox += 1;
     if (t.lifecycle === "active") counts.focus += 1;
     if (t.lifecycle === "waiting") counts.waiting += 1;
@@ -162,5 +200,6 @@ export function computeTaskCounts(tasks: Task[], now = new Date()): TaskCounts {
 
 export function useTaskCounts(): TaskCounts {
   const tasks = useStore((s) => s.tasks);
-  return useMemo(() => computeTaskCounts(tasks), [tasks]);
+  const now = useToday();
+  return useMemo(() => computeTaskCounts(tasks, now), [tasks, now]);
 }
