@@ -1,8 +1,10 @@
 import type { Task } from "@/lib/domain/types";
 import {
   computeTaskCounts,
+  isSnoozed,
   isTodayTask,
   selectFocusTasks,
+  selectInboxTasks,
   selectTodayTasks,
 } from "@/lib/store/selectors";
 import { describe, expect, it } from "vitest";
@@ -39,6 +41,7 @@ function makeTask(patch: Partial<Task>): Task {
     priorityBucket: "schedule",
     effort: "small",
     due: null,
+    snoozeUntil: null,
     delegationCandidate: "self",
     assigneeName: null,
     confidence: 0.8,
@@ -123,7 +126,64 @@ describe("computeTaskCounts", () => {
       total: 8,
     });
     // The sidebar badge and the Today list can never disagree.
-    expect(counts.today).toBe(selectTodayTasks(tasks).length);
+    expect(counts.today).toBe(selectTodayTasks(tasks, {}, NOW).length);
     expect(counts.today).toBe(3);
+  });
+});
+
+describe("snoozeUntil", () => {
+  const wake = "2026-07-23";
+  const beforeWake = new Date(2026, 6, 23, 7, 59, 0);
+  const atWake = new Date(2026, 6, 23, 8, 0, 0);
+
+  it("hides a snoozed inbox task from Inbox, Today, and both counts", () => {
+    const task = makeTask({
+      lifecycle: "inbox",
+      priorityBucket: "do_now",
+      snoozeUntil: "2026-07-30",
+    });
+    expect(isSnoozed(task, NOW)).toBe(true);
+    expect(selectInboxTasks([task], {}, NOW)).toEqual([]);
+    expect(selectTodayTasks([task], {}, NOW)).toEqual([]);
+    expect(isTodayTask(task, NOW)).toBe(false);
+    const counts = computeTaskCounts([task], NOW);
+    expect(counts.inbox).toBe(0);
+    expect(counts.today).toBe(0);
+    expect(counts.today).toBe(selectTodayTasks([task], {}, NOW).length);
+  });
+
+  it("stays hidden at 7:59 on the wake day and returns at 8:00", () => {
+    const task = makeTask({
+      lifecycle: "inbox",
+      priorityBucket: "do_now",
+      snoozeUntil: wake,
+    });
+    expect(isSnoozed(task, beforeWake)).toBe(true);
+    expect(selectInboxTasks([task], {}, beforeWake)).toEqual([]);
+    expect(selectTodayTasks([task], {}, beforeWake)).toEqual([]);
+    expect(computeTaskCounts([task], beforeWake)).toMatchObject({ inbox: 0, today: 0 });
+
+    expect(isSnoozed(task, atWake)).toBe(false);
+    expect(selectInboxTasks([task], {}, atWake).map((t) => t.id)).toEqual([task.id]);
+    expect(selectTodayTasks([task], {}, atWake).map((t) => t.id)).toEqual([task.id]);
+    const counts = computeTaskCounts([task], atWake);
+    expect(counts.inbox).toBe(1);
+    expect(counts.today).toBe(selectTodayTasks([task], {}, atWake).length);
+    expect(counts.today).toBe(1);
+  });
+
+  it("keeps a snoozed focus task in Focus and out of Today", () => {
+    const task = makeTask({
+      lifecycle: "active",
+      priorityBucket: "do_now",
+      snoozeUntil: "2026-07-30",
+    });
+    expect(selectFocusTasks([task]).map((t) => t.id)).toEqual([task.id]);
+    expect(selectTodayTasks([task], {}, NOW)).toEqual([]);
+    expect(isTodayTask(task, NOW)).toBe(false);
+    const counts = computeTaskCounts([task], NOW);
+    expect(counts.focus).toBe(1);
+    expect(counts.today).toBe(0);
+    expect(counts.today).toBe(selectTodayTasks([task], {}, NOW).length);
   });
 });

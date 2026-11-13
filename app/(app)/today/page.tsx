@@ -6,15 +6,6 @@ import { TaskView } from "@/components/tasks/task-view";
 import { selectTodayTasks } from "@/lib/store/selectors";
 import * as React from "react";
 
-function getTimeGreeting(now: Date): string {
-  const hour = now.getHours();
-  if (hour < 5) return "Late one";
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  if (hour < 21) return "Good evening";
-  return "Late one";
-}
-
 function getDateLine(now: Date): string {
   return now.toLocaleDateString(undefined, {
     weekday: "long",
@@ -24,19 +15,15 @@ function getDateLine(now: Date): string {
 }
 
 export default function TodayPage() {
-  const [greeting, setGreeting] = React.useState<string | null>(null);
   const [dateLine, setDateLine] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    const now = new Date();
-    setGreeting(getTimeGreeting(now));
-    setDateLine(getDateLine(now));
+    setDateLine(getDateLine(new Date()));
   }, []);
 
   return (
     <PageShell title="Today" subtitle={dateLine ?? undefined}>
       <TaskView
-        eyebrow={greeting ?? undefined}
         title="What matters today"
         description="Overdue, due today, and anything Sifty believes belongs in your top of mind."
         selector={selectTodayTasks}

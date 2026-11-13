@@ -28,6 +28,7 @@ const existing: Task = {
   priorityBucket: "schedule",
   effort: "small",
   due: null,
+  snoozeUntil: null,
   delegationCandidate: "self",
   assigneeName: null,
   confidence: 0.7,
@@ -59,6 +60,17 @@ describe("taskPatchColumns", () => {
     expect(taskPatchColumns(existing, { agentBrief: null, due: null }, { now })).toEqual({
       agentBrief: null,
       due: null,
+      updatedAt: now,
+    });
+  });
+
+  it("writes snoozeUntil, including an explicit clear", () => {
+    expect(taskPatchColumns(existing, { snoozeUntil: "2026-11-20" }, { now })).toEqual({
+      snoozeUntil: "2026-11-20",
+      updatedAt: now,
+    });
+    expect(taskPatchColumns(existing, { snoozeUntil: null }, { now })).toEqual({
+      snoozeUntil: null,
       updatedAt: now,
     });
   });

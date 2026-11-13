@@ -122,6 +122,8 @@ export const tasks = pgTable(
       .notNull()
       .default("small"),
     due: date("due"),
+    /** Wake day for Today and Inbox. Null when the task is not snoozed. */
+    snoozeUntil: date("snooze_until"),
     delegationCandidate: text("delegation_candidate", {
       enum: ["self", "ai", "person", "unsure"],
     })

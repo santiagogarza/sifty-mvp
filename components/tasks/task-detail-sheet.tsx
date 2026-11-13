@@ -54,6 +54,7 @@ import { AiThinking } from "./ai-status";
 import { ConfidencePill } from "./confidence-pill";
 import { PriorityPill } from "./priority-pill";
 import { RecurrenceRow } from "./recurrence-editor";
+import { SnoozeMenu } from "./snooze-menu";
 import { StatusIcon } from "./status-icon";
 
 /**
@@ -211,6 +212,7 @@ function DetailBody({
           )}
         </div>
         <div className="flex items-center gap-1.5">
+          <SnoozeMenu task={task} variant="header" />
           <Button
             variant="ghost"
             size="iconSm"

@@ -4,6 +4,7 @@ import { useFrame } from "@/components/app-shell/app-frame";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Task } from "@/lib/domain/types";
+import { useSnoozeClock } from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import * as React from "react";
@@ -46,8 +47,11 @@ export function TaskView({
   const tasks = useStore((s) => s.tasks);
   const hydrated = useStore((s) => s.hydrated);
   const viewMode = useStore((s) => s.viewMode);
+  const snoozeClock = useSnoozeClock();
 
-  const visible = React.useMemo(() => selector(tasks), [tasks, selector]);
+  // The selector reads `new Date()`. The clock is only the signal that local time moved.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: snoozeClock invalidates the memo at 8:00 and on tab focus.
+  const visible = React.useMemo(() => selector(tasks), [tasks, selector, snoozeClock]);
 
   // Local cache first; an empty cache waits for the first pull so a new
   // account never flashes "Inbox zero" before its starter tasks arrive.

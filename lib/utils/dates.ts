@@ -25,6 +25,57 @@ export function parseDay(value: string | Date): Date {
   return new Date(value);
 }
 
+/** Local calendar day as `YYYY-MM-DD`. Never UTC — an evening instant can already be tomorrow there. */
+export function toDateOnly(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Local midnight for a `YYYY-MM-DD` string, or null when it is not a real calendar day. */
+export function parseDateOnly(value: string): Date | null {
+  const m = DAY_ONLY.exec(value);
+  if (!m) return null;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    return null;
+  }
+  return date;
+}
+
+function addLocalDays(date: Date, days: number): Date {
+  const out = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  out.setDate(out.getDate() + days);
+  return out;
+}
+
+/** The next local calendar day. */
+export function tomorrowDate(now = new Date()): string {
+  return toDateOnly(addLocalDays(now, 1));
+}
+
+/**
+ * The coming Saturday, or Sunday when today is Saturday.
+ * Null on Sunday — the weekend is already here, so the shortcut is hidden.
+ */
+export function weekendSnoozeDate(now = new Date()): string | null {
+  const day = now.getDay();
+  if (day === 0) return null;
+  if (day === 6) return toDateOnly(addLocalDays(now, 1));
+  return toDateOnly(addLocalDays(now, 6 - day));
+}
+
+/** The next Monday, always at least one day away. */
+export function nextWeekSnoozeDate(now = new Date()): string {
+  const day = now.getDay();
+  const delta = day === 0 ? 1 : 8 - day;
+  return toDateOnly(addLocalDays(now, delta));
+}
+
 function startOfDay(d: Date): Date {
   const out = new Date(d);
   out.setHours(0, 0, 0, 0);

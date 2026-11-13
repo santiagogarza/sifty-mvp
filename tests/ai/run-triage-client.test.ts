@@ -418,7 +418,12 @@ describe("store persistence", () => {
     window.localStorage.setItem(
       STORE_KEY,
       JSON.stringify({
-        state: { tasks: [], labels: [], memories: [], preferredModelId: "gpt-4o" },
+        state: {
+          tasks: [{ id: "task_old", title: "Old" }],
+          labels: [],
+          memories: [],
+          preferredModelId: "gpt-4o",
+        },
         version: 3,
       }),
     );
@@ -426,8 +431,9 @@ describe("store persistence", () => {
     await useStore.persist.rehydrate();
 
     expect(useStore.getState().modelPreference).toBe("openai");
+    expect(useStore.getState().tasks[0]?.snoozeUntil).toBeNull();
     const persisted = JSON.parse(window.localStorage.getItem(STORE_KEY) ?? "{}");
-    expect(persisted.version).toBe(5);
+    expect(persisted.version).toBe(6);
     expect(persisted.state.modelPreference).toBe("openai");
     expect(persisted.state).not.toHaveProperty("preferredModelId");
   });

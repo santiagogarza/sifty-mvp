@@ -26,6 +26,7 @@ export function taskFromCapture(capture: GoldenCapture, todayIso: string): Task 
     priorityBucket: "unset",
     effort: "small",
     due: null,
+    snoozeUntil: null,
     delegationCandidate: "unsure",
     assigneeName: null,
     confidence: 0,

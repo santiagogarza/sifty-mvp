@@ -190,6 +190,13 @@ export interface Task {
   /** ISO date or null. Day-precision; Sifty doesn't track times in MVP. */
   due: ISODate | null;
 
+  /**
+   * Local calendar day (`YYYY-MM-DD`) the task returns to Today and Inbox.
+   * Hidden until 8:00 that morning. Null when it is not snoozed. The date
+   * can stay set after wake; views stop treating it as snoozed on their own.
+   */
+  snoozeUntil: ISODate | null;
+
   delegationCandidate: DelegationCandidate;
   /** User-assigned person; independent of AI delegation recommendation. */
   assigneeName: string | null;

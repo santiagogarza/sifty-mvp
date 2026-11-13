@@ -49,6 +49,7 @@ function task(overrides: Partial<Task> = {}): Task {
     editedFields: [],
     createdAt: "2026-10-12T00:00:00.000Z",
     updatedAt: "2026-10-12T00:00:00.000Z",
+    snoozeUntil: null,
     completedAt: null,
     ...overrides,
   };

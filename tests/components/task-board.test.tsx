@@ -41,6 +41,7 @@ function makeTask(id: string, confidence: number): Task {
     editedFields: [],
     createdAt: "2026-07-01T10:00:00.000Z",
     updatedAt: "2026-07-01T10:00:00.000Z",
+    snoozeUntil: null,
     completedAt: null,
   };
 }

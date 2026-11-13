@@ -1,3 +1,4 @@
+import { isSnoozed } from "@/lib/domain/snooze";
 import type { Effort, Lifecycle, PriorityBucket, Task } from "@/lib/domain/types";
 import { addDays, localTime } from "./schedule";
 
@@ -174,13 +175,14 @@ export function composeMorningPlan(input: DigestInput): MorningPlan | null {
   const open = openTasks(input.tasks).sort(cmp);
   const convert = (t: Task) => toDigestTask(t, dateKey, input.appUrl);
 
-  const overdue = open.filter((t) => dueState(t.due, dateKey) === "overdue");
-  const dueToday = open.filter((t) => dueState(t.due, dateKey) === "today");
+  const parked = (t: Task) => isSnoozed(t, input.now, input.timeZone);
+  const overdue = open.filter((t) => !parked(t) && dueState(t.due, dateKey) === "overdue");
+  const dueToday = open.filter((t) => !parked(t) && dueState(t.due, dateKey) === "today");
   const shown = new Set([...overdue, ...dueToday].map((t) => t.id));
-  const today = open.filter((t) => !shown.has(t.id) && isTodayTask(t, dateKey));
+  const today = open.filter((t) => !shown.has(t.id) && !parked(t) && isTodayTask(t, dateKey));
   for (const t of today) shown.add(t.id);
   const focus = open.filter((t) => !shown.has(t.id) && t.lifecycle === "active");
-  const inboxCount = open.filter((t) => t.lifecycle === "inbox").length;
+  const inboxCount = open.filter((t) => t.lifecycle === "inbox" && !parked(t)).length;
   const away = composeAwaySection(input);
 
   const empty =
@@ -206,8 +208,9 @@ export function composeMorningPlan(input: DigestInput): MorningPlan | null {
 export function composeDueReminder(input: DigestInput): DueReminder | null {
   const { dateKey } = localTime(input.now, input.timeZone);
   const open = openTasks(input.tasks).sort(compareForDigest(dateKey));
-  const overdue = open.filter((t) => dueState(t.due, dateKey) === "overdue");
-  const dueToday = open.filter((t) => dueState(t.due, dateKey) === "today");
+  const parked = (t: Task) => isSnoozed(t, input.now, input.timeZone);
+  const overdue = open.filter((t) => !parked(t) && dueState(t.due, dateKey) === "overdue");
+  const dueToday = open.filter((t) => !parked(t) && dueState(t.due, dateKey) === "today");
   if (overdue.length + dueToday.length === 0) return null;
   const convert = (t: Task) => toDigestTask(t, dateKey, input.appUrl);
   return {
@@ -243,7 +246,9 @@ export function composeWeeklyReview(input: DigestInput): WeeklyReview | null {
   const open = openTasks(input.tasks).sort(compareForDigest(dateKey));
   const overdue = open.filter((t) => dueState(t.due, dateKey) === "overdue");
   const upcoming = open.filter((t) => t.due !== null && t.due >= dateKey && t.due < horizonKey);
-  const inboxCount = open.filter((t) => t.lifecycle === "inbox").length;
+  const inboxCount = open.filter(
+    (t) => t.lifecycle === "inbox" && !isSnoozed(t, input.now, input.timeZone),
+  ).length;
   const focusCount = open.filter((t) => t.lifecycle === "active").length;
   const waitingCount = open.filter((t) => t.lifecycle === "waiting").length;
 

@@ -392,6 +392,7 @@ function taskWireFields(task: Task): Record<string, unknown> {
     priorityBucket: task.priorityBucket,
     effort: task.effort,
     due: task.due,
+    snoozeUntil: task.snoozeUntil ?? null,
     delegationCandidate: task.delegationCandidate,
     assigneeName: normalizeAssigneeName(clipOrNull(task.assigneeName, TASK_LIMITS.assigneeName)),
     confidence: task.confidence,

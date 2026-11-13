@@ -135,6 +135,7 @@ describe("task sync contract", () => {
       priorityBucket: "schedule",
       effort: "small",
       due: null,
+      snoozeUntil: null,
       delegationCandidate: "self",
       assigneeName: null,
       confidence: 0.7,
@@ -159,6 +160,31 @@ describe("task sync contract", () => {
     expect(persisted?.title).toBe("Edited title");
     expect(persisted?.sourceContext).toBe("Answer: yes, by Friday");
     expect(persisted?.editedFields).toEqual(["title"]);
+  });
+
+  it("round-trips snoozeUntil on patch", async () => {
+    const repos = getTestRepos();
+    const { user, cookie } = await createUserWithCookie(repos, { email: "snooze@example.com" });
+    const task = await repos.tasks.create(user.id, {
+      sourceText: "Park this until Friday",
+      sourceContext: null,
+    });
+    expect(task.snoozeUntil).toBeNull();
+
+    const { PATCH } = await import("@/app/api/tasks/[id]/route");
+    const res = await PATCH(
+      new Request(`http://localhost/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ snoozeUntil: "2026-11-20" }),
+      }),
+      { params: Promise.resolve({ id: task.id }) },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { task: { snoozeUntil: string | null } };
+    expect(body.task.snoozeUntil).toBe("2026-11-20");
+    const persisted = await repos.tasks.get(user.id, task.id);
+    expect(persisted?.snoozeUntil).toBe("2026-11-20");
   });
 
   it("memory create accepts the client id and full shape", async () => {

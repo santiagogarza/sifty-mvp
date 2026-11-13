@@ -93,6 +93,12 @@ export const TaskPatchSchema = z
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .nullable()
       .optional(),
+    /** Wake day. Optional so older clients can still patch. */
+    snoozeUntil: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable()
+      .optional(),
     delegationCandidate: z.enum(DELEGATION_CANDIDATE).optional(),
     assigneeName: AssigneeName.optional().transform((v) =>
       v === undefined ? undefined : normalizeAssigneeName(v),
