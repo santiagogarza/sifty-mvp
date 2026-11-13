@@ -1,6 +1,7 @@
 import { bucketFromScalars } from "@/lib/domain/priority";
 import { isTodayTaskOnDay } from "@/lib/domain/today";
 import { z } from "zod";
+import { snoozedForPlan } from "./context";
 import type { PlanCandidate, PlanContext } from "./context";
 
 /**
@@ -200,7 +201,10 @@ export function offlineDailyPlan(ctx: PlanContext): DailyPlanOutput {
     const bucket = after
       ? bucketFromScalars(after.urgency, after.importance)
       : c.task.priorityBucket;
-    return isTodayTaskOnDay({ ...c.task, priorityBucket: bucket }, ctx.planDate);
+    return (
+      !snoozedForPlan(c.task, ctx.planDate) &&
+      isTodayTaskOnDay({ ...c.task, priorityBucket: bucket }, ctx.planDate)
+    );
   });
   const summary = lead
     ? `${Math.max(todaySize, 1)} ${todaySize === 1 ? "task" : "tasks"} in Today. Lead with "${lead.task.title}".`

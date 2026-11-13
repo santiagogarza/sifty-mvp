@@ -244,7 +244,9 @@ export function composeWeeklyReview(input: DigestInput): WeeklyReview | null {
     .sort((a, b) => (a.completedAt! < b.completedAt! ? 1 : -1));
 
   const open = openTasks(input.tasks).sort(compareForDigest(dateKey));
-  const overdue = open.filter((t) => dueState(t.due, dateKey) === "overdue");
+  const overdue = open.filter(
+    (t) => !isSnoozed(t, input.now, input.timeZone) && dueState(t.due, dateKey) === "overdue",
+  );
   const upcoming = open.filter((t) => t.due !== null && t.due >= dateKey && t.due < horizonKey);
   const inboxCount = open.filter(
     (t) => t.lifecycle === "inbox" && !isSnoozed(t, input.now, input.timeZone),

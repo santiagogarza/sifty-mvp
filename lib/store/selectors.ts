@@ -1,8 +1,8 @@
 "use client";
 
 import { focusScore } from "@/lib/domain/priority";
-import { SNOOZE_WAKE_HOUR, isSnoozed, toLocalIsoDate } from "@/lib/domain/snooze";
-import { isTodayTaskOnDay } from "@/lib/domain/today";
+import { SNOOZE_WAKE_HOUR, isSnoozed } from "@/lib/domain/snooze";
+import { isTodayTaskAt } from "@/lib/domain/today";
 import type { Lifecycle, Task } from "@/lib/domain/types";
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "./store";
@@ -50,8 +50,7 @@ function applyCommonFilters(tasks: Task[], args: ViewArgs): Task[] {
  * `lib/domain/today.ts` so the server-side daily plan applies the same one.
  */
 export function isTodayTask(t: Task, now = new Date()): boolean {
-  if (isSnoozed(t, now)) return false;
-  return isTodayTaskOnDay(t, toLocalIsoDate(now));
+  return isTodayTaskAt(t, now);
 }
 
 function byFocusScore(now: Date) {

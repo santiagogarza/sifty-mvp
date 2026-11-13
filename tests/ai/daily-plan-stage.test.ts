@@ -84,6 +84,61 @@ function afterToday(ctx: PlanContext, out: DailyPlanOutput, alias: string): bool
   return isTodayTaskOnDay({ ...c.task, priorityBucket: bucket }, PLAN_DATE);
 }
 
+describe("snoozed tasks stay out of Today", () => {
+  it("is not in Today while the wake date is still ahead", () => {
+    const snoozed = task({
+      lifecycle: "inbox",
+      priorityBucket: "do_now",
+      urgency: 0.9,
+      importance: 0.9,
+      snoozeUntil: "2026-11-20",
+    });
+    expect(toCandidate(snoozed, "t1", "2026-11-13").inToday).toBe(false);
+  });
+
+  it("stays out at 7:30 in the user's zone and returns at 8:30", () => {
+    const snoozed = task({
+      lifecycle: "inbox",
+      priorityBucket: "do_now",
+      urgency: 0.9,
+      importance: 0.9,
+      snoozeUntil: "2026-11-20",
+    });
+    const before = toCandidate(snoozed, "t1", "2026-11-20", {
+      now: new Date("2026-11-19T22:30:00Z"),
+      timeZone: "Asia/Tokyo",
+    });
+    const after = toCandidate(snoozed, "t1", "2026-11-20", {
+      now: new Date("2026-11-19T23:30:00Z"),
+      timeZone: "Asia/Tokyo",
+    });
+    expect(before.inToday).toBe(false);
+    expect(after.inToday).toBe(true);
+  });
+
+  it("is not demoted when Today is over the target", () => {
+    const snoozed = task({
+      title: "Parked",
+      priorityBucket: "do_now",
+      urgency: 0.2,
+      importance: 0.2,
+      snoozeUntil: "2026-11-20",
+    });
+    const fillers = Array.from({ length: TODAY_TARGET_SIZE + 1 }, (_, i) =>
+      task({
+        title: `Today ${i}`,
+        priorityBucket: "do_now",
+        urgency: 0.9,
+        importance: 0.9 - i * 0.01,
+      }),
+    );
+    const ctx = context([snoozed, ...fillers], { planDate: "2026-11-13" });
+    const out = offlineDailyPlan(ctx);
+    expect(ctx.candidates[0]!.inToday).toBe(false);
+    expect(out.decisions.some((d) => d.alias === "t1")).toBe(false);
+  });
+});
+
 describe("offline daily plan", () => {
   it("pulls in due-tomorrow deep work and pushes out score-only tasks due later", () => {
     const ctx = context([

@@ -126,7 +126,12 @@ export async function applyDailyPlanStep(
   const { moves, skipped } = await applyDailyPlan(
     repos,
     input.userId,
-    { planDate: input.planDate, aliases: decision.aliases },
+    {
+      planDate: input.planDate,
+      aliases: decision.aliases,
+      now: new Date(),
+      timeZone: input.timeZone,
+    },
     decision.output,
     { planId: input.planId },
   );

@@ -1,4 +1,5 @@
-import { dayKeyDelta } from "@/lib/utils/dates";
+import { dayKeyDelta, dayKeyInTimeZone, toDateOnly } from "@/lib/utils/dates";
+import { isSnoozed } from "./snooze";
 import type { Task } from "./types";
 
 /**
@@ -10,9 +11,9 @@ import type { Task } from "./types";
  *  - Someday never resurfaces (an explicit "not now"), and done/dropped
  *    are out of play.
  *
- * Pure and zone-free so the client (`lib/store/selectors.ts`, with the
- * browser's local day) and the daily plan (with the user's local day,
- * resolved server-side) agree on exactly the same set.
+ * Pure and zone-free. Snooze is not part of this day rule: `isTodayTaskAt`
+ * applies the 8:00 wake on top, and that is what the client and the daily
+ * plan both call so a snoozed task is out of Today on either side.
  */
 export function isTodayTaskOnDay(
   t: Pick<Task, "lifecycle" | "due" | "priorityBucket">,
@@ -24,4 +25,19 @@ export function isTodayTaskOnDay(
   }
   if (t.lifecycle === "waiting") return dueForces;
   return false;
+}
+
+/**
+ * Today membership at a moment. Hidden until 8:00 local on `snoozeUntil`
+ * (`timeZone` on the server, the browser zone when omitted), then the
+ * day rule in `isTodayTaskOnDay`.
+ */
+export function isTodayTaskAt(
+  t: Pick<Task, "lifecycle" | "due" | "priorityBucket" | "snoozeUntil">,
+  now: Date,
+  timeZone?: string,
+): boolean {
+  if (isSnoozed(t, now, timeZone)) return false;
+  const dayKey = timeZone ? dayKeyInTimeZone(now, timeZone) : toDateOnly(now);
+  return isTodayTaskOnDay(t, dayKey);
 }
