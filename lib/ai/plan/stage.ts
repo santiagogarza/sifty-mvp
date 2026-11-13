@@ -1,6 +1,7 @@
 import { bucketFromScalars } from "@/lib/domain/priority";
 import { isTodayTaskOnDay } from "@/lib/domain/today";
 import { z } from "zod";
+import { snoozedForPlan } from "./context";
 import type { PlanCandidate, PlanContext } from "./context";
 
 /**
@@ -195,12 +196,17 @@ export function offlineDailyPlan(ctx: PlanContext): DailyPlanOutput {
     }
   }
 
+  const when = ctx.now ? { now: ctx.now, timeZone: ctx.timeZone } : undefined;
   const lead = ctx.candidates.find((c) => {
     const after = decisions.find((d) => d.alias === c.alias);
-    const bucket = after
-      ? bucketFromScalars(after.urgency, after.importance)
-      : c.task.priorityBucket;
-    return isTodayTaskOnDay({ ...c.task, priorityBucket: bucket }, ctx.planDate);
+    // Unchanged tasks already carry the clock in `inToday`. Re-checking
+    // snooze without that clock would hide a task for its whole wake day.
+    if (!after) return c.inToday;
+    const bucket = bucketFromScalars(after.urgency, after.importance);
+    return (
+      !snoozedForPlan(c.task, ctx.planDate, when) &&
+      isTodayTaskOnDay({ ...c.task, priorityBucket: bucket }, ctx.planDate)
+    );
   });
   const summary = lead
     ? `${Math.max(todaySize, 1)} ${todaySize === 1 ? "task" : "tasks"} in Today. Lead with "${lead.task.title}".`

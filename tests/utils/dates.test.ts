@@ -1,4 +1,14 @@
-import { formatRelativeDay, formatTimeAgo, isOverdue, isToday, parseDay } from "@/lib/utils/dates";
+import {
+  formatRelativeDay,
+  formatTimeAgo,
+  isOverdue,
+  isToday,
+  nextWeekSnoozeDate,
+  parseDay,
+  toDateOnly,
+  tomorrowDate,
+  weekendSnoozeDate,
+} from "@/lib/utils/dates";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 /**
@@ -47,6 +57,36 @@ describe("day-only due dates in a west-of-UTC zone", () => {
   it("the ISO parse it replaces would have been a day early", () => {
     const wrong = new Date("2026-10-13");
     expect(wrong.getDate()).toBe(12);
+  });
+});
+
+describe("snooze presets stay on the local calendar", () => {
+  // Built inside each test: a date created while collecting the file would
+  // still be in the process zone, before the suite pins Pacific time.
+  // Friday 2026-11-13, late evening. In a US zone this instant is already Saturday in UTC.
+  const fridayEvening = () => new Date(2026, 10, 13, 20, 30);
+
+  it("tomorrow does not slip a day when the UTC date is already ahead", () => {
+    const evening = fridayEvening();
+    expect(evening.toISOString().slice(0, 10)).toBe("2026-11-14");
+    expect(toDateOnly(evening)).toBe("2026-11-13");
+    expect(tomorrowDate(evening)).toBe("2026-11-14");
+    const slipped = new Date(evening);
+    slipped.setDate(slipped.getDate() + 1);
+    expect(slipped.toISOString().slice(0, 10)).toBe("2026-11-15");
+    expect(tomorrowDate(evening)).not.toBe(slipped.toISOString().slice(0, 10));
+  });
+
+  it("weekend is the coming Saturday, Sunday on Saturday, and hidden on Sunday", () => {
+    expect(weekendSnoozeDate(fridayEvening())).toBe("2026-11-14");
+    expect(weekendSnoozeDate(new Date(2026, 10, 14, 20, 30))).toBe("2026-11-15");
+    expect(weekendSnoozeDate(new Date(2026, 10, 15, 20, 30))).toBeNull();
+  });
+
+  it("next week is the next Monday and never today", () => {
+    expect(nextWeekSnoozeDate(fridayEvening())).toBe("2026-11-16");
+    expect(nextWeekSnoozeDate(new Date(2026, 10, 15, 20, 30))).toBe("2026-11-16");
+    expect(nextWeekSnoozeDate(new Date(2026, 10, 16, 20, 30))).toBe("2026-11-23");
   });
 });
 

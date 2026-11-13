@@ -3,7 +3,7 @@ import type { DailyPlanMove, DailyPlanMoveKind } from "@/lib/db/repos/types";
 import { bucketFromScalars } from "@/lib/domain/priority";
 import { isTodayTaskOnDay } from "@/lib/domain/today";
 import type { Task } from "@/lib/domain/types";
-import { toCandidate } from "./context";
+import { snoozedForPlan, toCandidate } from "./context";
 import { describeMove } from "./public";
 import { type DailyPlanOutput, MAX_TODAY_PROMOTIONS } from "./stage";
 
@@ -31,6 +31,9 @@ export interface ApplyPlanTarget {
   planDate: string;
   /** Alias → task id from the prompt. */
   aliases: Record<string, string>;
+  /** When the plan is applied. Used to tell a wake-morning snooze from an awake task. */
+  now?: Date;
+  timeZone?: string;
 }
 
 export interface ApplyPlanResult {
@@ -82,7 +85,13 @@ export async function applyDailyPlan(
       skipped.push({ alias: decision.alias, why: `now ${fresh.lifecycle}` });
       continue;
     }
-    const candidate = toCandidate(fresh, decision.alias, target.planDate);
+    const when =
+      target.now && target.timeZone ? { now: target.now, timeZone: target.timeZone } : undefined;
+    if (snoozedForPlan(fresh, target.planDate, when)) {
+      skipped.push({ alias: decision.alias, why: "snoozed" });
+      continue;
+    }
+    const candidate = toCandidate(fresh, decision.alias, target.planDate, when);
     const eventId = `evt_${run.planId}_${taskId}`;
 
     const patch: Partial<Task> = {};

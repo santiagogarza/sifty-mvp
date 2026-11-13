@@ -215,6 +215,36 @@ describe("narrow patches", () => {
   });
 });
 
+describe("snooze", () => {
+  it("pushes snoozeUntil, keeps it across a reload, and clears it on bring back", async () => {
+    const client = await bootAndPull();
+    const id = await captureSynced(client, "Park the newsletter");
+
+    client.calls.length = 0;
+    client.store.getState().updateTask(id, { snoozeUntil: "2026-11-20" });
+    await settle(client);
+
+    const parked = client.calls.find((c) => c.method === "PATCH" && c.path === `/api/tasks/${id}`);
+    expect(parked?.body).toMatchObject({ snoozeUntil: "2026-11-20" });
+    expect((await client.repos.tasks.get(client.userId, id))?.snoozeUntil).toBe("2026-11-20");
+
+    const reloaded = await bootAndPull(client);
+    expect(reloaded.store.getState().tasks.find((t) => t.id === id)?.snoozeUntil).toBe(
+      "2026-11-20",
+    );
+
+    reloaded.calls.length = 0;
+    reloaded.store.getState().updateTask(id, { snoozeUntil: null });
+    await settle(reloaded);
+
+    const cleared = reloaded.calls.find(
+      (c) => c.method === "PATCH" && c.path === `/api/tasks/${id}`,
+    );
+    expect(cleared?.body).toMatchObject({ snoozeUntil: null });
+    expect((await reloaded.repos.tasks.get(reloaded.userId, id))?.snoozeUntil).toBeNull();
+  });
+});
+
 describe("narrow memory patches", () => {
   it("sends only the changed memory key and keeps server-side fields", async () => {
     const client = await bootAndPull();

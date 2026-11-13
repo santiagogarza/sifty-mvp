@@ -1,9 +1,15 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { isSnoozed } from "@/lib/domain/snooze";
 import { statusLabel } from "@/lib/domain/status";
 import type { Label, Task } from "@/lib/domain/types";
-import { type BoardColumn, type BoardLifecycle, selectBoardColumns } from "@/lib/store/selectors";
+import {
+  type BoardColumn,
+  type BoardLifecycle,
+  selectBoardColumns,
+  useSnoozeClock,
+} from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import { formatRelativeDay, isOverdue, isToday } from "@/lib/utils/dates";
@@ -80,7 +86,10 @@ export function TaskBoard({
   const labels = useStore((s) => s.labels);
   const setLifecycle = useStore((s) => s.setLifecycle);
 
-  const columns = React.useMemo(() => selectBoardColumns(tasks), [tasks]);
+  const snoozeClock = useSnoozeClock();
+  // The selector reads `new Date()`. The clock is only the signal that local time moved.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: snoozeClock invalidates the memo at 8:00 and on tab focus.
+  const columns = React.useMemo(() => selectBoardColumns(tasks), [tasks, snoozeClock]);
   const labelMap = React.useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels]);
 
   const [activeId, setActiveId] = React.useState<string | null>(null);
@@ -251,6 +260,10 @@ function BoardCardContent({
 
   const overdue = isOverdue(task.due);
   const dueLabel = formatRelativeDay(task.due);
+  const snoozedLabel =
+    task.lifecycle !== "done" && task.lifecycle !== "dropped" && isSnoozed(task)
+      ? formatRelativeDay(task.snoozeUntil)
+      : null;
   const dueTone: "rose" | "ember" | "neutral" = overdue
     ? "rose"
     : isToday(task.due)
@@ -263,7 +276,13 @@ function BoardCardContent({
   const lowConfidence = confidenceBand(task) === "low";
   const ranked = task.priorityBucket !== "unset";
   const hasMeta =
-    dueLabel || task.recurrence || taskLabels.length > 0 || showAiStatus || lowConfidence || ranked;
+    dueLabel ||
+    snoozedLabel ||
+    task.recurrence ||
+    taskLabels.length > 0 ||
+    showAiStatus ||
+    lowConfidence ||
+    ranked;
 
   return (
     <div
@@ -291,6 +310,11 @@ function BoardCardContent({
               urgency={task.urgency}
               importance={task.importance}
             />
+          ) : null}
+          {snoozedLabel ? (
+            <Badge tone="neutral" variant="outline">
+              Snoozed until {snoozedLabel}
+            </Badge>
           ) : null}
           {dueLabel ? (
             <Badge tone={dueTone} variant={dueTone === "neutral" ? "outline" : "soft"}>

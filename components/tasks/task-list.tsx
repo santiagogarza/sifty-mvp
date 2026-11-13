@@ -10,6 +10,7 @@ import {
   SNOOZE_PRESETS,
   type SnoozePreset,
   describeSnooze,
+  isSnoozed,
   presetForKey,
   resolveSnooze,
 } from "@/lib/domain/snooze";
@@ -66,6 +67,8 @@ export function TaskList({
   const emptyFocusPending = React.useRef(false);
 
   const { ghosts, dismissGhost } = useCompletionGhosts(tasks);
+  const { ghosts: snoozeGhosts, dismissGhost: dismissSnoozeGhost } = useSnoozeGhosts(tasks);
+  const updateTask = useStore((s) => s.updateTask);
 
   // Range selection (Shift+click). The anchor is the last plainly clicked
   // or keyboard-active row; selection only ever contains visible ids.
@@ -182,16 +185,23 @@ export function TaskList({
     const out: Array<
       | { kind: "task"; task: Task; navIndex: number }
       | { kind: "ghost"; task: Task; restoreTo: Lifecycle }
+      | { kind: "snooze"; task: Task }
     > = tasks.map((task, navIndex) => ({ kind: "task" as const, task, navIndex }));
-    for (const g of [...ghosts].sort((a, b) => a.index - b.index)) {
-      out.splice(Math.min(g.index, out.length), 0, {
-        kind: "ghost",
-        task: g.task,
-        restoreTo: g.restoreTo,
-      });
+    const inserts = [
+      ...ghosts.map((g) => ({
+        at: g.index,
+        row: { kind: "ghost" as const, task: g.task, restoreTo: g.restoreTo },
+      })),
+      ...snoozeGhosts.map((g) => ({
+        at: g.index,
+        row: { kind: "snooze" as const, task: g.task },
+      })),
+    ].sort((a, b) => a.at - b.at);
+    for (const insert of inserts) {
+      out.splice(Math.min(insert.at, out.length), 0, insert.row);
     }
     return out;
-  }, [tasks, ghosts]);
+  }, [tasks, ghosts, snoozeGhosts]);
 
   const isEmpty = rows.length === 0;
 
@@ -231,23 +241,33 @@ export function TaskList({
       {rows.map((row, i) => {
         const divider =
           i < rows.length - 1 ? <div className="ml-9 h-px bg-[var(--border)] opacity-60" /> : null;
-        if (row.kind === "ghost") {
+        if (row.kind === "ghost" || row.kind === "snooze") {
+          const snooze = row.kind === "snooze";
           return (
             <div
-              key={`ghost-${row.task.id}`}
+              key={`${row.kind}-${row.task.id}`}
               className="ghost-collapse"
+              data-testid={snooze ? "snooze-ghost" : undefined}
               onAnimationEnd={(e) => {
                 // Unmount exactly when the collapse finishes, so the CSS
                 // timing is the single source of truth.
-                if (e.animationName === "sifty-ghost-collapse") dismissGhost(row.task.id);
+                if (e.animationName !== "sifty-ghost-collapse") return;
+                if (snooze) dismissSnoozeGhost(row.task.id);
+                else dismissGhost(row.task.id);
               }}
             >
               <div>
                 <TaskRow
                   task={row.task}
                   labels={labels}
-                  onOpen={openRow}
-                  uncompleteTo={row.restoreTo}
+                  onOpen={
+                    snooze
+                      ? (id) => {
+                          updateTask(id, { snoozeUntil: null });
+                        }
+                      : openRow
+                  }
+                  uncompleteTo={row.kind === "ghost" ? row.restoreTo : undefined}
                 />
                 {divider}
               </div>
@@ -533,6 +553,113 @@ function useCompletionGhosts(tasks: Task[]): {
       if (currentIds.has(g.task.id)) return [];
       const live = liveById.get(g.task.id);
       if (!live || live.lifecycle !== "done") return [];
+      return [{ ...g, task: live }];
+    });
+  }, [ghosts, tasks, allTasks]);
+
+  return { ghosts: visibleGhosts, dismissGhost };
+}
+
+interface SnoozeGhost {
+  task: Task;
+  /** Position the task held in the visible list before it was snoozed. */
+  index: number;
+}
+
+/**
+ * A just-snoozed task leaves Today and Inbox immediately, which reads as a
+ * delete. Keep the row for a beat. One click clears the wake date and
+ * brings it back; otherwise it collapses like a completion ghost.
+ */
+function useSnoozeGhosts(tasks: Task[]): {
+  ghosts: SnoozeGhost[];
+  dismissGhost: (id: string) => void;
+} {
+  const allTasks = useStore((s) => s.tasks);
+  const [ghosts, setGhosts] = React.useState<ReadonlyMap<string, SnoozeGhost>>(new Map());
+  const prevRef = React.useRef(tasks);
+  const timersRef = React.useRef(new Map<string, ReturnType<typeof setTimeout>>());
+
+  const dismissGhost = React.useCallback((id: string) => {
+    const timer = timersRef.current.get(id);
+    if (timer) clearTimeout(timer);
+    timersRef.current.delete(id);
+    setGhosts((old) => {
+      if (!old.has(id)) return old;
+      const next = new Map(old);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
+  React.useLayoutEffect(() => {
+    const prev = prevRef.current;
+    prevRef.current = tasks;
+    if (prev === tasks) return;
+
+    const currentIds = new Set(tasks.map((t) => t.id));
+    const store = useStore.getState();
+    const additions: SnoozeGhost[] = [];
+    prev.forEach((before, index) => {
+      if (currentIds.has(before.id) || isSnoozed(before)) return;
+      const now = store.tasks.find((t) => t.id === before.id);
+      if (!now || !isSnoozed(now)) return;
+      if (now.lifecycle === "done" || now.lifecycle === "dropped") return;
+      additions.push({ task: now, index });
+    });
+    if (additions.length === 0) return;
+
+    setGhosts((old) => {
+      const next = new Map(old);
+      for (const g of additions) next.set(g.task.id, g);
+      return next;
+    });
+    for (const g of additions) {
+      const id = g.task.id;
+      const existing = timersRef.current.get(id);
+      if (existing) clearTimeout(existing);
+      timersRef.current.set(
+        id,
+        setTimeout(() => {
+          timersRef.current.delete(id);
+          setGhosts((old) => {
+            if (!old.has(id)) return old;
+            const next = new Map(old);
+            next.delete(id);
+            return next;
+          });
+        }, GHOST_SAFETY_MS),
+      );
+    }
+  }, [tasks]);
+
+  React.useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      for (const t of timers.values()) clearTimeout(t);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (ghosts.size === 0) return;
+    const liveById = new Map(allTasks.map((t) => [t.id, t]));
+    for (const id of ghosts.keys()) {
+      const live = liveById.get(id);
+      if (!live || !isSnoozed(live) || live.lifecycle === "done" || live.lifecycle === "dropped") {
+        dismissGhost(id);
+      }
+    }
+  }, [ghosts, allTasks, dismissGhost]);
+
+  const visibleGhosts = React.useMemo(() => {
+    const currentIds = new Set(tasks.map((t) => t.id));
+    const liveById = new Map(allTasks.map((t) => [t.id, t]));
+    return [...ghosts.values()].flatMap((g) => {
+      if (currentIds.has(g.task.id)) return [];
+      const live = liveById.get(g.task.id);
+      if (!live || !isSnoozed(live) || live.lifecycle === "done" || live.lifecycle === "dropped") {
+        return [];
+      }
       return [{ ...g, task: live }];
     });
   }, [ghosts, tasks, allTasks]);

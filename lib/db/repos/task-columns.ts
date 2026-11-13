@@ -47,6 +47,7 @@ export function taskPatchColumns(
   if (patch.priorityBucket !== undefined) columns.priorityBucket = patch.priorityBucket;
   if (patch.effort !== undefined) columns.effort = patch.effort;
   if ("due" in patch) columns.due = patch.due ?? null;
+  if ("snoozeUntil" in patch) columns.snoozeUntil = patch.snoozeUntil ?? null;
   if (patch.delegationCandidate !== undefined) {
     columns.delegationCandidate = patch.delegationCandidate;
   }

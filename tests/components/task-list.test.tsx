@@ -47,6 +47,7 @@ function makeTask(id: string, title = id): Task {
     editedFields: [],
     createdAt: "2026-07-01T10:00:00.000Z",
     updatedAt: "2026-07-01T10:00:00.000Z",
+    snoozeUntil: null,
     completedAt: null,
   };
 }
@@ -433,5 +434,22 @@ describe("TaskList snooze keys", () => {
 
     await user.keyboard("sw");
     expect(useStore.getState().tasks[0]!.due).toBe(resolveSnooze("next_week"));
+  });
+});
+
+describe("snooze ghost", () => {
+  it("keeps a just-snoozed row and brings it back on click", async () => {
+    const user = userEvent.setup();
+    const live = makeTask("park", "Park this");
+    useStore.setState({ tasks: [live], labels: [] });
+    const { rerenderWith } = renderList([live]);
+
+    const snoozed = { ...live, snoozeUntil: "2026-11-20" };
+    useStore.setState({ tasks: [snoozed] });
+    rerenderWith([]);
+
+    expect(await screen.findByTestId("snooze-ghost")).toHaveTextContent("Park this");
+    await user.click(screen.getByRole("option", { name: /Park this/ }));
+    expect(useStore.getState().tasks[0]?.snoozeUntil).toBeNull();
   });
 });

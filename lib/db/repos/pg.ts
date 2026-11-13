@@ -1522,6 +1522,7 @@ function rowToTask(row: typeof schema.tasks.$inferSelect, labelIds: string[]): T
     priorityBucket: row.priorityBucket,
     effort: row.effort,
     due: row.due,
+    snoozeUntil: row.snoozeUntil,
     delegationCandidate: row.delegationCandidate,
     assigneeName: row.assigneeName,
     confidence: row.confidence / 100,

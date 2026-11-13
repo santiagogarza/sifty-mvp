@@ -1,3 +1,4 @@
+import { applyDailyPlan } from "@/lib/ai/plan/apply";
 import { PLAN_CANDIDATES, PLAN_READ_LIMITS, buildPlanContext } from "@/lib/ai/plan/context";
 import {
   type DailyPlanInput,
@@ -7,6 +8,7 @@ import {
   decideDailyPlan,
   failDailyPlan,
 } from "@/lib/ai/plan/execute";
+import { offlineDailyPlan } from "@/lib/ai/plan/stage";
 import { DAILY_PLAN_PROMPT_VERSION, MAX_TODAY_PROMOTIONS } from "@/lib/ai/plan/stage";
 import type { Repos } from "@/lib/db/repos";
 import { isTodayTaskOnDay } from "@/lib/domain/today";
@@ -299,6 +301,50 @@ describe("dailyPlan steps (offline)", () => {
     expect(finished.considered).toBe(ctx.considered);
     expect(finished.moves.length).toBeLessThanOrEqual(20);
     expect(await repos.aiRuns.list(user.id)).toHaveLength(1);
+  });
+});
+
+describe("snooze and the daily plan", () => {
+  it("omits a snoozed task until 8:00, then lets it lead, and will not demote it", async () => {
+    const repos = getTestRepos();
+    const user = await seedUser(repos);
+    const parked = await seedTask(repos, user.id, "Parked until Friday", {
+      lifecycle: "inbox",
+      priorityBucket: "do_now",
+      urgency: 0.9,
+      importance: 0.9,
+      snoozeUntil: "2026-11-20",
+    });
+    const early = new Date("2026-11-19T22:30:00Z");
+    const awake = new Date("2026-11-19T23:30:00Z");
+
+    const hidden = await buildPlanContext(repos, user.id, "2026-11-20", "Asia/Tokyo", early);
+    expect(hidden.candidates.map((c) => c.task.id)).not.toContain(parked.id);
+
+    const shown = await buildPlanContext(repos, user.id, "2026-11-20", "Asia/Tokyo", awake);
+    expect(shown.candidates.find((c) => c.task.id === parked.id)?.inToday).toBe(true);
+    expect(offlineDailyPlan(shown).summary).toContain("Parked until Friday");
+
+    const skipped = await applyDailyPlan(
+      repos,
+      user.id,
+      {
+        planDate: "2026-11-20",
+        aliases: { t1: parked.id },
+        now: early,
+        timeZone: "Asia/Tokyo",
+      },
+      {
+        summary: "Demote it.",
+        decisions: [{ alias: "t1", urgency: 0.1, importance: 0.1, reason: "not today" }],
+      },
+      { planId: "plan_snooze" },
+    );
+    expect(skipped.skipped).toEqual([{ alias: "t1", why: "snoozed" }]);
+    expect(skipped.moves).toEqual([]);
+    const fresh = await repos.tasks.get(user.id, parked.id);
+    expect(fresh?.urgency).toBe(0.9);
+    expect(fresh?.importance).toBe(0.9);
   });
 });
 

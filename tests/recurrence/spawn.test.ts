@@ -148,7 +148,11 @@ describe("spawnNextInstance", () => {
 
   it("an older instance the user re-opened does not block the series", async () => {
     const { repos, user, parent } = await seedRecurring();
-    const first = await spawnNextInstance(repos, user.id, { parent, previousLifecycle: "active" });
+    const first = await spawnNextInstance(repos, user.id, {
+      parent,
+      previousLifecycle: "active",
+      completedOn: "2026-10-16",
+    });
     // Mis-click: the previous instance is un-completed, so two rows are open.
     await repos.tasks.update(user.id, parent.id, { lifecycle: "active" });
     // Completing the real next instance must still move the series forward.
@@ -156,6 +160,7 @@ describe("spawnNextInstance", () => {
     const second = await spawnNextInstance(repos, user.id, {
       parent: successor,
       previousLifecycle: "active",
+      completedOn: "2026-10-16",
     });
     expect(second?.created).toBe(true);
     expect(second?.task.id).not.toBe(parent.id);
@@ -188,7 +193,11 @@ describe("spawnNextInstance", () => {
       sourceText: parent.sourceText,
       sourceContext: null,
     });
-    const result = await spawnNextInstance(repos, user.id, { parent, previousLifecycle: "active" });
+    const result = await spawnNextInstance(repos, user.id, {
+      parent,
+      previousLifecycle: "active",
+      completedOn: "2026-10-16",
+    });
     expect(result?.created).toBe(true);
     expect(result?.task.id).toBe(nextId);
     expect(result?.task.seriesId).toBe(parent.id);

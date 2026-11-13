@@ -1,5 +1,6 @@
 import type { Repos } from "@/lib/db/repos";
 import { AI_CONTEXT_LIMITS } from "@/lib/domain/limits";
+import { isSnoozed } from "@/lib/domain/snooze";
 import { isTodayTaskOnDay } from "@/lib/domain/today";
 import type { Task } from "@/lib/domain/types";
 import { addDaysToKey, dayKeyDelta } from "@/lib/utils/dates";
@@ -56,6 +57,11 @@ export interface RecentCompletion {
 export interface PlanContext {
   planDate: string;
   timeZone: string;
+  /**
+   * Instant the plan was read. The offline lead check uses it so a task
+   * that woke at 8:00 can still be the lead. Absent in hand-built fixtures.
+   */
+  now?: Date;
   candidates: PlanCandidate[];
   /** Open tasks the bounded read returned (candidates + not shown). */
   considered: number;
@@ -70,6 +76,7 @@ export async function buildPlanContext(
   userId: string,
   planDate: string,
   timeZone: string,
+  now: Date = new Date(),
 ): Promise<PlanContext> {
   const horizon = addDaysToKey(planDate, DEADLINE_HORIZON_DAYS);
   const [deadline, recent, done, memories] = await Promise.all([
@@ -89,16 +96,20 @@ export async function buildPlanContext(
     if (t.aiStatus === "pending" || t.aiStatus === "running") continue;
     byId.set(t.id, t);
   }
-  const open = Array.from(byId.values());
+  const when = { now, timeZone };
+  // A snoozed task is not a candidate. Leaving it in the prompt lets the
+  // plan count it toward Today and demote it, so it wakes up smaller.
+  const open = Array.from(byId.values()).filter((t) => !isSnoozed(t, now, timeZone));
   const ranked = open
     .map((task) => ({ task, rank: candidateRank(task, planDate) }))
     .sort((a, b) => a.rank - b.rank || a.task.id.localeCompare(b.task.id))
     .slice(0, PLAN_CANDIDATES)
-    .map(({ task }, i) => toCandidate(task, `t${i + 1}`, planDate));
+    .map(({ task }, i) => toCandidate(task, `t${i + 1}`, planDate, when));
 
   return {
     planDate,
     timeZone,
+    now,
     candidates: ranked,
     considered: open.length,
     notShown: Math.max(0, open.length - ranked.length),
@@ -109,11 +120,30 @@ export async function buildPlanContext(
   };
 }
 
-export function toCandidate(task: Task, alias: string, planDate: string): PlanCandidate {
+/**
+ * True while the task should stay out of Today's plan. With a clock, that
+ * is the 8:00 wake in the user's zone. Without one, the wake day itself
+ * still counts, so a plan cannot demote a task that has not woken.
+ */
+export function snoozedForPlan(
+  task: Pick<Task, "snoozeUntil">,
+  planDate: string,
+  when?: { now: Date; timeZone: string },
+): boolean {
+  if (when) return isSnoozed(task, when.now, when.timeZone);
+  return !!task.snoozeUntil && task.snoozeUntil >= planDate;
+}
+
+export function toCandidate(
+  task: Task,
+  alias: string,
+  planDate: string,
+  when?: { now: Date; timeZone: string },
+): PlanCandidate {
   return {
     task,
     alias,
-    inToday: isTodayTaskOnDay(task, planDate),
+    inToday: !snoozedForPlan(task, planDate, when) && isTodayTaskOnDay(task, planDate),
     daysUntilDue: task.due ? dayKeyDelta(task.due, planDate) : null,
     protectedFields: (["urgency", "importance", "priorityBucket"] as const).filter((f) =>
       task.editedFields.includes(f),

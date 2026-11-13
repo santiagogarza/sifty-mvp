@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { assigneeDisplayValue } from "@/lib/domain/assignee";
+import { isSnoozed } from "@/lib/domain/snooze";
 import type { Label, Lifecycle, Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
@@ -12,6 +13,7 @@ import { AiStatusInline } from "./ai-status";
 import { ConfidencePill } from "./confidence-pill";
 import { PriorityPill } from "./priority-pill";
 import { RepeatGlyph } from "./repeat-glyph";
+import { SnoozeMenu } from "./snooze-menu";
 
 /**
  * Single task row.
@@ -64,6 +66,10 @@ export const TaskRow = React.forwardRef<
   const due = task.due;
   const overdue = isOverdue(due);
   const dueLabel = formatRelativeDay(due);
+  const snoozedLabel =
+    task.lifecycle !== "done" && task.lifecycle !== "dropped" && isSnoozed(task)
+      ? formatRelativeDay(task.snoozeUntil)
+      : null;
   const assignee = task.delegationCandidate === "person" ? assigneeDisplayValue(task) : null;
   const dueTone: "rose" | "ember" | "neutral" = overdue
     ? "rose"
@@ -176,6 +182,12 @@ export const TaskRow = React.forwardRef<
       </div>
 
       <div className="flex items-center gap-2 justify-end">
+        <SnoozeMenu task={task} />
+        {snoozedLabel ? (
+          <Badge tone="neutral" variant="outline">
+            Snoozed until {snoozedLabel}
+          </Badge>
+        ) : null}
         {assignee ? (
           <Badge tone="neutral" variant="outline" className="hidden sm:inline-flex max-w-[120px]">
             <span className="truncate">{assignee}</span>

@@ -201,7 +201,7 @@ interface SiftyState {
   ensureLabel: (name: string) => Label;
 }
 
-const VERSION = 5;
+const VERSION = 6;
 
 /** Bookkeeping fields the server derives itself; never worth a push. */
 const UNSYNCED_KEYS = new Set(["id", "createdAt", "updatedAt", "completedAt"]);
@@ -279,6 +279,7 @@ export const useStore = create<SiftyState>()(
             priorityBucket: "unset",
             effort: "small",
             due: due ?? null,
+            snoozeUntil: null,
             delegationCandidate: "unsure",
             assigneeName: null,
             confidence: 0,
@@ -382,6 +383,7 @@ export const useStore = create<SiftyState>()(
             priorityBucket: source.priorityBucket,
             effort: source.effort,
             due: null,
+            snoozeUntil: null,
             delegationCandidate: source.delegationCandidate,
             assigneeName: source.assigneeName,
             confidence: 0,
@@ -653,6 +655,9 @@ export const useStore = create<SiftyState>()(
             recurrence: t.recurrence ?? null,
             seriesId: t.seriesId ?? null,
           }));
+        }
+        if (version < 6 && state.tasks) {
+          state.tasks = state.tasks.map((t) => ({ ...t, snoozeUntil: t.snoozeUntil ?? null }));
         }
         return state as SiftyState;
       },

@@ -49,7 +49,11 @@ function trial(): EntitlementSnapshot {
 }
 
 function lapsedTrial(): EntitlementSnapshot {
-  const started = new Date(Date.now() - 40 * DAY);
+  // A 30-day trial that has already ended, both on the wall clock and at the
+  // frozen `NOW` these events are applied against. Anchoring only on
+  // Date.now() makes the window overlap October once the calendar passes it.
+  const anchor = new Date(Math.min(Date.now(), NOW.getTime()));
+  const started = new Date(anchor.getTime() - 40 * DAY);
   return { ...trialSnapshot(30, started), tier: "free", stripeCustomerId: "cus_X" };
 }
 

@@ -50,6 +50,7 @@ function task(over: Partial<Task> = {}): Task {
     editedFields: [],
     createdAt: "2026-10-01T10:00:00.000Z",
     updatedAt: "2026-10-01T10:00:00.000Z",
+    snoozeUntil: null,
     completedAt: null,
     ...over,
   };
@@ -133,6 +134,50 @@ describe("composeMorningPlan", () => {
 
   it("the away section is a Phase 3 placeholder", () => {
     expect(composeAwaySection({ ...base, tasks: [] })).toBeNull();
+  });
+});
+
+describe("snooze", () => {
+  const parked = task({
+    id: "parked",
+    lifecycle: "inbox",
+    priorityBucket: "do_now",
+    due: "2026-10-01",
+    snoozeUntil: "2026-11-20",
+  });
+
+  it("leaves a snoozed task out of the morning plan and the inbox count", () => {
+    const plan = composeMorningPlan({
+      ...base,
+      tasks: [parked, task({ id: "focus", lifecycle: "active", snoozeUntil: "2026-11-20" })],
+    });
+    expect(plan!.overdue.map((t) => t.id)).not.toContain("parked");
+    expect(plan!.today.map((t) => t.id)).not.toContain("parked");
+    expect(plan!.inboxCount).toBe(0);
+    // A snoozed focus task stays in Focus. Today and Inbox are the views that hide it.
+    expect(plan!.focus.map((t) => t.id)).toEqual(["focus"]);
+  });
+
+  it("leaves a snoozed task out of the due reminder and the weekly inbox count", () => {
+    expect(composeDueReminder({ ...base, tasks: [parked] })).toBeNull();
+    const review = composeWeeklyReview({ ...base, tasks: [parked] });
+    expect(review!.overdue.map((t) => t.id)).not.toContain("parked");
+    expect(review!.inboxCount).toBe(0);
+  });
+
+  it("uses the user's zone for the 8:00 wake", () => {
+    const waking = task({
+      id: "waking",
+      lifecycle: "inbox",
+      priorityBucket: "do_now",
+      snoozeUntil: "2026-11-20",
+    });
+    const zone = { ...base, timeZone: "Asia/Tokyo", tasks: [waking] };
+    const early = composeMorningPlan({ ...zone, now: new Date("2026-11-19T22:30:00Z") });
+    const awake = composeMorningPlan({ ...zone, now: new Date("2026-11-19T23:30:00Z") });
+    expect(early).toBeNull();
+    expect(awake!.today.map((t) => t.id)).toEqual(["waking"]);
+    expect(awake!.inboxCount).toBe(1);
   });
 });
 
