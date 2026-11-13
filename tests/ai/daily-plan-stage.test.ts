@@ -116,6 +116,27 @@ describe("snoozed tasks stay out of Today", () => {
     expect(after.inToday).toBe(true);
   });
 
+  it("names a task that woke at 8:00 as the lead", () => {
+    const woken = task({
+      title: "Wake up call",
+      lifecycle: "inbox",
+      priorityBucket: "do_now",
+      urgency: 0.9,
+      importance: 0.9,
+      snoozeUntil: "2026-11-20",
+    });
+    const when = { now: new Date("2026-11-19T23:30:00Z"), timeZone: "Asia/Tokyo" };
+    const ctx = context([woken], {
+      planDate: "2026-11-20",
+      timeZone: when.timeZone,
+      now: when.now,
+      candidates: [toCandidate(woken, "t1", "2026-11-20", when)],
+    });
+    const out = offlineDailyPlan(ctx);
+    expect(ctx.candidates[0]!.inToday).toBe(true);
+    expect(out.summary).toContain("Wake up call");
+  });
+
   it("is not demoted when Today is over the target", () => {
     const snoozed = task({
       title: "Parked",

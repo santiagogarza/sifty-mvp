@@ -196,13 +196,15 @@ export function offlineDailyPlan(ctx: PlanContext): DailyPlanOutput {
     }
   }
 
+  const when = ctx.now ? { now: ctx.now, timeZone: ctx.timeZone } : undefined;
   const lead = ctx.candidates.find((c) => {
     const after = decisions.find((d) => d.alias === c.alias);
-    const bucket = after
-      ? bucketFromScalars(after.urgency, after.importance)
-      : c.task.priorityBucket;
+    // Unchanged tasks already carry the clock in `inToday`. Re-checking
+    // snooze without that clock would hide a task for its whole wake day.
+    if (!after) return c.inToday;
+    const bucket = bucketFromScalars(after.urgency, after.importance);
     return (
-      !snoozedForPlan(c.task, ctx.planDate) &&
+      !snoozedForPlan(c.task, ctx.planDate, when) &&
       isTodayTaskOnDay({ ...c.task, priorityBucket: bucket }, ctx.planDate)
     );
   });

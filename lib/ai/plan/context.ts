@@ -57,6 +57,11 @@ export interface RecentCompletion {
 export interface PlanContext {
   planDate: string;
   timeZone: string;
+  /**
+   * Instant the plan was read. The offline lead check uses it so a task
+   * that woke at 8:00 can still be the lead. Absent in hand-built fixtures.
+   */
+  now?: Date;
   candidates: PlanCandidate[];
   /** Open tasks the bounded read returned (candidates + not shown). */
   considered: number;
@@ -104,6 +109,7 @@ export async function buildPlanContext(
   return {
     planDate,
     timeZone,
+    now,
     candidates: ranked,
     considered: open.length,
     notShown: Math.max(0, open.length - ranked.length),
