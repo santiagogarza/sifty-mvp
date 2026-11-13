@@ -84,7 +84,8 @@ describe("SnoozeMenu", () => {
 
     await user.click(screen.getByTestId("snooze-trigger"));
     expect(screen.getByTestId("snooze-tomorrow")).toHaveTextContent("Tomorrow");
-    expect(screen.getByTestId("snooze-weekend")).toHaveTextContent("Nov 14");
+    // Friday: This weekend is the same Saturday as Tomorrow, so it stays hidden.
+    expect(screen.queryByTestId("snooze-weekend")).toBeNull();
     expect(screen.getByTestId("snooze-next-week")).toHaveTextContent("Nov 16");
     expect(screen.getByTestId("snooze-date")).toHaveAttribute("min", "2026-11-14");
     expect(screen.getByTestId("snooze-date")).toHaveValue("2026-11-14");
@@ -92,6 +93,17 @@ describe("SnoozeMenu", () => {
     await user.click(screen.getByTestId("snooze-tomorrow"));
     expect(updateTask).toHaveBeenCalledWith("task_1", { snoozeUntil: "2026-11-14" });
     expect(onRow).not.toHaveBeenCalled();
+  });
+
+  it("offers This weekend when it is later than tomorrow", async () => {
+    vi.setSystemTime(new Date("2026-11-12T12:00:00Z"));
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const { updateTask } = renderMenu(makeTask());
+
+    await user.click(screen.getByTestId("snooze-trigger"));
+    expect(screen.getByTestId("snooze-weekend")).toHaveTextContent("Nov 14");
+    await user.click(screen.getByTestId("snooze-weekend"));
+    expect(updateTask).toHaveBeenCalledWith("task_1", { snoozeUntil: "2026-11-14" });
   });
 
   it("hides This weekend on Sunday", async () => {

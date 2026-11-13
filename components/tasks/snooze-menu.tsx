@@ -52,7 +52,10 @@ export function SnoozeMenu({
 
   const shortcuts: Array<{ label: string; date: string; testId: string }> = [
     { label: "Tomorrow", date: tomorrow, testId: "snooze-tomorrow" },
-    ...(weekend ? [{ label: "This weekend", date: weekend, testId: "snooze-weekend" }] : []),
+    // Friday's Saturday is already Tomorrow, so the extra row would repeat it.
+    ...(weekend && weekend !== tomorrow
+      ? [{ label: "This weekend", date: weekend, testId: "snooze-weekend" }]
+      : []),
     { label: "Next week", date: nextWeek, testId: "snooze-next-week" },
   ];
 

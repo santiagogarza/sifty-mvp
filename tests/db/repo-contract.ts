@@ -729,6 +729,22 @@ export function describeRepoContract(getRepos: () => Repos): void {
       expect((await repos.decisions.get(u.id, stale.id))?.status).toBe("open");
     });
 
+    it("tasks: snoozeUntil round-trips through get and list, then clears to null", async () => {
+      const repos = getRepos();
+      const u = await createUser(repos, "snooze@example.com");
+      const t = await repos.tasks.create(u.id, { sourceText: "Park", sourceContext: null });
+      expect(t.snoozeUntil).toBeNull();
+      const parked = await repos.tasks.update(u.id, t.id, { snoozeUntil: "2026-11-20" });
+      expect(parked?.snoozeUntil).toBe("2026-11-20");
+      expect((await repos.tasks.get(u.id, t.id))?.snoozeUntil).toBe("2026-11-20");
+      expect((await repos.tasks.list(u.id)).find((row) => row.id === t.id)?.snoozeUntil).toBe(
+        "2026-11-20",
+      );
+      const cleared = await repos.tasks.update(u.id, t.id, { snoozeUntil: null });
+      expect(cleared?.snoozeUntil).toBeNull();
+      expect((await repos.tasks.get(u.id, t.id))?.snoozeUntil).toBeNull();
+    });
+
     it("tasks: siftedWithAssumptions round-trips and defaults to false", async () => {
       const repos = getRepos();
       const u = await createUser(repos, "assume@example.com");
