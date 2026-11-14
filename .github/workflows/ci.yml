@@ -141,6 +141,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Report deploy start to Rollouts
+        continue-on-error: true
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+        run: bash scripts/rollouts-deploy-event.sh start
+
       - name: Wait until ${{ env.SMOKE_URL }} serves ${{ github.sha }}
         run: |
           set -euo pipefail
@@ -168,6 +174,13 @@ jobs:
           if [ -z "$dep" ]; then echo "no vercel[bot] GitHub deployment record for ${GITHUB_SHA} (not required)"; exit 0; fi
           gh api "repos/${GITHUB_REPOSITORY}/deployments/$dep/statuses?per_page=1" \
             --jq '.[0] | "state=\(.state) log=\(.log_url // "") url=\(.environment_url // "")"' || true
+
+      - name: Report deploy result to Rollouts
+        if: always()
+        continue-on-error: true
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+        run: bash scripts/rollouts-deploy-event.sh finish "${{ job.status }}"
 
   e2e:
     name: Playwright smoke
