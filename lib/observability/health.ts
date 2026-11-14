@@ -16,6 +16,10 @@ export interface HealthReport {
 }
 
 const DB_TIMEOUT_SECONDS = 3;
+/** A healthy ping is reused this long; failures are always re-checked. */
+const DB_PING_TTL_MS = 15_000;
+
+let lastHealthyPing: { url: string; at: number } | null = null;
 
 /**
  * Liveness + readiness in one call, for an external uptime check. Unauthenticated,
@@ -32,7 +36,7 @@ export async function checkHealth(): Promise<HealthReport> {
 
   try {
     persistence = getPersistenceMode();
-    if (persistence === "postgres") db = (await pingDb()) ? "ok" : "error";
+    if (persistence === "postgres") db = (await pingDbCached()) ? "ok" : "error";
   } catch {
     db = "error";
   }
@@ -47,6 +51,21 @@ export async function checkHealth(): Promise<HealthReport> {
     problems,
     ts: new Date().toISOString(),
   };
+}
+
+/**
+ * Uptime checks hit this every minute, and each fresh connection costs a
+ * second or more against a cold database, so a recent healthy result is
+ * reused per warm instance.
+ */
+async function pingDbCached(): Promise<boolean> {
+  const url = process.env.DATABASE_URL;
+  if (url && lastHealthyPing?.url === url && Date.now() - lastHealthyPing.at < DB_PING_TTL_MS) {
+    return true;
+  }
+  const ok = await pingDb();
+  lastHealthyPing = ok && url ? { url, at: Date.now() } : null;
+  return ok;
 }
 
 /**
