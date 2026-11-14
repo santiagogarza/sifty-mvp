@@ -2,6 +2,10 @@ import path from "node:path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // tsconfig sets `jsx: "preserve"` for Next.js, which leaves JSX untransformed.
+  // Tests run outside Next, so compile JSX with the automatic React runtime here.
+  // rolldown-vite transforms via oxc, so the jsx option lives under `oxc`.
+  oxc: { jsx: { runtime: "automatic", importSource: "react" } },
   test: {
     // Default to node — most tests are server logic, jose / Buffer / Uint8Array
     // checks misbehave under jsdom because realm-bound globals don't match.
