@@ -10,11 +10,19 @@ import {
   emptySnapshot,
   trialSnapshot,
 } from "@/lib/entitlements/entitlements";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = new Date("2026-10-12T12:00:00.000Z");
 const unix = (d: Date) => Math.floor(d.getTime() / 1000);
+
+// Fixtures and the reducer's default `now` read the wall clock; keep it on NOW.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"], now: NOW });
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 function paying(): EntitlementSnapshot {
   return {
