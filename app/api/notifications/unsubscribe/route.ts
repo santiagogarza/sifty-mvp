@@ -20,6 +20,7 @@ export const dynamic = "force-dynamic";
  * the worst a leaked token can do is stop someone's digest emails.
  */
 export async function GET(req: Request) {
+  if (isLinkScanner(req)) return new NextResponse(null, { status: 204 });
   const url = new URL(req.url);
   const token = url.searchParams.get("token");
   const base = appUrl();
@@ -48,6 +49,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid or expired link" }, { status: 400 });
   }
   return NextResponse.json({ ok: true, unsubscribed: outcome === "updated" });
+}
+
+const SCANNER_PLATFORMS = ["Barracuda", "Proofpoint", "Mimecast", "SafeLinks"];
+
+/**
+ * Mail security gateways prefetch every footer link. They never confirm,
+ * so skip the token check and user lookup for them.
+ */
+function isLinkScanner(req: Request): boolean {
+  const ua = req.headers.get("user-agent");
+  if (!ua) return false;
+  const [, platform = ""] = ua.match(/\(([^)]*)\)/)!;
+  return SCANNER_PLATFORMS.some((name) => platform.includes(name));
 }
 
 async function readForm(req: Request): Promise<URLSearchParams> {
