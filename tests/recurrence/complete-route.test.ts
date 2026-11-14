@@ -40,6 +40,7 @@ describe("completing a recurring task over the API", () => {
 
     const res = await patch(created.id, cookie, {
       lifecycle: "done",
+      completedOn: "2026-10-12",
       timeZone: "Europe/Madrid",
     });
     expect(res.status).toBe(200);
@@ -65,7 +66,7 @@ describe("completing a recurring task over the API", () => {
       seriesId: created.id,
     });
     expect(body.spawned!.editedFields).toContain("due");
-    // Fixed daily from a due of the 12th: the 13th, whatever today is.
+    // Fixed daily, due and completed on the 12th: the 13th.
     expect(body.spawned!.due).toBe("2026-10-13");
 
     // Replayed completion (lost response, second device): same successor, no third row.
