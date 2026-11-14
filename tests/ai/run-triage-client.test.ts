@@ -427,9 +427,32 @@ describe("store persistence", () => {
 
     expect(useStore.getState().modelPreference).toBe("openai");
     const persisted = JSON.parse(window.localStorage.getItem(STORE_KEY) ?? "{}");
-    expect(persisted.version).toBe(5);
+    expect(persisted.version).toBe(6);
     expect(persisted.state.modelPreference).toBe("openai");
     expect(persisted.state).not.toHaveProperty("preferredModelId");
+  });
+
+  it("moves a v5 blob's Board choice to its own key, without overriding a newer one", async () => {
+    window.localStorage.setItem(
+      STORE_KEY,
+      JSON.stringify({
+        state: { tasks: [], labels: [], memories: [], viewMode: "board" },
+        version: 5,
+      }),
+    );
+    const { useStore } = await import("@/lib/store/store");
+    await useStore.persist.rehydrate();
+    expect(window.localStorage.getItem("sifty.viewMode")).toBe(JSON.stringify("board"));
+    const persisted = JSON.parse(window.localStorage.getItem(STORE_KEY) ?? "{}");
+    expect(persisted.state).not.toHaveProperty("viewMode");
+
+    window.localStorage.setItem("sifty.viewMode", JSON.stringify("list"));
+    window.localStorage.setItem(
+      STORE_KEY,
+      JSON.stringify({ state: { tasks: [], viewMode: "board" }, version: 5 }),
+    );
+    await useStore.persist.rehydrate();
+    expect(window.localStorage.getItem("sifty.viewMode")).toBe(JSON.stringify("list"));
   });
 
   it("falls back to the default preference for a v3 blob with an unknown model id", async () => {
