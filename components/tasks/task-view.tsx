@@ -5,9 +5,13 @@ import { PageHeader } from "@/components/app-shell/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Task } from "@/lib/domain/types";
 import { useStore } from "@/lib/store/store";
+import { cn } from "@/lib/utils/cn";
 import * as React from "react";
+import { BOARD_BREAKOUT_CLASS, BOARD_GUTTER_CLASS, BoardSkeleton, BoardView } from "./board-view";
 import { TaskEmptyState } from "./empty-state";
 import { TaskList } from "./task-list";
+import { useViewMode } from "./use-view-mode";
+import { ViewToggle } from "./view-toggle";
 
 /**
  * Reusable view that renders the standard structure for Today/Inbox/Focus/etc.
@@ -31,24 +35,66 @@ export function TaskView({
   emptyDescription?: string;
   rightSlot?: React.ReactNode;
 }) {
-  const { openDetail } = useFrame();
+  const { openDetail, openCapture, syncError } = useFrame();
   const tasks = useStore((s) => s.tasks);
   const hydrated = useStore((s) => s.hydrated);
+  const mode = useViewMode();
+  const board = mode === "board";
 
   const visible = React.useMemo(() => selector(tasks), [tasks, selector]);
 
+  const header = (
+    <PageHeader
+      eyebrow={board ? "BOARD" : eyebrow}
+      title={board ? "Everything, by status" : title}
+      description={
+        board
+          ? "Drag a card to another column to file it. Same order, words, and icons as the sidebar."
+          : description
+      }
+      actions={
+        <div className="flex items-center gap-2">
+          {rightSlot}
+          <ViewToggle />
+        </div>
+      }
+    />
+  );
+
+  const body = !hydrated ? (
+    board ? (
+      <BoardSkeleton />
+    ) : (
+      <TaskListSkeleton />
+    )
+  ) : board ? (
+    <BoardView
+      tasks={tasks}
+      onOpen={openDetail}
+      onAdd={(lifecycle) => openCapture({ lifecycle })}
+      syncError={syncError}
+    />
+  ) : (
+    <TaskList
+      tasks={visible}
+      onOpen={openDetail}
+      emptyState={<TaskEmptyState title={emptyTitle} description={emptyDescription} />}
+    />
+  );
+
+  if (board) {
+    return (
+      <div className={cn(BOARD_BREAKOUT_CLASS, BOARD_GUTTER_CLASS)}>
+        {header}
+        {body}
+      </div>
+    );
+  }
+
   return (
     <>
-      <PageHeader eyebrow={eyebrow} title={title} description={description} actions={rightSlot} />
-      {!hydrated ? (
-        <TaskListSkeleton />
-      ) : (
-        <TaskList
-          tasks={visible}
-          onOpen={openDetail}
-          emptyState={<TaskEmptyState title={emptyTitle} description={emptyDescription} />}
-        />
-      )}
+      {header}
+      {body}
     </>
   );
 }

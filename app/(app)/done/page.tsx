@@ -4,6 +4,7 @@ import { useFrame } from "@/components/app-shell/app-frame";
 import { PageShell } from "@/components/app-shell/page-shell";
 import { TaskList } from "@/components/tasks/task-list";
 import { TaskView } from "@/components/tasks/task-view";
+import { useViewMode } from "@/components/tasks/use-view-mode";
 import { statusLabel } from "@/lib/domain/status";
 import { selectDoneTasks, selectDroppedTasks } from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
@@ -35,10 +36,11 @@ function DroppedSection() {
   const { openDetail } = useFrame();
   const tasks = useStore((s) => s.tasks);
   const hydrated = useStore((s) => s.hydrated);
+  const mode = useViewMode();
   const [expanded, setExpanded] = React.useState(false);
 
   const dropped = React.useMemo(() => selectDroppedTasks(tasks), [tasks]);
-  if (!hydrated || dropped.length === 0) return null;
+  if (mode === "board" || !hydrated || dropped.length === 0) return null;
 
   return (
     <section className="mt-8 mb-10 pt-4 border-t border-[var(--border)]">
