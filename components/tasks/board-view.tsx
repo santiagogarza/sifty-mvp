@@ -59,6 +59,7 @@ export function BoardView({
   const [holdUndo, setHoldUndo] = React.useState(false);
   const [settledId, setSettledId] = React.useState<string | null>(null);
   const [pulse, setPulse] = React.useState<Lifecycle | null>(null);
+  const [focusTick, setFocusTick] = React.useState(0);
 
   const boardRef = React.useRef<HTMLDivElement>(null);
   const cardNodes = React.useRef(new Map<string, HTMLDivElement>());
@@ -93,10 +94,12 @@ export function BoardView({
     boardRef.current?.focus({ preventScroll: true });
   }, [anyCards]);
 
+  // focusTick retriggers focus after the same card remounts in a new column.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: focusTick is the remount signal, not a value the effect reads
   React.useEffect(() => {
     if (!selectedId) return;
     cardNodes.current.get(selectedId)?.focus({ preventScroll: true });
-  }, [selectedId]);
+  }, [selectedId, focusTick]);
 
   React.useEffect(() => {
     if (!undo || holdUndo) return;
@@ -115,28 +118,41 @@ export function BoardView({
     else cardNodes.current.delete(id);
   }, []);
 
+  // The moved card remounts in another column, which drops focus to the
+  // page. selectedId does not change, so bump a tick and refocus only when
+  // the keyboard was already inside the board.
+  const keepKeyboardFocus = React.useCallback(() => {
+    const board = boardRef.current;
+    const active = document.activeElement;
+    if (board && active instanceof Node && board.contains(active)) {
+      setFocusTick((tick) => tick + 1);
+    }
+  }, []);
+
   const moveTask = React.useCallback(
     (taskId: string, to: Lifecycle) => {
       const task = useStore.getState().tasks.find((item) => item.id === taskId);
       if (!task || task.lifecycle === to) return;
       if (to === "done") priorLifecycle.current.set(taskId, task.lifecycle);
+      keepKeyboardFocus();
       setLifecycle(taskId, to);
       setUndo({ taskId, from: task.lifecycle, to });
       setSettledId(taskId);
       setPulse(to);
       setSelectedId(taskId);
     },
-    [setLifecycle],
+    [keepKeyboardFocus, setLifecycle],
   );
 
   const undoMove = React.useCallback(() => {
     if (!undo) return;
+    keepKeyboardFocus();
     setLifecycle(undo.taskId, undo.from);
     setSettledId(undo.taskId);
     setPulse(undo.from);
     setSelectedId(undo.taskId);
     setUndo(null);
-  }, [setLifecycle, undo]);
+  }, [keepKeyboardFocus, setLifecycle, undo]);
 
   const onComplete = (task: Task) => {
     if (task.lifecycle === "done") {

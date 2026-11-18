@@ -8,7 +8,7 @@ import type { Task } from "@/lib/domain/types";
 import type { Lifecycle } from "@/lib/domain/types";
 import { selectInboxTasks } from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -115,6 +115,23 @@ describe("BoardView", () => {
     expect(screen.getByText("Moved to Focus")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Focus, 1" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Inbox, 0" })).toBeInTheDocument();
+  });
+
+  it("keeps focus after a keyboard move so the next file and undo still run", async () => {
+    const user = userEvent.setup();
+    renderBoard([makeTask()]);
+    await waitFor(() => expect(screen.getByTestId("board")).toHaveFocus());
+
+    await user.keyboard("{ArrowDown}");
+    await user.keyboard("{Shift>}{ArrowRight}{/Shift}");
+    expect(useStore.getState().tasks[0]?.lifecycle).toBe("active");
+
+    await user.keyboard("{Shift>}{ArrowRight}{/Shift}");
+    expect(useStore.getState().tasks[0]?.lifecycle).toBe("waiting");
+
+    await user.keyboard("{Control>}z{/Control}");
+    expect(useStore.getState().tasks[0]?.lifecycle).toBe("active");
+    expect(screen.getByRole("article", { name: "Draft the note" })).toHaveFocus();
   });
 
   it("does not file a Done card past the last column", () => {
