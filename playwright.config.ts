@@ -51,6 +51,8 @@ export default defineConfig({
           // enough that the burst test can't starve the functional tests
           // running in parallel (it skips itself when no 429 is observed;
           // limiter semantics are covered by unit tests).
+          SIFTY_DISABLE_AUTH: process.env.SIFTY_DISABLE_AUTH ?? "1",
+          SIFTY_AI_OFFLINE: process.env.SIFTY_AI_OFFLINE ?? "1",
           RATELIMIT_TRIAGE_PER_MIN: process.env.RATELIMIT_TRIAGE_PER_MIN ?? "200",
         },
       },
