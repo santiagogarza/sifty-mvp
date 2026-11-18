@@ -247,7 +247,7 @@ export function BoardView({
       aria-label="Task board"
       tabIndex={0}
       onKeyDown={onKeyDown}
-      className="flex flex-col gap-3 outline-none"
+      className="flex flex-col gap-3 outline-none focus-visible:!outline-none"
     >
       <DndContext
         sensors={sensors}
@@ -262,7 +262,7 @@ export function BoardView({
       >
         <div
           data-testid="board-scroller"
-          className="flex h-[calc(100dvh-14rem)] min-w-0 snap-x snap-proximity items-stretch gap-3 overflow-x-auto pb-2 select-none md:h-[calc(100dvh-11rem)]"
+          className="flex h-[calc(100dvh-14rem)] min-w-0 snap-x snap-proximity items-stretch gap-3 overflow-x-auto pb-2 select-none md:h-[calc(100dvh-14rem)]"
         >
           {columns.map((column) => (
             <BoardColumn

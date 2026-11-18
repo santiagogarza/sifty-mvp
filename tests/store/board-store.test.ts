@@ -40,6 +40,15 @@ describe("board store writes", () => {
     expect(after?.title).toBe("Renamed by triage");
   });
 
+  it("sets completedAt when a task is created already done", () => {
+    const task = useStore.getState().createTask({
+      sourceText: "Already finished",
+      lifecycle: "done",
+    });
+    expect(task.lifecycle).toBe("done");
+    expect(task.completedAt).toBeTruthy();
+  });
+
   it("sets completedAt when entering Done and clears it when leaving", () => {
     const task = useStore.getState().createTask({ sourceText: "Finish" });
     useStore.getState().updateTask(task.id, { lifecycle: "done" });
