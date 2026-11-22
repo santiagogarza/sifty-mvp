@@ -64,9 +64,6 @@ export interface SyncHooks {
   isTaskDirty(taskId: string): boolean;
 }
 
-/** How task pages render: linear list, or the kanban board. */
-export type TaskViewMode = "list" | "board";
-
 let syncHooks: SyncHooks | null = null;
 
 export function registerSyncHooks(hooks: SyncHooks | null): void {
@@ -84,7 +81,6 @@ interface SiftyState {
   memories: Memory[];
   /** Settings → AI model. A preference id from `MODEL_PREFERENCES`, never a raw model id. */
   modelPreference: ModelPreference;
-  viewMode: TaskViewMode;
   /** First-run welcome card closed on this device. */
   welcomeDismissed: boolean;
   /**
@@ -102,7 +98,6 @@ interface SiftyState {
 
   setHydrated: (v: boolean) => void;
   setModelPreference: (preference: ModelPreference) => void;
-  setViewMode: (mode: TaskViewMode) => void;
   dismissWelcome: () => void;
   setEditScope: (taskId: string, scope: EditScope) => void;
 
@@ -116,6 +111,8 @@ interface SiftyState {
     due?: string | null;
     /** Provisional title when it should differ from the raw text (date phrase removed). */
     title?: string | null;
+    /** Where the task starts; a board column's Add passes its own. Defaults to the Inbox. */
+    lifecycle?: Lifecycle;
   }) => Task;
   updateTask: (
     id: string,
@@ -201,7 +198,7 @@ interface SiftyState {
   ensureLabel: (name: string) => Label;
 }
 
-const VERSION = 5;
+const VERSION = 6;
 
 /** Bookkeeping fields the server derives itself; never worth a push. */
 const UNSYNCED_KEYS = new Set(["id", "createdAt", "updatedAt", "completedAt"]);
@@ -239,14 +236,12 @@ export const useStore = create<SiftyState>()(
         labels: [],
         memories: [],
         modelPreference: DEFAULT_MODEL_PREFERENCE,
-        viewMode: "list",
         welcomeDismissed: false,
         instanceScope: {},
         completedFrom: {},
 
         setHydrated: (v) => set({ hydrated: v }),
         setModelPreference: (preference) => set({ modelPreference: preference }),
-        setViewMode: (mode) => set({ viewMode: mode }),
         dismissWelcome: () => set({ welcomeDismissed: true }),
         setEditScope: (taskId, scope) =>
           set((s) => {
@@ -254,7 +249,7 @@ export const useStore = create<SiftyState>()(
             return { instanceScope: scope === "instance" ? { ...rest, [taskId]: true } : rest };
           }),
 
-        createTask: ({ sourceText, sourceContext, due, title }) => {
+        createTask: ({ sourceText, sourceContext, due, title, lifecycle = "inbox" }) => {
           const now = new Date().toISOString();
           const text = sourceText.trim();
           const titleSource = title?.trim() || text;
@@ -270,7 +265,7 @@ export const useStore = create<SiftyState>()(
             title: provisionalTitle,
             description: sourceContext?.trim() || null,
             nextAction: null,
-            lifecycle: "inbox",
+            lifecycle,
             aiStatus: "pending",
             aiError: null,
             aiAttempts: 0,
@@ -631,7 +626,6 @@ export const useStore = create<SiftyState>()(
         labels: s.labels,
         memories: s.memories,
         modelPreference: s.modelPreference,
-        viewMode: s.viewMode,
         welcomeDismissed: s.welcomeDismissed,
       }),
       migrate: (persisted, version) => {
@@ -653,6 +647,18 @@ export const useStore = create<SiftyState>()(
             recurrence: t.recurrence ?? null,
             seriesId: t.seriesId ?? null,
           }));
+        }
+        if (version < 6) {
+          // v5 kept the List/Board choice in this blob; it now has its own
+          // device key (see components/tasks/use-view-mode.ts). Rehydration
+          // runs before first render, so writing the key here is enough.
+          const legacy = persisted as { viewMode?: string };
+          try {
+            if (legacy.viewMode === "board" && localStorage.getItem("sifty.viewMode") === null) {
+              localStorage.setItem("sifty.viewMode", JSON.stringify("board"));
+            }
+          } catch {}
+          legacy.viewMode = undefined;
         }
         return state as SiftyState;
       },

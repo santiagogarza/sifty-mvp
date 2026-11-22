@@ -94,6 +94,50 @@ describe("createTask with a capture due date", () => {
   });
 });
 
+describe("createTask lifecycle", () => {
+  it("defaults to the Inbox", () => {
+    expect(useStore.getState().createTask({ sourceText: "Plain capture" }).lifecycle).toBe("inbox");
+  });
+
+  it("starts in the requested status, which triage does not move and edits do not protect", () => {
+    const { createTask, applyTriage } = useStore.getState();
+    const task = createTask({ sourceText: "Ship the board", lifecycle: "active" });
+    expect(task.lifecycle).toBe("active");
+    expect(task.editedFields).not.toContain("lifecycle");
+    applyTriage(task.id, {
+      title: "Ship the board view",
+      description: null,
+      nextAction: "Open the PR",
+      urgency: 0.8,
+      importance: 0.8,
+      effort: "medium",
+      due: null,
+      delegationCandidate: "self",
+      labelIds: [],
+      subtasks: [],
+      rationale: null,
+      confidence: 0.9,
+      clarifyingQuestion: null,
+    });
+    const after = useStore.getState().tasks.find((t) => t.id === task.id)!;
+    expect(after.title).toBe("Ship the board view");
+    expect(after.lifecycle).toBe("active");
+  });
+});
+
+describe("updateTask completedAt", () => {
+  it("is set on entering Done and cleared on leaving it", () => {
+    seed({ id: "task_c", lifecycle: "waiting" });
+    const { updateTask } = useStore.getState();
+    updateTask("task_c", { lifecycle: "done" });
+    const done = useStore.getState().tasks.find((t) => t.id === "task_c")!;
+    expect(done.completedAt).not.toBeNull();
+    expect(useStore.getState().completedFrom.task_c).toBe("waiting");
+    updateTask("task_c", { lifecycle: "waiting" });
+    expect(useStore.getState().tasks.find((t) => t.id === "task_c")!.completedAt).toBeNull();
+  });
+});
+
 describe("duplicateTask", () => {
   it("copies content, resets subtasks with fresh ids, and skips due/AI history", () => {
     const original = seed({ id: "task_src" });

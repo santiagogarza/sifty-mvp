@@ -1,5 +1,13 @@
+import { STATUS_VIEWS } from "@/lib/domain/status";
 import type { Lifecycle, Task } from "@/lib/domain/types";
-import { BOARD_LIFECYCLES, selectBoardColumns } from "@/lib/store/selectors";
+import {
+  BOARD_LIFECYCLES,
+  selectBoardColumns,
+  selectByLifecycle,
+  selectDoneTasks,
+  selectFocusTasks,
+  selectInboxTasks,
+} from "@/lib/store/selectors";
 import { describe, expect, it } from "vitest";
 
 function makeTask(overrides: Partial<Task> & { id: string; lifecycle: Lifecycle }): Task {
@@ -40,6 +48,33 @@ function makeTask(overrides: Partial<Task> & { id: string; lifecycle: Lifecycle 
 }
 
 describe("selectBoardColumns", () => {
+  it("the columns are exactly the sidebar's status views — no Today, no Dropped", () => {
+    expect([...BOARD_LIFECYCLES]).toEqual(STATUS_VIEWS.map((v) => v.status));
+    expect(BOARD_LIFECYCLES).not.toContain("dropped");
+  });
+
+  it("each column keeps its list view's order", () => {
+    const tasks = [
+      makeTask({ id: "i1", lifecycle: "inbox", createdAt: "2026-07-01T10:00:00.000Z" }),
+      makeTask({ id: "i2", lifecycle: "inbox", createdAt: "2026-07-03T10:00:00.000Z" }),
+      makeTask({ id: "a1", lifecycle: "active", priorityBucket: "drop" }),
+      makeTask({ id: "a2", lifecycle: "active", priorityBucket: "do_now", urgency: 0.9 }),
+      makeTask({ id: "w1", lifecycle: "waiting", updatedAt: "2026-07-01T10:00:00.000Z" }),
+      makeTask({ id: "w2", lifecycle: "waiting", updatedAt: "2026-07-04T10:00:00.000Z" }),
+      makeTask({ id: "s1", lifecycle: "someday", updatedAt: "2026-07-05T10:00:00.000Z" }),
+      makeTask({ id: "s2", lifecycle: "someday", updatedAt: "2026-07-02T10:00:00.000Z" }),
+      makeTask({ id: "d1", lifecycle: "done", completedAt: "2026-07-01T10:00:00.000Z" }),
+      makeTask({ id: "d2", lifecycle: "done", completedAt: "2026-07-06T10:00:00.000Z" }),
+    ];
+    const ids = (list: Task[]) => list.map((t) => t.id);
+    const columns = new Map(selectBoardColumns(tasks).map((c) => [c.lifecycle, ids(c.tasks)]));
+    expect(columns.get("inbox")).toEqual(ids(selectInboxTasks(tasks)));
+    expect(columns.get("active")).toEqual(ids(selectFocusTasks(tasks)));
+    expect(columns.get("waiting")).toEqual(ids(selectByLifecycle(tasks, "waiting")));
+    expect(columns.get("someday")).toEqual(ids(selectByLifecycle(tasks, "someday")));
+    expect(columns.get("done")).toEqual(ids(selectDoneTasks(tasks)));
+  });
+
   it("returns every column in pipeline order, even when empty", () => {
     const columns = selectBoardColumns([]);
     expect(columns.map((c) => c.lifecycle)).toEqual([...BOARD_LIFECYCLES]);

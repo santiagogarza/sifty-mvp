@@ -48,6 +48,19 @@ export const SHORTCUT_GROUPS: ReadonlyArray<ShortcutGroup> = [
     ],
   },
   {
+    title: "Board",
+    shortcuts: [
+      { keys: [["←"]], also: [["→"]], description: "Move selection across columns" },
+      { keys: [["↑"]], also: [["↓"], ["j"], ["k"]], description: "Move selection within a column" },
+      {
+        keys: [["Shift", "←"]],
+        also: [["Shift", "→"]],
+        description: "File the selected card one column",
+      },
+      { keys: [[MOD, "Z"]], description: "Undo the last board move" },
+    ],
+  },
+  {
     title: "Decisions",
     shortcuts: [
       { keys: [["↵"]], description: "Type an answer to the highlighted question" },

@@ -4,6 +4,7 @@ import { DecisionsSync } from "@/components/decisions/decisions-sync";
 import { CaptureDialog } from "@/components/tasks/capture-dialog";
 import { TaskDetailSheet } from "@/components/tasks/task-detail-sheet";
 import { Toaster } from "@/components/ui/toast";
+import type { Lifecycle } from "@/lib/domain/types";
 import { useServerSync } from "@/lib/store/sync";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
@@ -51,6 +52,7 @@ function AppFrameInner({
   const pathname = usePathname();
   const search = useSearchParams();
   const [captureOpen, setCaptureOpen] = React.useState(false);
+  const [captureLifecycle, setCaptureLifecycle] = React.useState<Lifecycle>("inbox");
   const [commandOpen, setCommandOpen] = React.useState(false);
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
 
@@ -72,9 +74,15 @@ function AppFrameInner({
 
   // Capture and the palette replace the cheat sheet rather than stacking a
   // second dialog on it: `?` then `c` is "show me, then do it".
-  const openCapture = React.useCallback(() => {
+  // Also bound directly as an onClick handler, so `opts` may be a click event.
+  const openCapture = React.useCallback((opts?: { lifecycle?: Lifecycle }) => {
     setShortcutsOpen(false);
+    setCaptureLifecycle(opts?.lifecycle ?? "inbox");
     setCaptureOpen(true);
+  }, []);
+  const onCaptureOpenChange = React.useCallback((open: boolean) => {
+    setCaptureOpen(open);
+    if (!open) setCaptureLifecycle("inbox");
   }, []);
   const openCommand = React.useCallback(() => {
     setShortcutsOpen(false);
@@ -104,10 +112,11 @@ function AppFrameInner({
   // store trustworthy as "the workspace"; before that an empty store is
   // just "not loaded yet", and views should not flash their empty state.
   const serverReady = sync.hydrated;
+  const syncError = syncNoticeMessage(sync.hydrated ? sync.error : null, sync.rejected) !== null;
 
   const value = React.useMemo(
-    () => ({ openDetail, openCapture, openCommand, serverReady }),
-    [openDetail, openCapture, openCommand, serverReady],
+    () => ({ openDetail, openCapture, openCommand, serverReady, syncError }),
+    [openDetail, openCapture, openCommand, serverReady, syncError],
   );
 
   return (
@@ -122,7 +131,11 @@ function AppFrameInner({
         </main>
       </div>
       <BottomNav onCapture={openCapture} />
-      <CaptureDialog open={captureOpen} onOpenChange={setCaptureOpen} />
+      <CaptureDialog
+        open={captureOpen}
+        onOpenChange={onCaptureOpenChange}
+        lifecycle={captureLifecycle}
+      />
       <CommandPalette
         open={commandOpen}
         onOpenChange={setCommandOpen}
@@ -148,12 +161,16 @@ function AppFrameInner({
  * unreachable (transient, everything replays) or it refused a change
  * (terminal, kept on this device, retried on the next edit).
  */
+function syncNoticeMessage(error: string | null, rejected: number): string | null {
+  if (error) return "Can't reach Sifty — changes are saved locally and will sync.";
+  if (rejected > 0) {
+    return `${rejected === 1 ? "One change" : `${rejected} changes`} couldn't sync to your account — kept on this device.`;
+  }
+  return null;
+}
+
 function SyncNotice({ error, rejected }: { error: string | null; rejected: number }) {
-  const message = error
-    ? "Can't reach Sifty — changes are saved locally and will sync."
-    : rejected > 0
-      ? `${rejected === 1 ? "One change" : `${rejected} changes`} couldn't sync to your account — kept on this device.`
-      : null;
+  const message = syncNoticeMessage(error, rejected);
   if (!message) return null;
   return (
     <div
@@ -167,10 +184,13 @@ function SyncNotice({ error, rejected }: { error: string | null; rejected: numbe
 }
 interface FrameApi {
   openDetail: (id: string) => void;
-  openCapture: () => void;
+  /** Opens capture; the new task starts in `lifecycle` (default Inbox). */
+  openCapture: (opts?: { lifecycle?: Lifecycle }) => void;
   openCommand: () => void;
   /** First server pull has settled (successfully or not). */
   serverReady: boolean;
+  /** The sync notice pill is showing; bottom-anchored pills stack above it. */
+  syncError: boolean;
 }
 
 const FrameContext = React.createContext<FrameApi | null>(null);

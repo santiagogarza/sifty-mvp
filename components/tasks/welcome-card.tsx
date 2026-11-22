@@ -88,7 +88,7 @@ export function WelcomeCard() {
         {TRIAL_DAYS} days include unlimited sifting.
       </p>
       <div className="mt-3.5 flex flex-wrap items-center gap-2">
-        <Button variant="primary" size="sm" onClick={openCapture}>
+        <Button variant="primary" size="sm" onClick={() => openCapture()}>
           Capture your first task
         </Button>
         <Button variant="ghost" size="sm" onClick={removeExamples}>
