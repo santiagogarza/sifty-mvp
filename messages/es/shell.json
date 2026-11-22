@@ -1,0 +1,78 @@
+{
+  "nav": {
+    "today": "Hoy",
+    "decisions": "Decisiones",
+    "memory": "Memoria",
+    "settings": "Configuración",
+    "billing": "Facturación",
+    "waitingOnYou": "Pendiente de ti",
+    "more": "Más",
+    "tipLabel": "Consejo",
+    "tipTooltip": "Consejo: presiona / para abrir la paleta de comandos y c para capturar.",
+    "tipBody": "Presiona <key>c</key> en cualquier lugar para capturar. Presiona <key>/</key> para buscar y navegar."
+  },
+  "topBar": {
+    "openCommandPalette": "Abrir la paleta de comandos",
+    "searchAndJump": "Buscar e ir",
+    "capture": "Capturar",
+    "captureTask": "Capturar tarea",
+    "decisionsWaiting": "{count, plural, =0 {Decisiones} other {Decisiones, # pendientes}}"
+  },
+  "sync": {
+    "offline": "No se puede conectar con Sifty — los cambios se guardan en este dispositivo y se sincronizarán.",
+    "rejected": "{count, plural, one {Un cambio no se pudo} other {# cambios no se pudieron}} sincronizar con tu cuenta — se conservan en este dispositivo."
+  },
+  "palette": {
+    "title": "Paleta de comandos",
+    "description": "Busca en la app, salta a una tarea o ejecuta un comando.",
+    "placeholder": "Busca o ejecuta un comando…",
+    "empty": "Nada coincide con “{query}”.",
+    "groups": {
+      "task": "Tareas",
+      "navigate": "Navegar",
+      "system": "Sistema"
+    },
+    "goTo": "Ir a {view}",
+    "captureNew": "Capturar tarea nueva",
+    "switchToList": "Cambiar a vista de lista",
+    "switchToBoard": "Cambiar a vista de tablero",
+    "toggleTheme": "Cambiar tema",
+    "shortcuts": "Atajos de teclado"
+  },
+  "shortcuts": {
+    "title": "Atajos",
+    "description": "Trabaja tu lista sin tocar el mouse.",
+    "then": "luego",
+    "or": "o",
+    "groups": {
+      "capture": "Capturar",
+      "navigate": "Navegar",
+      "tasks": "Tareas",
+      "decisions": "Decisiones",
+      "help": "Ayuda"
+    },
+    "items": {
+      "capture": "Capturar una tarea",
+      "submitCapture": "Enviar la captura",
+      "closeCapture": "Cerrar la captura (tu borrador se conserva)",
+      "commandPalette": "Paleta de comandos",
+      "moveDown": "Bajar en la lista",
+      "moveUp": "Subir en la lista",
+      "openTask": "Abrir la tarea resaltada",
+      "closeOverlay": "Cerrar la ventana abierta o borrar la selección",
+      "snoozeTomorrow": "Posponer hasta mañana",
+      "snoozeNextWeek": "Posponer hasta la próxima semana",
+      "selectRange": "Seleccionar un rango de tareas",
+      "duplicate": "Duplicar la tarea abierta",
+      "answerQuestion": "Escribir una respuesta a la pregunta resaltada",
+      "pickAnswer": "Elegir una respuesta sugerida",
+      "letSiftyDecide": "Dejar que Sifty decida",
+      "toggleSheet": "Mostrar u ocultar esta hoja"
+    }
+  },
+  "notFound": {
+    "title": "Este rincón está vacío.",
+    "body": "Quizá el enlace es viejo o la tarea siguió su camino. Sea como sea, tu bandeja de entrada está por aquí.",
+    "back": "Volver a Hoy"
+  }
+}

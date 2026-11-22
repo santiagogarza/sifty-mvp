@@ -1,0 +1,96 @@
+{
+  "title": "Configuración",
+  "description": "Unos pocos controles. El resto de Sifty no se interpone en tu camino.",
+  "account": {
+    "title": "Cuenta",
+    "descriptionBypass": "Se está ejecutando con SIFTY_DISABLE_AUTH=1 — el inicio de sesión se omite para desarrollo local.",
+    "description": "Capturar, organizar y sincronizar es gratis para todos. Los planes se diferencian en la clasificación con IA.",
+    "siftsUnlimited": "{count, plural, one {# clasificación} other {# clasificaciones}} hoy — ilimitadas",
+    "siftsFree": "{used} de {cap} clasificaciones gratis usadas hoy",
+    "siftsFairUse": "{count, plural, one {# clasificación} other {# clasificaciones}} hoy — ilimitadas, con un límite de uso razonable de {cap} al día",
+    "billing": "Facturación",
+    "notifications": "Notificaciones",
+    "aiCosts": "Costos de IA",
+    "signOut": "Cerrar sesión",
+    "signingOut": "Cerrando sesión…"
+  },
+  "sessions": {
+    "title": "Sesiones",
+    "description": "Todos los dispositivos con sesión iniciada en esta cuenta. Cerrar sesión en otro dispositivo surte efecto de inmediato.",
+    "loading": "Cargando sesiones…",
+    "thisDevice": "Este dispositivo",
+    "lastActive": "Última actividad: {when}",
+    "signOut": "Cerrar sesión",
+    "signingOut": "Cerrando sesión…",
+    "signOutOthers": "{count, plural, one {Cerrar sesión en # dispositivo más} other {Cerrar sesión en # dispositivos más}}",
+    "unknownDevice": "Dispositivo desconocido",
+    "browser": "Navegador",
+    "browserOnOs": "{browser} en {os}",
+    "justNow": "justo ahora",
+    "minutesAgo": "hace {count} min",
+    "hoursAgo": "hace {count} h"
+  },
+  "language": {
+    "title": "Idioma",
+    "description": "El idioma que usa Sifty en este navegador."
+  },
+  "appearance": {
+    "title": "Apariencia",
+    "description": "Sifty se ve mejor en modo oscuro, pero tú decides.",
+    "system": "Sistema",
+    "light": "Claro",
+    "dark": "Oscuro"
+  },
+  "model": {
+    "title": "Modelo de IA",
+    "description": "Elige el equilibrio entre velocidad y profundidad. Cada opción define un modelo principal y uno de respaldo de otro proveedor, para que una caída nunca detenga tu lista. Los cambios que hagas están protegidos para que no se sobrescriban.",
+    "routes": "Clasificar: {fast} · Planear: {deep}",
+    "options": {
+      "recommended": {
+        "label": "Recomendado",
+        "description": "Claude Haiku para clasificar en el día a día, Claude Sonnet cuando una tarea necesita un plan."
+      },
+      "quality": {
+        "label": "Máxima calidad",
+        "description": "Claude Sonnet para todo. Más lento y más caro; vale la pena para listas importantes."
+      },
+      "fast": {
+        "label": "Más rápido",
+        "description": "Claude Haiku para todo, incluida la planeación. Ideal para días de mucha captura."
+      },
+      "openai": {
+        "label": "Preferir OpenAI",
+        "description": "GPT-5 mini y GPT-5 primero, con Claude como respaldo."
+      }
+    }
+  },
+  "behavior": {
+    "title": "Comportamiento de la IA",
+    "description": "Las claves de los proveedores y el transporte (AI Gateway o directo) se configuran en el entorno del servidor. Sifty nunca te pide una clave en el navegador.",
+    "promptVersion": "Versión del prompt",
+    "triageModel": "Modelo de clasificación",
+    "minDelay": "Retraso mínimo visible",
+    "editedProtected": "Campos editados protegidos",
+    "yes": "Sí"
+  },
+  "data": {
+    "title": "Datos",
+    "description": "Las tareas, etiquetas y memorias se sincronizan con tu cuenta. Este navegador también guarda una caché local para cargar al instante — restablecerla no borra los datos sincronizados.",
+    "export": "Exportar tus datos",
+    "resetCache": "Restablecer caché local",
+    "resetConfirm": "¿Restablecer la caché local de Sifty en este navegador? Los datos sincronizados no se ven afectados.",
+    "exportNote": "La exportación es un archivo JSON con tus tareas, etiquetas, memorias y ejecuciones de IA."
+  },
+  "deleteAccount": {
+    "title": "Eliminar cuenta",
+    "description": "Elimina de forma permanente tu cuenta, todas tus tareas, etiquetas, memorias y ejecuciones de IA, y cancela cualquier suscripción. No se puede deshacer — exporta tus datos primero si quieres una copia.",
+    "open": "Eliminar cuenta…",
+    "dialogTitle": "¿Eliminar tu cuenta?",
+    "dialogBody": "Esto elimina todo lo que hay en Sifty para <hl>{email}</hl> y cancela cualquier suscripción. No se puede deshacer.",
+    "confirmLabel": "Escribe tu correo para confirmar",
+    "keep": "Conservar cuenta",
+    "deleting": "Eliminando…",
+    "confirm": "Eliminar todo",
+    "error": "No se pudo eliminar la cuenta."
+  }
+}

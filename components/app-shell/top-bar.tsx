@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils/cn";
 import { MessageCircleQuestion, Plus, Search } from "lucide-react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import * as React from "react";
 import { DecisionCount } from "./sidebar";
@@ -26,6 +27,7 @@ export function TopBar({
   subtitle?: string;
   rightSlot?: React.ReactNode;
 }) {
+  const t = useTranslations("shell.topBar");
   return (
     <header
       className={cn(
@@ -59,10 +61,10 @@ export function TopBar({
           type="button"
           onClick={onCommand}
           className="flex h-9 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-strong)] bg-[var(--surface)] px-3 text-[13px] text-[var(--fg-muted)] hover:bg-[var(--surface-hover)] transition-colors"
-          aria-label="Open command palette"
+          aria-label={t("openCommandPalette")}
         >
           <Search size={13} />
-          <span className="hidden md:inline">Search & jump</span>
+          <span className="hidden md:inline">{t("searchAndJump")}</span>
           <span className="hidden md:inline-flex items-center gap-1">
             <Kbd>/</Kbd>
           </span>
@@ -72,10 +74,10 @@ export function TopBar({
           variant="primary"
           onClick={onCapture}
           className="hidden md:inline-flex"
-          aria-label="Capture task"
+          aria-label={t("captureTask")}
         >
           <Plus size={14} strokeWidth={2.4} />
-          Capture
+          {t("capture")}
           <Kbd className="!h-4 ml-1 bg-[oklch(0%_0_0/0.18)] text-[var(--accent-fg)] border-[oklch(100%_0_0/0.15)]">
             C
           </Kbd>
@@ -87,10 +89,11 @@ export function TopBar({
 
 function MobileDecisionsLink() {
   const count = useOpenDecisionCount();
+  const t = useTranslations("shell.topBar");
   return (
     <Link
       href="/decisions"
-      aria-label={count > 0 ? `Decisions, ${count} waiting` : "Decisions"}
+      aria-label={t("decisionsWaiting", { count })}
       className="md:hidden relative flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border-strong)] bg-[var(--surface)] text-[var(--fg-muted)] hover:bg-[var(--surface-hover)] transition-colors"
     >
       <MessageCircleQuestion size={15} />

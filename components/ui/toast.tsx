@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils/cn";
 import { id as makeId } from "@/lib/utils/ids";
 import { X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 import { create } from "zustand";
 
@@ -68,6 +69,7 @@ export function dismissToast(id: string): void {
 
 export function Toaster() {
   const toasts = useToastStore((s) => s.toasts);
+  const tCommon = useTranslations("common");
   if (toasts.length === 0) return null;
   return (
     <div
@@ -107,7 +109,7 @@ export function Toaster() {
           <button
             type="button"
             onClick={() => dismissToast(t.id)}
-            aria-label="Dismiss"
+            aria-label={tCommon("actions.dismiss")}
             className="rounded-full p-1 text-[var(--fg-subtle)] hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]"
           >
             <X size={12} />

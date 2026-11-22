@@ -9,6 +9,7 @@ import { type TaskCounts, useTaskCounts } from "@/lib/store/selectors";
 import { useStore } from "@/lib/store/store";
 import { cn } from "@/lib/utils/cn";
 import { Brain, MessageCircleQuestion, Settings, Sun } from "lucide-react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as React from "react";
@@ -33,15 +34,17 @@ export function Sidebar() {
   const counts = useTaskCounts();
   const hydrated = useStore((s) => s.hydrated);
   const openDecisions = useOpenDecisionCount();
+  const t = useTranslations("shell.nav");
+  const tStatus = useTranslations("common.status");
 
   // Today first (the smart lens / homepage), then the statuses in pipeline
   // order — the same order, words, and icons as the Status picker.
   const items: NavItem[] = [
-    { label: "Today", href: "/today", icon: Sun, count: counts.today },
+    { label: t("today"), href: "/today", icon: Sun, count: counts.today },
     ...STATUS_VIEWS.map((view) => {
       const countKey = STATUS_COUNT_KEY[view.status];
       return {
-        label: view.label,
+        label: tStatus(`${view.status}.short`),
         href: view.href,
         icon: STATUS_ICONS[view.status],
         count: countKey ? counts[countKey] : undefined,
@@ -90,7 +93,7 @@ export function Sidebar() {
             The count is the accent color because it is actionable, where
             the status counts are just sizes. */}
         <div className="px-1">
-          <div className="text-eyebrow px-2 mb-1.5">Waiting on you</div>
+          <div className="text-eyebrow px-2 mb-1.5">{t("waitingOnYou")}</div>
           <Link
             href="/decisions"
             data-testid="nav-decisions"
@@ -103,13 +106,13 @@ export function Sidebar() {
             )}
           >
             <MessageCircleQuestion size={14} className="opacity-80" />
-            <span className="flex-1">Decisions</span>
+            <span className="flex-1">{t("decisions")}</span>
             <DecisionCount value={openDecisions} />
           </Link>
         </div>
 
         <div className="px-1 mt-1">
-          <div className="text-eyebrow px-2 mb-1.5">More</div>
+          <div className="text-eyebrow px-2 mb-1.5">{t("more")}</div>
           <div className="flex flex-col gap-0.5">
             <Link
               href="/memory"
@@ -120,7 +123,7 @@ export function Sidebar() {
               )}
             >
               <Brain size={14} className="opacity-80" />
-              <span>Memory</span>
+              <span>{t("memory")}</span>
             </Link>
             <Link
               href="/settings"
@@ -131,20 +134,18 @@ export function Sidebar() {
               )}
             >
               <Settings size={14} className="opacity-80" />
-              <span>Settings</span>
+              <span>{t("settings")}</span>
             </Link>
           </div>
         </div>
 
         <div className="mt-auto px-2">
-          <Tooltip
-            label="Pro tip: press / to open the command palette and c to capture."
-            side="right"
-          >
+          <Tooltip label={t("tipTooltip")} side="right">
             <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3 text-[12px] text-[var(--fg-muted)] leading-[1.5]">
-              <div className="text-eyebrow mb-1">Tip</div>
-              Press <span className="font-mono text-[11px]">c</span> anywhere to capture. Press{" "}
-              <span className="font-mono text-[11px]">/</span> to search and navigate.
+              <div className="text-eyebrow mb-1">{t("tipLabel")}</div>
+              {t.rich("tipBody", {
+                key: (chunks) => <span className="font-mono text-[11px]">{chunks}</span>,
+              })}
             </div>
           </Tooltip>
         </div>

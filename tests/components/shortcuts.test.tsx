@@ -3,9 +3,11 @@ import { AppFrame } from "@/components/app-shell/app-frame";
 import { GlobalKeyboard, globalShortcutFor } from "@/components/app-shell/keyboard";
 import { SHORTCUT_GROUPS } from "@/components/app-shell/shortcuts";
 import { ShortcutsSheet } from "@/components/app-shell/shortcuts-sheet";
+import { CATALOGS } from "@/messages";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "../helpers/intl";
 
 /** SIF-20: `?` opens the cheat sheet, except while typing. */
 
@@ -85,7 +87,7 @@ describe("AppFrame overlays", () => {
         dispatchEvent: () => false,
       }) as MediaQueryList) as typeof window.matchMedia;
     const user = userEvent.setup();
-    render(
+    renderWithIntl(
       <AppFrame>
         <div>page</div>
       </AppFrame>,
@@ -113,7 +115,7 @@ describe("AppFrame overlays", () => {
         dispatchEvent: () => false,
       }) as MediaQueryList) as typeof window.matchMedia;
     const user = userEvent.setup();
-    render(
+    renderWithIntl(
       <AppFrame>
         <div>page</div>
       </AppFrame>,
@@ -149,20 +151,20 @@ describe("GlobalKeyboard", () => {
 
 describe("ShortcutsSheet", () => {
   it("lists the real shortcuts, including ? itself", () => {
-    render(<ShortcutsSheet open onOpenChange={vi.fn()} />);
+    renderWithIntl(<ShortcutsSheet open onOpenChange={vi.fn()} />);
     expect(screen.getByRole("dialog", { name: "Shortcuts" })).toBeInTheDocument();
     expect(screen.getByText("Capture a task")).toBeInTheDocument();
     expect(screen.getByText("Command palette")).toBeInTheDocument();
     expect(screen.getByText("Show or hide this sheet")).toBeInTheDocument();
     for (const group of SHORTCUT_GROUPS) {
       for (const s of group.shortcuts) {
-        expect(screen.getByText(s.description)).toBeInTheDocument();
+        expect(screen.getByText(CATALOGS.en.shell.shortcuts.items[s.id])).toBeInTheDocument();
       }
     }
   });
 
   it("renders alternatives with 'or' and sequences with 'then', never arrows as a sequence", () => {
-    render(<ShortcutsSheet open onOpenChange={vi.fn()} />);
+    renderWithIntl(<ShortcutsSheet open onOpenChange={vi.fn()} />);
     const down = screen.getByText("Move down the list").closest("li")!;
     expect(down).toHaveTextContent(/↓\s*or\s*j/);
     expect(down).not.toHaveTextContent("then");
@@ -170,10 +172,18 @@ describe("ShortcutsSheet", () => {
     expect(snooze).toHaveTextContent(/s\s*then\s*t/);
   });
 
+  it("renders in Spanish from the es catalog", () => {
+    renderWithIntl(<ShortcutsSheet open onOpenChange={vi.fn()} />, { locale: "es" });
+    expect(screen.getByRole("dialog", { name: "Atajos" })).toBeInTheDocument();
+    expect(screen.getByText("Capturar una tarea")).toBeInTheDocument();
+    const snooze = screen.getByText("Posponer hasta mañana").closest("li")!;
+    expect(snooze).toHaveTextContent(/s\s*luego\s*t/);
+  });
+
   it("Escape closes it", async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
-    render(<ShortcutsSheet open onOpenChange={onOpenChange} />);
+    renderWithIntl(<ShortcutsSheet open onOpenChange={onOpenChange} />);
     await user.keyboard("{Escape}");
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });

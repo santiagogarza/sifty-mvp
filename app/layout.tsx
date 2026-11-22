@@ -4,6 +4,8 @@ import { BOTID_PROTECTED_ROUTES } from "@/lib/abuse/botid-routes";
 import { SITE_DESCRIPTION, getSiteUrl } from "@/lib/site/config";
 import { BotIdClient } from "botid/client";
 import type { Metadata, Viewport } from "next";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale } from "next-intl/server";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -48,9 +50,10 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const locale = await getLocale();
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <head>
         <BotIdClient protect={[...BOTID_PROTECTED_ROUTES]} />
         {/* Render the theme as early as possible so the first paint is correct. */}
@@ -61,7 +64,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-dvh">
-        {children}
+        <NextIntlClientProvider>{children}</NextIntlClientProvider>
         <SentryClient />
         <Analytics />
       </body>
